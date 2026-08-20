@@ -10,7 +10,7 @@ jobs:
   phpcs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: bin/docker/composer.sh install --no-interaction
       - name: PHPCS
@@ -19,7 +19,7 @@ jobs:
   static-analysis:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: bin/docker/composer.sh install --no-interaction
       - name: PHPStan
@@ -31,7 +31,7 @@ jobs:
       matrix:
         php-version: ['8.1', '8.3', '8.4']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: bin/docker/composer.sh install --no-interaction
       - name: Unit tests (PHP ${{ matrix.php-version }})
@@ -40,7 +40,7 @@ jobs:
   integration-wp-only-floor:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: bin/docker/composer.sh install --no-interaction
       - name: Integration tests (WordPress 6.9, PHP 8.1)
@@ -49,7 +49,7 @@ jobs:
   integration-wp-only-current:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: bin/docker/composer.sh install --no-interaction
       - name: Integration tests (WordPress 7.1, PHP 8.3)
@@ -58,7 +58,7 @@ jobs:
   integration-wc-present-current:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: bin/docker/composer.sh install --no-interaction
       - name: Integration tests (WordPress 7.1, WooCommerce 11.0.1)
@@ -67,7 +67,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: bin/docker/composer.sh install --no-interaction
       - name: Build ZIP
@@ -88,7 +88,7 @@ jobs:
             php-version: '8.3'
             woocommerce: '11.0.1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Package acceptance (WordPress ${{ matrix.wp-version }}, PHP ${{ matrix.php-version }}${{ matrix.woocommerce && format(', WooCommerce {0}', matrix.woocommerce) }})
         run: |
           if [ -n "${{ matrix.woocommerce }}" ]; then

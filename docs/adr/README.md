@@ -4,7 +4,7 @@
 
 - Sequential, never reused: docs/adr/NNNN-kebab-slug.md, four digits, starting at 0001.
 - Status values: Proposed, Accepted, Deprecated, Superseded by ADR-XXXX.
-- Reserved numbers: 0001 project governance, 0002 plugin identity and naming, 0003 optional WooCommerce integration, 0004 v1.0 release boundary and hardening sequence, 0005 composition root and product module boundaries, 0006 queue implementation and failure semantics, 0007 persistence and migration framework, 0008 secret storage and fail-closed key handling, 0009 privacy classification and redaction model, 0010 capability model, 0011 deferred formal acceptance testing until M10. None of these eleven numbers is available for any other decision. The next available number for any future ADR is 0012.
+- Reserved numbers: 0001 project governance, 0002 plugin identity and naming, 0003 optional WooCommerce integration, 0004 v1.0 release boundary and hardening sequence, 0005 composition root and product module boundaries, 0006 queue implementation and failure semantics, 0007 persistence and migration framework, 0008 secret storage and fail-closed key handling, 0009 privacy classification and redaction model, 0010 capability model, 0011 deferred formal acceptance testing until M10, 0012 Telegram bot cardinality, webhook routing, and outbound delivery architecture, 0013 Telegram webhook authenticity, replay protection, and inbound handling, 0014 Telegram provider reliability policy (rate limiting, circuit breaking, dead-letter, queue-health alerting). None of these fourteen numbers is available for any other decision. The next available number for any future ADR is 0015.
 
 ## Immutability
 

@@ -225,8 +225,14 @@ final class SelfTestTest extends WP_UnitTestCase {
 		$this->assertSame( '0', (string) $found_in_args );
 
 		// 3. Not in the diagnostics page's own rendered output.
-		$report           = new DiagnosticsReport( new QueueHealth(), new AuditLogRepository( $schema_health ), new WooCommerceSupport(), $schema_health );
-		$diagnostics_page = new DiagnosticsPage( $report, $schema_health, $self_test );
+		$vault            = new CredentialVault();
+		$bots             = new \UniversalTelegram\Telegram\Configuration\BotProfileRepository( $schema_health, $vault );
+		$destinations     = new \UniversalTelegram\Telegram\Configuration\DestinationRepository( $schema_health );
+		$messages         = new \UniversalTelegram\Telegram\Outbound\OutboundMessageRepository( $schema_health, $vault );
+		$breaker          = new \UniversalTelegram\Telegram\Reliability\CircuitBreaker( $schema_health, new RetryPolicy() );
+		$alert            = new \UniversalTelegram\Telegram\Reliability\QueueHealthAlert( $messages, $breaker, $bots );
+		$report           = new DiagnosticsReport( new QueueHealth(), new AuditLogRepository( $schema_health ), new WooCommerceSupport(), $schema_health, $bots, $destinations, $alert );
+		$diagnostics_page = new DiagnosticsPage( $report, $schema_health, $self_test, $alert );
 
 		ob_start();
 		$diagnostics_page->render();
