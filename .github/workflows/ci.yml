@@ -55,6 +55,15 @@ jobs:
       - name: Integration tests (WordPress 7.1, PHP 8.3)
         run: bin/docker/test-integration-wp-only.sh --wp-version=7.1 --php-version=8.3
 
+  integration-wc-present-current:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: bin/docker/composer.sh install --no-interaction
+      - name: Integration tests (WordPress 7.1, WooCommerce 11.0.1)
+        run: bin/docker/test-integration-wc-present.sh --wp-version=7.1 --wc-version=11.0.1
+
   build:
     runs-on: ubuntu-latest
     steps:

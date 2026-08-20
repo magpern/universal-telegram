@@ -25,6 +25,28 @@ require_once $wp_tests_dir . '/includes/functions.php';
 function universal_telegram_manually_load_plugin() {
 	if ( getenv( 'UT_TEST_WC_ACTIVE' ) ) {
 		require WP_PLUGIN_DIR . '/woocommerce/woocommerce.php';
+
+		// Requiring the main file does not run WooCommerce's own
+		// activation routine (nothing "activates" it through WordPress'
+		// real activation flow here), so its own tables are never
+		// created. WC_Install::install() is the standard, documented way
+		// WooCommerce extension test suites provision those tables
+		// directly, without a real activation request. It needs both
+		// pluggable.php (current_user_can(), etc. — loaded by
+		// `plugins_loaded` time) and $wp_rewrite (set up just before
+		// `init` fires), so it runs on `init` itself, at priority -10 —
+		// strictly before WooCommerce's own `init` callback, registered
+		// at priority 0, which would otherwise query these tables before
+		// they exist.
+		add_action(
+			'init',
+			function () {
+				if ( class_exists( 'WC_Install' ) ) {
+					\WC_Install::install();
+				}
+			},
+			-10
+		);
 	}
 
 	require dirname( __DIR__, 2 ) . '/universal-telegram.php';

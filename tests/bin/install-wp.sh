@@ -57,7 +57,16 @@ fi
 if [ -n "$WC_VERSION" ]; then
     if [ ! -f "$WP_CORE_DIR/wp-content/plugins/woocommerce/woocommerce.php" ]; then
         echo "Downloading WooCommerce ${WC_VERSION}..."
-        wp plugin install woocommerce --version="$WC_VERSION" --path="$WP_CORE_DIR" --allow-root --force
+        # WP-CLI's `wp plugin install` requires a fully bootstrapped
+        # WordPress install (wp-config.php, a live DB connection), which
+        # this script deliberately does not create — the WP core test
+        # framework provisions its own test database itself. Fetching the
+        # plugin ZIP directly from wordpress.org and extracting it needs
+        # no such bootstrap.
+        mkdir -p "$WP_CORE_DIR/wp-content/plugins"
+        curl -sf -o /tmp/woocommerce.zip "https://downloads.wordpress.org/plugin/woocommerce.${WC_VERSION}.zip"
+        unzip -q -o /tmp/woocommerce.zip -d "$WP_CORE_DIR/wp-content/plugins"
+        rm -f /tmp/woocommerce.zip
     fi
 fi
 

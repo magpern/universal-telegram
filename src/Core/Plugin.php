@@ -10,6 +10,7 @@ namespace UniversalTelegram\Core;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Core\Configuration\Settings;
+use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Persistence\MigrationFailedException;
 use UniversalTelegram\Persistence\MigrationLock;
 use UniversalTelegram\Persistence\Migrator;
@@ -61,6 +62,13 @@ final class Plugin {
 	private ?AuditLogRepository $audit_log_repository = null;
 
 	/**
+	 * The WooCommerce-presence detector, constructed by init().
+	 *
+	 * @var WooCommerceSupport|null
+	 */
+	private ?WooCommerceSupport $woocommerce_support = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -101,6 +109,8 @@ final class Plugin {
 
 		$this->audit_logger         = new AuditLogger( $this->schema_health, new Redactor() );
 		$this->audit_log_repository = new AuditLogRepository( $this->schema_health );
+
+		$this->woocommerce_support = new WooCommerceSupport();
 	}
 
 	/**
@@ -123,5 +133,13 @@ final class Plugin {
 	 */
 	public function audit_log_repository(): ?AuditLogRepository {
 		return $this->audit_log_repository;
+	}
+
+	/**
+	 * The WooCommerce-presence detector. Available only after init() has
+	 * run.
+	 */
+	public function woocommerce_support(): ?WooCommerceSupport {
+		return $this->woocommerce_support;
 	}
 }
