@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress
+Closed (PASS) — see docs/closure/m01-telegram-connectivity-closure.md. Product Owner acceptance pending.
 
 ## Dependencies
 
