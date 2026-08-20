@@ -1,0 +1,104 @@
+<?php
+/**
+ * Safe rule simulation.
+ *
+ * @package UniversalTelegram
+ */
+
+declare( strict_types=1 );
+
+namespace UniversalTelegram\Automations;
+
+use Throwable;
+use UniversalTelegram\Events\EventEnvelope;
+use UniversalTelegram\Events\EventSource;
+use UniversalTelegram\Events\Registry;
+
+/**
+ * Constructs an EventEnvelope from hand-entered sample data (or an existing
+ * event_history row), then calls the identical RuleEvaluator code path used
+ * for real events — with the matched/rejected extension points replaced by
+ * a no-op "would send"/"would reject" recorder: no MessageDispatcher::send()
+ * call, no queue enqueue, no HTTP traffic, and no write to
+ * notification_dispatch_log (M02 plan §9.2). Simulation never consumes the
+ * (rule_id, event_id) idempotency space a real occurrence might later need.
+ */
+final class RuleSimulator {
+
+	/**
+	 * Constructor.
+	 *
+	 * @param NotificationRuleRepository $rules        Supplies each event type's own enabled rules.
+	 * @param Registry                    $registry     The current request's event registry.
+	 * @param DispatchLogRepository       $dispatch_log Required only to satisfy RuleEvaluator's constructor; never invoked during simulation.
+	 * @param NotificationDispatcher      $dispatcher   Required only to satisfy RuleEvaluator's constructor; never invoked during simulation.
+	 */
+	public function __construct(
+		private readonly NotificationRuleRepository $rules,
+		private readonly Registry $registry,
+		private readonly DispatchLogRepository $dispatch_log,
+		private readonly NotificationDispatcher $dispatcher
+	) {}
+
+	/**
+	 * Runs a simulation.
+	 *
+	 * @param string                $event_type      A registered event type.
+	 * @param array<string, mixed>  $sample_data     actor/subject/context/payload sub-arrays.
+	 * @param string                $idempotency_key A sample idempotency key. Never written anywhere.
+	 *
+	 * @return SimulationResult
+	 */
+	public function simulate( string $event_type, array $sample_data, string $idempotency_key ): SimulationResult {
+		try {
+			$envelope = new EventEnvelope(
+				$this->registry,
+				$event_type,
+				$idempotency_key,
+				EventSource::WORDPRESS_CORE,
+				$sample_data['actor'] ?? array(),
+				$sample_data['subject'] ?? array(),
+				$sample_data['context'] ?? array(),
+				$sample_data['payload'] ?? array()
+			);
+		} catch ( Throwable $exception ) {
+			return new SimulationResult( array(), 'invalid_sample_data' );
+		}
+
+		$entries   = array();
+		$evaluator = new class( $this->rules, $this->registry, $this->dispatch_log, $this->dispatcher, $entries ) extends RuleEvaluator {
+
+			/**
+			 * @var array<int, array{rule_id: int, rule_name: string, outcome: string, reason_code: string|null}>
+			 */
+			private array $entries_ref;
+
+			public function __construct( $rules, $registry, $dispatch_log, $dispatcher, array &$entries_ref ) {
+				parent::__construct( $rules, $registry, $dispatch_log, $dispatcher );
+				$this->entries_ref = &$entries_ref;
+			}
+
+			protected function on_matched( NotificationRule $rule, EventEnvelope $event ): void {
+				$this->entries_ref[] = array(
+					'rule_id'     => $rule->id(),
+					'rule_name'   => $rule->name(),
+					'outcome'     => 'matched',
+					'reason_code' => null,
+				);
+			}
+
+			protected function on_rejected( NotificationRule $rule, EventEnvelope $event, string $reason_code ): void {
+				$this->entries_ref[] = array(
+					'rule_id'     => $rule->id(),
+					'rule_name'   => $rule->name(),
+					'outcome'     => 'rejected',
+					'reason_code' => $reason_code,
+				);
+			}
+		};
+
+		$evaluator->evaluate( $envelope );
+
+		return new SimulationResult( $entries );
+	}
+}

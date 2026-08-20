@@ -8,8 +8,10 @@
 namespace UniversalTelegram\Core;
 
 use UniversalTelegram\Administration\Automations\EventCatalogPage;
+use UniversalTelegram\Administration\Automations\EventHistoryPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderRequestHandler;
+use UniversalTelegram\Administration\Automations\RuleSimulatorPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
 use UniversalTelegram\Administration\Diagnostics\SelfTest;
@@ -22,6 +24,7 @@ use UniversalTelegram\Automations\DispatchLogRepository;
 use UniversalTelegram\Automations\NotificationDispatcher;
 use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Automations\RuleEvaluator;
+use UniversalTelegram\Automations\RuleSimulator;
 use UniversalTelegram\Automations\TemplateRenderer;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
@@ -345,6 +348,20 @@ final class Plugin {
 	private ?RuleBuilderRequestHandler $rule_builder_request_handler = null;
 
 	/**
+	 * The rule simulator admin page, constructed by init().
+	 *
+	 * @var RuleSimulatorPage|null
+	 */
+	private ?RuleSimulatorPage $rule_simulator_page = null;
+
+	/**
+	 * The event history browser admin page, constructed by init().
+	 *
+	 * @var EventHistoryPage|null
+	 */
+	private ?EventHistoryPage $event_history_page = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -632,6 +649,14 @@ final class Plugin {
 			( new PluginActionLinks( plugin_basename( UNIVERSAL_TELEGRAM_PLUGIN_FILE ) ) )->register();
 		}
 
+		$rule_simulator = new RuleSimulator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher );
+
+		$this->rule_simulator_page = new RuleSimulatorPage( $rule_simulator, $this->event_registry );
+		add_action( 'admin_menu', array( $this->rule_simulator_page, 'register_menu' ) );
+
+		$this->event_history_page = new EventHistoryPage( $this->schema_health );
+		add_action( 'admin_menu', array( $this->event_history_page, 'register_menu' ) );
+
 		$retention_cleanup = new RetentionCleanup(
 			$this->schema_health,
 			(int) $settings_values['event_retention_days'],
@@ -905,5 +930,19 @@ final class Plugin {
 	 */
 	public function rule_builder_request_handler(): ?RuleBuilderRequestHandler {
 		return $this->rule_builder_request_handler;
+	}
+
+	/**
+	 * The rule simulator admin page. Available only after init() has run.
+	 */
+	public function rule_simulator_page(): ?RuleSimulatorPage {
+		return $this->rule_simulator_page;
+	}
+
+	/**
+	 * The event history browser admin page. Available only after init() has run.
+	 */
+	public function event_history_page(): ?EventHistoryPage {
+		return $this->event_history_page;
 	}
 }
