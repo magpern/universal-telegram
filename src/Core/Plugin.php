@@ -18,6 +18,11 @@ use UniversalTelegram\Persistence\MigrationLock;
 use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
+use UniversalTelegram\Queue\Dispatcher;
+use UniversalTelegram\Queue\HandlerRegistry;
+use UniversalTelegram\Queue\QueueHealth;
+use UniversalTelegram\Queue\RetryPolicy;
+use UniversalTelegram\Queue\WorkerRunner;
 
 /**
  * Singleton composition root. Constructs and wires every M00 service by
@@ -85,6 +90,35 @@ final class Plugin {
 	private ?CapabilityRegistrar $capability_registrar = null;
 
 	/**
+	 * The internal job-type-to-handler map, constructed by init().
+	 *
+	 * @var HandlerRegistry|null
+	 */
+	private ?HandlerRegistry $handler_registry = null;
+
+	/**
+	 * The job dispatcher, constructed by init().
+	 *
+	 * @var Dispatcher|null
+	 */
+	private ?Dispatcher $dispatcher = null;
+
+	/**
+	 * The queue's pending/failed action counts, constructed by init().
+	 *
+	 * @var QueueHealth|null
+	 */
+	private ?QueueHealth $queue_health = null;
+
+	/**
+	 * The worker runner, constructed by init() and registered against
+	 * WorkerRunner::HOOK unconditionally.
+	 *
+	 * @var WorkerRunner|null
+	 */
+	private ?WorkerRunner $worker_runner = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -131,6 +165,22 @@ final class Plugin {
 		$this->credential_vault = new CredentialVault();
 
 		$this->capability_registrar = new CapabilityRegistrar();
+
+		$this->handler_registry = new HandlerRegistry();
+		$this->dispatcher       = new Dispatcher( $this->schema_health );
+		$this->queue_health     = new QueueHealth();
+
+		// Always registered, in every request, regardless of schema
+		// availability — an unregistered hook would let Action Scheduler
+		// silently mark an already-scheduled job complete without it ever
+		// running. See docs/adr/0006.
+		$this->worker_runner = new WorkerRunner(
+			$this->schema_health,
+			$this->handler_registry,
+			new RetryPolicy(),
+			$this->audit_logger
+		);
+		add_action( WorkerRunner::HOOK, array( $this->worker_runner, 'run' ) );
 	}
 
 	/**
@@ -175,5 +225,35 @@ final class Plugin {
 	 */
 	public function capability_registrar(): ?CapabilityRegistrar {
 		return $this->capability_registrar;
+	}
+
+	/**
+	 * The internal job-type-to-handler map. Available only after init()
+	 * has run.
+	 */
+	public function handler_registry(): ?HandlerRegistry {
+		return $this->handler_registry;
+	}
+
+	/**
+	 * The job dispatcher. Available only after init() has run.
+	 */
+	public function dispatcher(): ?Dispatcher {
+		return $this->dispatcher;
+	}
+
+	/**
+	 * The queue's pending/failed action counts. Available only after
+	 * init() has run.
+	 */
+	public function queue_health(): ?QueueHealth {
+		return $this->queue_health;
+	}
+
+	/**
+	 * The worker runner. Available only after init() has run.
+	 */
+	public function worker_runner(): ?WorkerRunner {
+		return $this->worker_runner;
 	}
 }

@@ -66,6 +66,13 @@
 		<exclude-pattern>*/tests/*</exclude-pattern>
 	</rule>
 
+	<!-- Deterministic test doubles (e.g. a fixed-value RetryPolicy jitter
+	     closure) legitimately ignore a parameter required only to match a
+	     callable's own signature. -->
+	<rule ref="Generic.CodeAnalysis.UnusedFunctionParameter">
+		<exclude-pattern>*/tests/*</exclude-pattern>
+	</rule>
+
 	<!-- tests/integration/bootstrap.php defines the WordPress test framework's
 	     own documented $wp_tests_dir local convention and writes a startup
 	     diagnostic to STDERR before WordPress itself is loaded. -->
