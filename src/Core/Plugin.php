@@ -7,9 +7,13 @@
 
 namespace UniversalTelegram\Core;
 
+use UniversalTelegram\Administration\Automations\EventCatalogPage;
+use UniversalTelegram\Administration\Automations\RuleBuilderPage;
+use UniversalTelegram\Administration\Automations\RuleBuilderRequestHandler;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
 use UniversalTelegram\Administration\Diagnostics\SelfTest;
+use UniversalTelegram\Administration\PluginActionLinks;
 use UniversalTelegram\Administration\Telegram\BotManagementController;
 use UniversalTelegram\Administration\Telegram\BotManagementPage;
 use UniversalTelegram\Audit\AuditLogger;
@@ -320,6 +324,27 @@ final class Plugin {
 	private ?EventHistoryRepository $event_history_repository = null;
 
 	/**
+	 * The event catalog admin page, constructed by init().
+	 *
+	 * @var EventCatalogPage|null
+	 */
+	private ?EventCatalogPage $event_catalog_page = null;
+
+	/**
+	 * The rule builder admin page, constructed by init().
+	 *
+	 * @var RuleBuilderPage|null
+	 */
+	private ?RuleBuilderPage $rule_builder_page = null;
+
+	/**
+	 * The rule builder request handler, constructed by init().
+	 *
+	 * @var RuleBuilderRequestHandler|null
+	 */
+	private ?RuleBuilderRequestHandler $rule_builder_request_handler = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -586,6 +611,27 @@ final class Plugin {
 
 		( new FatalErrorMarkerWriter() )->register();
 
+		// Administration (M02): capability-gated event catalog and rule
+		// builder screens, submenus of the existing top-level Diagnostics
+		// page, mirroring how M01 added its own Telegram subdomain.
+		$this->event_catalog_page = new EventCatalogPage( $this->event_registry );
+		add_action( 'admin_menu', array( $this->event_catalog_page, 'register_menu' ) );
+
+		$this->rule_builder_page = new RuleBuilderPage(
+			$this->notification_rule_repository,
+			$this->event_registry,
+			$this->bot_profile_repository,
+			$this->destination_repository
+		);
+		add_action( 'admin_menu', array( $this->rule_builder_page, 'register_menu' ) );
+
+		$this->rule_builder_request_handler = new RuleBuilderRequestHandler( $this->notification_rule_repository );
+		add_action( 'admin_post_' . RuleBuilderRequestHandler::ADMIN_POST_ACTION, array( $this->rule_builder_request_handler, 'handle_request' ) );
+
+		if ( defined( 'UNIVERSAL_TELEGRAM_PLUGIN_FILE' ) ) {
+			( new PluginActionLinks( plugin_basename( UNIVERSAL_TELEGRAM_PLUGIN_FILE ) ) )->register();
+		}
+
 		$retention_cleanup = new RetentionCleanup(
 			$this->schema_health,
 			(int) $settings_values['event_retention_days'],
@@ -838,5 +884,26 @@ final class Plugin {
 	 */
 	public function event_history_repository(): ?EventHistoryRepository {
 		return $this->event_history_repository;
+	}
+
+	/**
+	 * The event catalog admin page. Available only after init() has run.
+	 */
+	public function event_catalog_page(): ?EventCatalogPage {
+		return $this->event_catalog_page;
+	}
+
+	/**
+	 * The rule builder admin page. Available only after init() has run.
+	 */
+	public function rule_builder_page(): ?RuleBuilderPage {
+		return $this->rule_builder_page;
+	}
+
+	/**
+	 * The rule builder request handler. Available only after init() has run.
+	 */
+	public function rule_builder_request_handler(): ?RuleBuilderRequestHandler {
+		return $this->rule_builder_request_handler;
 	}
 }

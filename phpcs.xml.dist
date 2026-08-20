@@ -119,5 +119,6 @@
 	     comment to every $_POST access across a dozen private methods. -->
 	<rule ref="WordPress.Security.NonceVerification.Missing">
 		<exclude-pattern>*/src/Administration/Telegram/BotManagementController.php</exclude-pattern>
+		<exclude-pattern>*/src/Administration/Automations/RuleBuilderRequestHandler.php</exclude-pattern>
 	</rule>
 </ruleset>
