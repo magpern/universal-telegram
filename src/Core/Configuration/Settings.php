@@ -53,6 +53,9 @@ final class Settings {
 			'telegram_stale_pending_alert_seconds'        => 1800,
 			'telegram_rate_limit_fallback_wait_seconds'   => 30,
 			'telegram_webhook_rotation_max_pending_hours' => 24,
+			'event_retention_days'                        => 90,
+			'dispatch_log_retention_days'                 => 90,
+			'fatal_marker_retention_days'                 => 30,
 		);
 	}
 
@@ -82,6 +85,9 @@ final class Settings {
 			'telegram_stale_pending_alert_seconds',
 			'telegram_rate_limit_fallback_wait_seconds',
 			'telegram_webhook_rotation_max_pending_hours',
+			'event_retention_days',
+			'dispatch_log_retention_days',
+			'fatal_marker_retention_days',
 		);
 
 		foreach ( $positive_integer_fields as $field ) {

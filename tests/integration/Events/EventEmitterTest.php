@@ -9,6 +9,7 @@ use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Events\EventDispatcher;
 use UniversalTelegram\Events\EventEmitter;
 use UniversalTelegram\Events\EventEnvelope;
+use UniversalTelegram\Events\EventHistoryRepository;
 use UniversalTelegram\Events\Registry;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Classification;
@@ -30,9 +31,16 @@ final class EventEmitterTest extends WP_UnitTestCase {
 		return $registry;
 	}
 
+	private function real_dispatcher( Registry $registry ): EventDispatcher {
+		$history = new EventHistoryRepository( new SchemaHealth(), $registry, new Redactor() );
+
+		return new EventDispatcher( $history );
+	}
+
 	public function test_a_downstream_exception_never_propagates_out_of_emit(): void {
 		$registry   = $this->registered_registry();
-		$dispatcher = new class() extends EventDispatcher {
+		$history    = new EventHistoryRepository( new SchemaHealth(), $registry, new Redactor() );
+		$dispatcher = new class( $history ) extends EventDispatcher {
 			public function handle( EventEnvelope $event ): void {
 				throw new \RuntimeException( 'Simulated downstream failure.' );
 			}
@@ -48,7 +56,7 @@ final class EventEmitterTest extends WP_UnitTestCase {
 
 	public function test_an_unregistered_event_type_never_throws_back_to_the_caller(): void {
 		$registry   = new Registry();
-		$dispatcher = new EventDispatcher();
+		$dispatcher = $this->real_dispatcher( $registry );
 		$audit      = new AuditLogger( new SchemaHealth(), new Redactor() );
 		$emitter    = new EventEmitter( $registry, $dispatcher, $audit );
 
@@ -59,7 +67,7 @@ final class EventEmitterTest extends WP_UnitTestCase {
 
 	public function test_an_unclassified_field_never_throws_back_to_the_caller(): void {
 		$registry   = $this->registered_registry();
-		$dispatcher = new EventDispatcher();
+		$dispatcher = $this->real_dispatcher( $registry );
 		$audit      = new AuditLogger( new SchemaHealth(), new Redactor() );
 		$emitter    = new EventEmitter( $registry, $dispatcher, $audit );
 
@@ -78,7 +86,7 @@ final class EventEmitterTest extends WP_UnitTestCase {
 		);
 
 		$registry   = $this->registered_registry();
-		$dispatcher = new EventDispatcher();
+		$dispatcher = $this->real_dispatcher( $registry );
 		$audit      = new AuditLogger( new SchemaHealth(), new Redactor() );
 		$emitter    = new EventEmitter( $registry, $dispatcher, $audit );
 

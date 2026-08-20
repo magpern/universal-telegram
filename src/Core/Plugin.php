@@ -19,7 +19,9 @@ use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Events\EventDispatcher;
 use UniversalTelegram\Events\EventEmitter;
+use UniversalTelegram\Events\EventHistoryRepository;
 use UniversalTelegram\Events\Registry;
+use UniversalTelegram\Events\RetentionCleanup;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Persistence\MigrationFailedException;
 use UniversalTelegram\Persistence\MigrationLock;
@@ -460,9 +462,10 @@ final class Plugin {
 		// Events/Automations (M02): always constructed, unconditionally,
 		// regardless of schema availability — individual repositories
 		// check SchemaHealth at their own point of use (docs/adr/0007).
-		$this->event_registry   = new Registry();
-		$this->event_dispatcher = new EventDispatcher();
-		$this->event_emitter    = new EventEmitter( $this->event_registry, $this->event_dispatcher, $this->audit_logger );
+		$this->event_registry          = new Registry();
+		$event_history_repository      = new EventHistoryRepository( $this->schema_health, $this->event_registry, new Redactor() );
+		$this->event_dispatcher        = new EventDispatcher( $event_history_repository );
+		$this->event_emitter           = new EventEmitter( $this->event_registry, $this->event_dispatcher, $this->audit_logger );
 
 		// Fired once, at priority 20, after WooCommerce presence detection
 		// (already established above) and before any admin-menu
@@ -474,6 +477,23 @@ final class Plugin {
 				do_action( 'universal_telegram_register_event_types', $this->event_registry );
 			},
 			20
+		);
+
+		$retention_cleanup = new RetentionCleanup(
+			$this->schema_health,
+			(int) $settings_values['event_retention_days'],
+			(int) $settings_values['dispatch_log_retention_days'],
+			(int) $settings_values['fatal_marker_retention_days']
+		);
+		add_action( RetentionCleanup::HOOK, array( $retention_cleanup, 'run' ) );
+
+		add_action(
+			'init',
+			static function () {
+				if ( ! as_has_scheduled_action( RetentionCleanup::HOOK, array(), WorkerRunner::GROUP ) ) {
+					as_schedule_recurring_action( time() + DAY_IN_SECONDS, DAY_IN_SECONDS, RetentionCleanup::HOOK, array(), WorkerRunner::GROUP );
+				}
+			}
 		);
 	}
 
