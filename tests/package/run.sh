@@ -86,12 +86,22 @@ audit_table_exists() {
 	wp db query "SHOW TABLES LIKE '${TABLE_PREFIX}universal_telegram_audit_log'" --path="$WP_DIR" --allow-root --skip-column-names
 }
 
-echo "== Verifying activation created the plugin's own table =="
+bots_table_exists() {
+	wp db query "SHOW TABLES LIKE '${TABLE_PREFIX}universal_telegram_bots'" --path="$WP_DIR" --allow-root --skip-column-names
+}
+
+echo "== Verifying activation created the plugin's own tables =="
 if [ -z "$(audit_table_exists)" ]; then
 	echo "FAIL: audit log table was not created on activation" >&2
 	exit 1
 fi
 echo "OK: audit log table exists."
+
+if [ -z "$(bots_table_exists)" ]; then
+	echo "FAIL: bots table was not created on activation" >&2
+	exit 1
+fi
+echo "OK: bots table exists."
 
 echo "== Verifying the diagnostics page renders with the self-test control present =="
 wp eval '
@@ -175,6 +185,34 @@ wp eval '
 	echo "OK: fail_count=5 failed all five permitted attempts, never succeeded.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
+echo "== Verifying no plaintext token appears in the bot management page's rendered output =="
+wp eval '
+	$plugin = UniversalTelegram\Core\Plugin::instance();
+	$bots   = $plugin->bot_profile_repository();
+	$known_synthetic_token = "123456789:AAH_package-test-known-synthetic-token";
+
+	$bot = $bots->create( "Package Test Bot", $known_synthetic_token );
+
+	if ( null === $bot ) {
+		fwrite( STDERR, "FAIL: could not create a bot profile\n" );
+		exit( 1 );
+	}
+
+	ob_start();
+	$plugin->bot_management_page()->render();
+	$html = ob_get_clean();
+
+	if ( false !== strpos( $html, $known_synthetic_token ) ) {
+		fwrite( STDERR, "FAIL: plaintext token appeared in the bot management page\n" );
+		exit( 1 );
+	}
+	if ( false !== strpos( $html, $bot->token_ciphertext() ) ) {
+		fwrite( STDERR, "FAIL: token ciphertext appeared in the bot management page\n" );
+		exit( 1 );
+	}
+	echo "OK: no plaintext token or ciphertext appeared in the bot management page.\n";
+' --path="$WP_DIR" --allow-root --user=admin
+
 echo "== Verifying deactivation and reactivation preserve data =="
 wp plugin deactivate universal-telegram --path="$WP_DIR" --allow-root
 wp plugin activate universal-telegram --path="$WP_DIR" --allow-root
@@ -193,7 +231,11 @@ if [ -z "$(audit_table_exists)" ]; then
 	echo "FAIL: default-retention uninstall removed data despite remove_data_on_uninstall defaulting to false" >&2
 	exit 1
 fi
-echo "OK: default-retention uninstall kept the plugin's own data."
+if [ -z "$(bots_table_exists)" ]; then
+	echo "FAIL: default-retention uninstall removed the bots table despite remove_data_on_uninstall defaulting to false" >&2
+	exit 1
+fi
+echo "OK: default-retention uninstall kept the plugin's own data, including the bots table."
 
 echo "== Reinstalling to verify uninstall with retention explicitly enabled removes data =="
 wp plugin install "$ZIP_PATH" --activate --path="$WP_DIR" --allow-root
@@ -212,6 +254,10 @@ if [ -n "$(audit_table_exists)" ]; then
 	echo "FAIL: opt-in uninstall did not remove the plugin's own table" >&2
 	exit 1
 fi
-echo "OK: opt-in uninstall removed the plugin's own data."
+if [ -n "$(bots_table_exists)" ]; then
+	echo "FAIL: opt-in uninstall did not remove the bots table" >&2
+	exit 1
+fi
+echo "OK: opt-in uninstall removed the plugin's own data, including all six Telegram tables."
 
 echo "== PACKAGE TEST PASSED for WordPress ${WP_VERSION}${WC_VERSION:+, WooCommerce ${WC_VERSION}} =="
