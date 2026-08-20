@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  phpcs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: bin/docker/composer.sh install --no-interaction
+      - name: PHPCS
+        run: bin/docker/phpcs.sh
+
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: bin/docker/composer.sh install --no-interaction
+      - name: PHPStan
+        run: bin/docker/phpstan.sh
+
+  unit:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php-version: ['8.1', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: bin/docker/composer.sh install --no-interaction
+      - name: Unit tests (PHP ${{ matrix.php-version }})
+        run: bin/docker/test-unit.sh --php-version=${{ matrix.php-version }}
+
+  integration-wp-only-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: bin/docker/composer.sh install --no-interaction
+      - name: Integration tests (WordPress 6.9, PHP 8.1)
+        run: bin/docker/test-integration-wp-only.sh --wp-version=6.9 --php-version=8.1
+
+  integration-wp-only-current:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: bin/docker/composer.sh install --no-interaction
+      - name: Integration tests (WordPress 7.1, PHP 8.3)
+        run: bin/docker/test-integration-wp-only.sh --wp-version=7.1 --php-version=8.3
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: bin/docker/composer.sh install --no-interaction
+      - name: Build ZIP
+        run: bin/docker/build-zip.sh
