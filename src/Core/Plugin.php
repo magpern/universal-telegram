@@ -29,6 +29,9 @@ use UniversalTelegram\Queue\WorkerRunner;
 use UniversalTelegram\Telegram\Client\TelegramApiClient;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
+use UniversalTelegram\Telegram\Inbound\UpdateRepository;
+use UniversalTelegram\Telegram\Inbound\WebhookController;
+use UniversalTelegram\Telegram\Inbound\WebhookSecretVerifier;
 use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
 use UniversalTelegram\Telegram\Outbound\SendMessageHandler;
@@ -177,6 +180,27 @@ final class Plugin {
 	private ?MessageDispatcher $message_dispatcher = null;
 
 	/**
+	 * The inbound update repository, constructed by init().
+	 *
+	 * @var UpdateRepository|null
+	 */
+	private ?UpdateRepository $update_repository = null;
+
+	/**
+	 * The webhook secret verifier, constructed by init().
+	 *
+	 * @var WebhookSecretVerifier|null
+	 */
+	private ?WebhookSecretVerifier $webhook_secret_verifier = null;
+
+	/**
+	 * The inbound webhook REST controller, constructed by init().
+	 *
+	 * @var WebhookController|null
+	 */
+	private ?WebhookController $webhook_controller = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -262,6 +286,16 @@ final class Plugin {
 			$this->telegram_api_client
 		);
 		$this->handler_registry->register( MessageDispatcher::JOB_TYPE, array( $send_message_handler, 'handle_job' ) );
+
+		$this->update_repository       = new UpdateRepository( $this->schema_health );
+		$this->webhook_secret_verifier = new WebhookSecretVerifier( $this->bot_profile_repository, $this->audit_logger );
+		$this->webhook_controller      = new WebhookController(
+			$this->schema_health,
+			$this->bot_profile_repository,
+			$this->webhook_secret_verifier,
+			$this->update_repository
+		);
+		add_action( 'rest_api_init', array( $this->webhook_controller, 'register_routes' ) );
 
 		$report                 = new DiagnosticsReport(
 			$this->queue_health,
@@ -395,5 +429,26 @@ final class Plugin {
 	 */
 	public function message_dispatcher(): ?MessageDispatcher {
 		return $this->message_dispatcher;
+	}
+
+	/**
+	 * The inbound update repository. Available only after init() has run.
+	 */
+	public function update_repository(): ?UpdateRepository {
+		return $this->update_repository;
+	}
+
+	/**
+	 * The webhook secret verifier. Available only after init() has run.
+	 */
+	public function webhook_secret_verifier(): ?WebhookSecretVerifier {
+		return $this->webhook_secret_verifier;
+	}
+
+	/**
+	 * The inbound webhook REST controller. Available only after init() has run.
+	 */
+	public function webhook_controller(): ?WebhookController {
+		return $this->webhook_controller;
 	}
 }
