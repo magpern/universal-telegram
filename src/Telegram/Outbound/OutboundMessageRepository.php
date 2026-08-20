@@ -315,6 +315,30 @@ final class OutboundMessageRepository {
 	}
 
 	/**
+	 * The most recently dead-lettered messages. Used by the bot management
+	 * admin screen's dead-letter inspection list (WP10).
+	 *
+	 * @param int $limit The maximum number of rows to return.
+	 *
+	 * @return array<int, OutboundMessage>
+	 */
+	public function recent_dead_letters( int $limit ): array {
+		if ( ! $this->schema_health->is_available() ) {
+			return array();
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::OUTBOUND_MESSAGES_TABLE;
+		$rows  = $wpdb->get_results(
+			$wpdb->prepare( "SELECT * FROM {$table} WHERE status = %s ORDER BY dead_lettered_at DESC LIMIT %d", OutboundMessageStatus::DEAD_LETTER->value, $limit ), // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			ARRAY_A
+		);
+
+		return array_map( array( $this, 'hydrate' ), null === $rows ? array() : $rows );
+	}
+
+	/**
 	 * The current dead-letter count. Used by QueueHealthAlert (WP8).
 	 *
 	 * @return int

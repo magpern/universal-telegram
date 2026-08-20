@@ -108,4 +108,16 @@
 	<rule ref="WordPress.Security.EscapeOutput.OutputNotEscaped">
 		<exclude-pattern>*/bin/check-doc-links.php</exclude-pattern>
 	</rule>
+
+	<!-- BotManagementController::handle_request() verifies the nonce once,
+	     centrally, via check_admin_referer(), before dispatching to any of
+	     its own private per-operation handler methods (docs/adr/0010's
+	     pattern, applied across method boundaries instead of within a
+	     single method as SelfTest::handle_request() does) — this sniff
+	     cannot trace that a caller already verified the nonce, so it is
+	     disabled for this one file rather than adding a repetitive ignore
+	     comment to every $_POST access across a dozen private methods. -->
+	<rule ref="WordPress.Security.NonceVerification.Missing">
+		<exclude-pattern>*/src/Administration/Telegram/BotManagementController.php</exclude-pattern>
+	</rule>
 </ruleset>

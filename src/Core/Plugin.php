@@ -10,6 +10,8 @@ namespace UniversalTelegram\Core;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
 use UniversalTelegram\Administration\Diagnostics\SelfTest;
+use UniversalTelegram\Administration\Telegram\BotManagementController;
+use UniversalTelegram\Administration\Telegram\BotManagementPage;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
@@ -37,6 +39,7 @@ use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
 use UniversalTelegram\Telegram\Outbound\RetentionCleanupHandler;
 use UniversalTelegram\Telegram\Outbound\SendMessageHandler;
+use UniversalTelegram\Telegram\Configuration\WebhookRegistrationCoordinator;
 use UniversalTelegram\Telegram\Reliability\CircuitBreaker;
 use UniversalTelegram\Telegram\Reliability\QueueHealthAlert;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
@@ -234,6 +237,27 @@ final class Plugin {
 	private ?RetentionCleanupHandler $retention_cleanup_handler = null;
 
 	/**
+	 * The webhook registration/rotation coordinator, constructed by init().
+	 *
+	 * @var WebhookRegistrationCoordinator|null
+	 */
+	private ?WebhookRegistrationCoordinator $webhook_registration_coordinator = null;
+
+	/**
+	 * The bot/destination management admin page, constructed by init().
+	 *
+	 * @var BotManagementPage|null
+	 */
+	private ?BotManagementPage $bot_management_page = null;
+
+	/**
+	 * The bot/destination management request handler, constructed by init().
+	 *
+	 * @var BotManagementController|null
+	 */
+	private ?BotManagementController $bot_management_controller = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -314,7 +338,7 @@ final class Plugin {
 		$this->message_dispatcher          = new MessageDispatcher( $this->outbound_message_repository, $this->dispatcher );
 		$this->rate_limiter                = new RateLimiter( $this->schema_health );
 		$this->circuit_breaker             = new CircuitBreaker( $this->schema_health, new RetryPolicy() );
-		$this->queue_health_alert          = new QueueHealthAlert( $this->outbound_message_repository, $this->circuit_breaker );
+		$this->queue_health_alert          = new QueueHealthAlert( $this->outbound_message_repository, $this->circuit_breaker, $this->bot_profile_repository );
 
 		$send_message_handler = new SendMessageHandler(
 			$this->outbound_message_repository,
@@ -360,6 +384,32 @@ final class Plugin {
 				}
 			}
 		);
+
+		$this->webhook_registration_coordinator = new WebhookRegistrationCoordinator(
+			$this->bot_profile_repository,
+			$this->telegram_api_client,
+			$this->audit_logger,
+			rest_url( 'universal-telegram/v1/webhook/' )
+		);
+
+		$this->bot_management_controller = new BotManagementController(
+			$this->bot_profile_repository,
+			$this->destination_repository,
+			$this->outbound_message_repository,
+			$this->telegram_api_client,
+			$this->webhook_registration_coordinator,
+			$this->message_dispatcher,
+			$this->dispatcher
+		);
+		add_action( 'admin_post_' . BotManagementController::ADMIN_POST_ACTION, array( $this->bot_management_controller, 'handle_request' ) );
+
+		$this->bot_management_page = new BotManagementPage(
+			$this->bot_profile_repository,
+			$this->destination_repository,
+			$this->update_repository,
+			$this->outbound_message_repository
+		);
+		add_action( 'admin_menu', array( $this->bot_management_page, 'register_menu' ) );
 
 		$report                 = new DiagnosticsReport(
 			$this->queue_health,
@@ -542,5 +592,26 @@ final class Plugin {
 	 */
 	public function retention_cleanup_handler(): ?RetentionCleanupHandler {
 		return $this->retention_cleanup_handler;
+	}
+
+	/**
+	 * The webhook registration/rotation coordinator. Available only after init() has run.
+	 */
+	public function webhook_registration_coordinator(): ?WebhookRegistrationCoordinator {
+		return $this->webhook_registration_coordinator;
+	}
+
+	/**
+	 * The bot/destination management admin page. Available only after init() has run.
+	 */
+	public function bot_management_page(): ?BotManagementPage {
+		return $this->bot_management_page;
+	}
+
+	/**
+	 * The bot/destination management request handler. Available only after init() has run.
+	 */
+	public function bot_management_controller(): ?BotManagementController {
+		return $this->bot_management_controller;
 	}
 }
