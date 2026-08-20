@@ -5,10 +5,20 @@
 
 namespace UniversalTelegram\Tests\Integration\Events\Emitters;
 
+use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Persistence\Migrator;
 use WP_UnitTestCase;
 
 final class LoginEmitterTest extends WP_UnitTestCase {
+
+	protected function setUp(): void {
+		parent::setUp();
+
+		// The test bootstrap loads the plugin as an MU-plugin, bypassing
+		// WordPress' real activation flow, so the capability Activator
+		// would normally grant is never actually granted here.
+		( new CapabilityRegistrar() )->grant_to_administrator();
+	}
 
 	private function recent_event_types(): array {
 		global $wpdb;

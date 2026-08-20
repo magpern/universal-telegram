@@ -6,8 +6,12 @@
 namespace UniversalTelegram\Tests\Integration\Events;
 
 use UniversalTelegram\Audit\AuditLogger;
+use UniversalTelegram\Automations\DispatchLogRepository;
+use UniversalTelegram\Automations\NotificationDispatcher;
 use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Automations\RuleEvaluator;
+use UniversalTelegram\Automations\TemplateRenderer;
+use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Events\EventDispatcher;
 use UniversalTelegram\Events\EventEmitter;
 use UniversalTelegram\Events\EventEnvelope;
@@ -16,6 +20,11 @@ use UniversalTelegram\Events\Registry;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Classification;
 use UniversalTelegram\Privacy\Redactor;
+use UniversalTelegram\Queue\Dispatcher;
+use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
+use UniversalTelegram\Telegram\Configuration\DestinationRepository;
+use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
+use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
 use WP_UnitTestCase;
 
 final class EventEmitterTest extends WP_UnitTestCase {
@@ -33,17 +42,35 @@ final class EventEmitterTest extends WP_UnitTestCase {
 		return $registry;
 	}
 
-	private function real_dispatcher( Registry $registry ): EventDispatcher {
-		$history        = new EventHistoryRepository( new SchemaHealth(), $registry, new Redactor() );
-		$rule_evaluator = new RuleEvaluator( new NotificationRuleRepository( new SchemaHealth(), $registry ), $registry );
+	private function real_rule_evaluator( Registry $registry ): RuleEvaluator {
+		$schema_health           = new SchemaHealth();
+		$vault                   = new CredentialVault();
+		$bots                    = new BotProfileRepository( $schema_health, $vault );
+		$destinations            = new DestinationRepository( $schema_health );
+		$messages                = new OutboundMessageRepository( $schema_health, $vault );
+		$dispatch_log            = new DispatchLogRepository( $schema_health );
+		$notification_dispatcher = new NotificationDispatcher(
+			$dispatch_log,
+			$bots,
+			$destinations,
+			$registry,
+			new TemplateRenderer(),
+			new MessageDispatcher( $messages, new Dispatcher( $schema_health ) )
+		);
 
-		return new EventDispatcher( $history, $rule_evaluator );
+		return new RuleEvaluator( new NotificationRuleRepository( $schema_health, $registry ), $registry, $dispatch_log, $notification_dispatcher );
+	}
+
+	private function real_dispatcher( Registry $registry ): EventDispatcher {
+		$history = new EventHistoryRepository( new SchemaHealth(), $registry, new Redactor() );
+
+		return new EventDispatcher( $history, $this->real_rule_evaluator( $registry ) );
 	}
 
 	public function test_a_downstream_exception_never_propagates_out_of_emit(): void {
 		$registry       = $this->registered_registry();
 		$history        = new EventHistoryRepository( new SchemaHealth(), $registry, new Redactor() );
-		$rule_evaluator = new RuleEvaluator( new NotificationRuleRepository( new SchemaHealth(), $registry ), $registry );
+		$rule_evaluator = $this->real_rule_evaluator( $registry );
 		$dispatcher     = new class( $history, $rule_evaluator ) extends EventDispatcher {
 			public function handle( EventEnvelope $event ): void {
 				throw new \RuntimeException( 'Simulated downstream failure.' );

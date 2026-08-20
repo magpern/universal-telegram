@@ -15,6 +15,11 @@ use WP_UnitTestCase;
 
 final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 
+	protected function tearDown(): void {
+		unset( $_POST['_wpnonce'], $_REQUEST['_wpnonce'], $_POST['op'] );
+		parent::tearDown();
+	}
+
 	private function registry(): Registry {
 		$registry = new Registry();
 		$registry->register(
@@ -72,7 +77,9 @@ final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 		( new CapabilityRegistrar() )->grant_to_administrator();
 		wp_set_current_user( $admin );
 
-		$_POST['_wpnonce']           = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$nonce                       = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$_POST['_wpnonce']           = $nonce;
+		$_REQUEST['_wpnonce']        = $nonce;
 		$_POST['op']                 = 'save_rule';
 		$_POST['name']               = 'Test';
 		$_POST['event_type']         = 'wordpress.user_registered';
@@ -106,7 +113,9 @@ final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 		( new CapabilityRegistrar() )->grant_to_administrator();
 		wp_set_current_user( $admin );
 
-		$_POST['_wpnonce']           = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$nonce                       = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$_POST['_wpnonce']           = $nonce;
+		$_REQUEST['_wpnonce']        = $nonce;
 		$_POST['op']                 = 'save_rule';
 		$_POST['name']               = 'Test';
 		$_POST['event_type']         = 'wordpress.user_registered';

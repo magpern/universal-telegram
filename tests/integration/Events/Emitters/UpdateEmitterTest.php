@@ -5,6 +5,7 @@
 
 namespace UniversalTelegram\Tests\Integration\Events\Emitters;
 
+use UniversalTelegram\Events\Emitters\UpdateEmitter;
 use UniversalTelegram\Persistence\Migrator;
 use WP_UnitTestCase;
 
@@ -54,8 +55,13 @@ final class UpdateEmitterTest extends WP_UnitTestCase {
 	}
 
 	public function test_update_completed_is_emitted(): void {
-		do_action(
-			'upgrader_process_complete',
+		// Calls the emitter's own callback directly rather than firing the
+		// real upgrader_process_complete action: WordPress core itself
+		// registers other listeners on this same widely-used hook (e.g.
+		// for translation updates) that expect a genuine Plugin_Upgrader/
+		// Theme_Upgrader instance as the first argument, which this test
+		// has no need to construct.
+		( new UpdateEmitter() )->on_update_completed(
 			null,
 			array(
 				'action'  => 'update',
