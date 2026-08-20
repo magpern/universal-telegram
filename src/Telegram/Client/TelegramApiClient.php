@@ -21,7 +21,17 @@ namespace UniversalTelegram\Telegram\Client;
 class TelegramApiClient {
 
 	private const API_BASE = 'https://api.telegram.org/bot';
-	private const TIMEOUT  = 10;
+
+	/**
+	 * Constructor.
+	 *
+	 * @param int $timeout_seconds The HTTP request timeout, in seconds.
+	 *                              Uninstaller uses a shorter bound (5s)
+	 *                              for its own best-effort deleteWebhook
+	 *                              call; every other caller uses the
+	 *                              default.
+	 */
+	public function __construct( private readonly int $timeout_seconds = 10 ) {}
 
 	/**
 	 * Calls getMe. Used only as a synchronous, admin-triggered token-validity
@@ -153,7 +163,7 @@ class TelegramApiClient {
 		return wp_remote_post(
 			$url,
 			array(
-				'timeout' => self::TIMEOUT,
+				'timeout' => $this->timeout_seconds,
 				'body'    => $args,
 			)
 		);
