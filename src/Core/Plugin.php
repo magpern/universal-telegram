@@ -26,6 +26,12 @@ use UniversalTelegram\Queue\HandlerRegistry;
 use UniversalTelegram\Queue\QueueHealth;
 use UniversalTelegram\Queue\RetryPolicy;
 use UniversalTelegram\Queue\WorkerRunner;
+use UniversalTelegram\Telegram\Client\TelegramApiClient;
+use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
+use UniversalTelegram\Telegram\Configuration\DestinationRepository;
+use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
+use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
+use UniversalTelegram\Telegram\Outbound\SendMessageHandler;
 
 /**
  * Singleton composition root. Constructs and wires every M00 service by
@@ -136,6 +142,41 @@ final class Plugin {
 	private ?SelfTest $self_test = null;
 
 	/**
+	 * The bot profile repository, constructed by init().
+	 *
+	 * @var BotProfileRepository|null
+	 */
+	private ?BotProfileRepository $bot_profile_repository = null;
+
+	/**
+	 * The destination repository, constructed by init().
+	 *
+	 * @var DestinationRepository|null
+	 */
+	private ?DestinationRepository $destination_repository = null;
+
+	/**
+	 * The Telegram Bot API client, constructed by init().
+	 *
+	 * @var TelegramApiClient|null
+	 */
+	private ?TelegramApiClient $telegram_api_client = null;
+
+	/**
+	 * The outbound message repository, constructed by init().
+	 *
+	 * @var OutboundMessageRepository|null
+	 */
+	private ?OutboundMessageRepository $outbound_message_repository = null;
+
+	/**
+	 * The outbound message dispatcher, constructed by init().
+	 *
+	 * @var MessageDispatcher|null
+	 */
+	private ?MessageDispatcher $message_dispatcher = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -207,6 +248,20 @@ final class Plugin {
 		);
 		$this->handler_registry->register( SelfTest::JOB_TYPE, array( $this->self_test, 'handle_job' ) );
 		add_action( 'admin_post_' . $this->self_test->admin_post_action(), array( $this->self_test, 'handle_request' ) );
+
+		$this->bot_profile_repository      = new BotProfileRepository( $this->schema_health, $this->credential_vault );
+		$this->destination_repository      = new DestinationRepository( $this->schema_health );
+		$this->telegram_api_client         = new TelegramApiClient();
+		$this->outbound_message_repository = new OutboundMessageRepository( $this->schema_health, $this->credential_vault );
+		$this->message_dispatcher          = new MessageDispatcher( $this->outbound_message_repository, $this->dispatcher );
+
+		$send_message_handler = new SendMessageHandler(
+			$this->outbound_message_repository,
+			$this->bot_profile_repository,
+			$this->destination_repository,
+			$this->telegram_api_client
+		);
+		$this->handler_registry->register( MessageDispatcher::JOB_TYPE, array( $send_message_handler, 'handle_job' ) );
 
 		$report                 = new DiagnosticsReport(
 			$this->queue_health,
@@ -305,5 +360,40 @@ final class Plugin {
 	 */
 	public function self_test(): ?SelfTest {
 		return $this->self_test;
+	}
+
+	/**
+	 * The bot profile repository. Available only after init() has run.
+	 */
+	public function bot_profile_repository(): ?BotProfileRepository {
+		return $this->bot_profile_repository;
+	}
+
+	/**
+	 * The destination repository. Available only after init() has run.
+	 */
+	public function destination_repository(): ?DestinationRepository {
+		return $this->destination_repository;
+	}
+
+	/**
+	 * The Telegram Bot API client. Available only after init() has run.
+	 */
+	public function telegram_api_client(): ?TelegramApiClient {
+		return $this->telegram_api_client;
+	}
+
+	/**
+	 * The outbound message repository. Available only after init() has run.
+	 */
+	public function outbound_message_repository(): ?OutboundMessageRepository {
+		return $this->outbound_message_repository;
+	}
+
+	/**
+	 * The outbound message dispatcher. Available only after init() has run.
+	 */
+	public function message_dispatcher(): ?MessageDispatcher {
+		return $this->message_dispatcher;
 	}
 }
