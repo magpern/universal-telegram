@@ -415,10 +415,23 @@ final class Plugin {
 			$this->queue_health,
 			$this->audit_log_repository,
 			$this->woocommerce_support,
-			$this->schema_health
+			$this->schema_health,
+			$this->bot_profile_repository,
+			$this->destination_repository,
+			$this->queue_health_alert,
+			(int) $settings_values['telegram_stale_pending_alert_seconds'],
+			(int) $settings_values['telegram_webhook_rotation_max_pending_hours']
 		);
-		$this->diagnostics_page = new DiagnosticsPage( $report, $this->schema_health, $this->self_test );
+		$this->diagnostics_page = new DiagnosticsPage(
+			$report,
+			$this->schema_health,
+			$this->self_test,
+			$this->queue_health_alert,
+			(int) $settings_values['telegram_stale_pending_alert_seconds'],
+			(int) $settings_values['telegram_webhook_rotation_max_pending_hours']
+		);
 		add_action( 'admin_menu', array( $this->diagnostics_page, 'register_menu' ) );
+		add_action( 'admin_notices', array( $this->diagnostics_page, 'render_admin_notice' ) );
 	}
 
 	/**

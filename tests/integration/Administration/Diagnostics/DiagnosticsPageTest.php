@@ -19,6 +19,13 @@ use UniversalTelegram\Privacy\Classification;
 use UniversalTelegram\Privacy\Redactor;
 use UniversalTelegram\Queue\Dispatcher;
 use UniversalTelegram\Queue\QueueHealth;
+use UniversalTelegram\Queue\RetryPolicy;
+use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
+use UniversalTelegram\Telegram\Configuration\DestinationKind;
+use UniversalTelegram\Telegram\Configuration\DestinationRepository;
+use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
+use UniversalTelegram\Telegram\Reliability\CircuitBreaker;
+use UniversalTelegram\Telegram\Reliability\QueueHealthAlert;
 use WP_UnitTestCase;
 
 final class DiagnosticsPageTest extends WP_UnitTestCase {
@@ -33,17 +40,22 @@ final class DiagnosticsPageTest extends WP_UnitTestCase {
 	}
 
 	private function make_page( SchemaHealth $schema_health ): DiagnosticsPage {
+		$vault                = new CredentialVault();
 		$audit_logger         = new AuditLogger( $schema_health, new Redactor() );
 		$audit_log_repository = new AuditLogRepository( $schema_health );
 		$queue_health         = new QueueHealth();
 		$woocommerce_support  = new WooCommerceSupport();
 		$dispatcher           = new Dispatcher( $schema_health );
-		$credential_vault     = new CredentialVault();
+		$bots                 = new BotProfileRepository( $schema_health, $vault );
+		$destinations         = new DestinationRepository( $schema_health );
+		$messages             = new OutboundMessageRepository( $schema_health, $vault );
+		$breaker              = new CircuitBreaker( $schema_health, new RetryPolicy() );
+		$alert                = new QueueHealthAlert( $messages, $breaker, $bots );
 
-		$report    = new DiagnosticsReport( $queue_health, $audit_log_repository, $woocommerce_support, $schema_health );
-		$self_test = new SelfTest( $schema_health, $dispatcher, $credential_vault, $audit_logger );
+		$report    = new DiagnosticsReport( $queue_health, $audit_log_repository, $woocommerce_support, $schema_health, $bots, $destinations, $alert );
+		$self_test = new SelfTest( $schema_health, $dispatcher, $vault, $audit_logger );
 
-		return new DiagnosticsPage( $report, $schema_health, $self_test );
+		return new DiagnosticsPage( $report, $schema_health, $self_test, $alert );
 	}
 
 	public function test_a_user_lacking_the_capability_is_denied_by_wordpress_itself(): void {
@@ -84,5 +96,45 @@ final class DiagnosticsPageTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'step_failed', $output );
 		$this->assertStringNotContainsStringIgnoringCase( 'mysql', $output );
 		$this->assertStringNotContainsStringIgnoringCase( 'sql syntax', $output );
+	}
+
+	public function test_the_alert_banner_is_absent_when_healthy(): void {
+		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $admin_id );
+
+		delete_transient( 'universal_telegram_queue_health_alert_active' );
+
+		ob_start();
+		$this->make_page( new SchemaHealth() )->render_admin_notice();
+		$output = ob_get_clean();
+
+		$this->assertSame( '', $output );
+	}
+
+	public function test_the_alert_banner_is_present_once_a_dead_letter_is_seeded(): void {
+		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $admin_id );
+
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+		$bots          = new BotProfileRepository( $schema_health, $vault );
+		$destinations  = new DestinationRepository( $schema_health );
+		$messages      = new OutboundMessageRepository( $schema_health, $vault );
+
+		$bot         = $bots->create( 'Bot', 'token' );
+		$destination = $destinations->create( $bot->id(), DestinationKind::PRIVATE, '123', null, 'Chat' );
+		$message     = $messages->create( $bot->id(), $destination->id(), 'hi', null );
+		$messages->mark_dead_letter( $message->id(), 'telegram_terminal_rejection' );
+
+		delete_transient( 'universal_telegram_queue_health_alert_active' );
+
+		ob_start();
+		$this->make_page( $schema_health )->render_admin_notice();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'notice-error', $output );
+		$this->assertStringContainsString( 'delivery problem needs attention', $output );
+		// Only the fixed alert text, never raw internal detail.
+		$this->assertStringNotContainsString( 'telegram_terminal_rejection', $output );
 	}
 }
