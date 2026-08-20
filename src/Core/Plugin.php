@@ -9,6 +9,7 @@ namespace UniversalTelegram\Core;
 
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
+use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
@@ -77,6 +78,13 @@ final class Plugin {
 	private ?CredentialVault $credential_vault = null;
 
 	/**
+	 * The capability registrar, constructed by init().
+	 *
+	 * @var CapabilityRegistrar|null
+	 */
+	private ?CapabilityRegistrar $capability_registrar = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -121,6 +129,8 @@ final class Plugin {
 		$this->woocommerce_support = new WooCommerceSupport();
 
 		$this->credential_vault = new CredentialVault();
+
+		$this->capability_registrar = new CapabilityRegistrar();
 	}
 
 	/**
@@ -158,5 +168,12 @@ final class Plugin {
 	 */
 	public function credential_vault(): ?CredentialVault {
 		return $this->credential_vault;
+	}
+
+	/**
+	 * The capability registrar. Available only after init() has run.
+	 */
+	public function capability_registrar(): ?CapabilityRegistrar {
+		return $this->capability_registrar;
 	}
 }

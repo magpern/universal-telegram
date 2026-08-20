@@ -9,6 +9,8 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Core\Lifecycle;
 
+use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
+
 /**
  * Network-wide multisite activation is explicitly refused, not partially
  * supported. Per-site activation, including within a multisite network,
@@ -32,5 +34,7 @@ final class Activator {
 				)
 			);
 		}
+
+		( new CapabilityRegistrar() )->grant_to_administrator();
 	}
 }
