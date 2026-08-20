@@ -10,9 +10,10 @@ declare( strict_types=1 );
 namespace UniversalTelegram\Core\Configuration;
 
 /**
- * Sole owner of the `universal_telegram_settings` option. M00 defines no
- * settings fields of its own; later milestones extend defaults() and
- * sanitize() as they introduce real configuration.
+ * Sole owner of the `universal_telegram_settings` option. M00 defines one
+ * field of its own, remove_data_on_uninstall (consulted by
+ * Core\Lifecycle\Uninstaller); later milestones extend defaults() and
+ * sanitize() as they introduce further configuration.
  */
 final class Settings {
 
@@ -40,7 +41,9 @@ final class Settings {
 	 * @return array<string, mixed>
 	 */
 	public function defaults(): array {
-		return array();
+		return array(
+			'remove_data_on_uninstall' => false,
+		);
 	}
 
 	/**
@@ -55,7 +58,13 @@ final class Settings {
 			return $this->defaults();
 		}
 
-		return $input;
+		$sanitized = $this->defaults();
+
+		if ( isset( $input['remove_data_on_uninstall'] ) ) {
+			$sanitized['remove_data_on_uninstall'] = (bool) $input['remove_data_on_uninstall'];
+		}
+
+		return $sanitized;
 	}
 
 	/**
