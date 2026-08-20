@@ -10,6 +10,7 @@ namespace UniversalTelegram\Core;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Core\Configuration\Settings;
+use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Persistence\MigrationFailedException;
 use UniversalTelegram\Persistence\MigrationLock;
@@ -69,6 +70,13 @@ final class Plugin {
 	private ?WooCommerceSupport $woocommerce_support = null;
 
 	/**
+	 * The credential vault, constructed by init().
+	 *
+	 * @var CredentialVault|null
+	 */
+	private ?CredentialVault $credential_vault = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -111,6 +119,8 @@ final class Plugin {
 		$this->audit_log_repository = new AuditLogRepository( $this->schema_health );
 
 		$this->woocommerce_support = new WooCommerceSupport();
+
+		$this->credential_vault = new CredentialVault();
 	}
 
 	/**
@@ -141,5 +151,12 @@ final class Plugin {
 	 */
 	public function woocommerce_support(): ?WooCommerceSupport {
 		return $this->woocommerce_support;
+	}
+
+	/**
+	 * The credential vault. Available only after init() has run.
+	 */
+	public function credential_vault(): ?CredentialVault {
+		return $this->credential_vault;
 	}
 }
