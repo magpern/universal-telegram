@@ -20,8 +20,12 @@ use UniversalTelegram\Persistence\SchemaHealth;
  * own event type's allowlist (M02 plan §7.2) — a client-side check is never
  * trusted alone. for_event_type()'s own ORDER BY is the mechanism that
  * makes rule evaluation deterministic (M02 plan §7.3).
+ *
+ * Not declared final: tests/unit/Automations/RuleEvaluatorTest.php and
+ * RuleSimulatorTest.php double this class via PHPUnit's createMock(),
+ * which cannot double a final class.
  */
-final class NotificationRuleRepository {
+class NotificationRuleRepository {
 
 	/**
 	 * Constructor.

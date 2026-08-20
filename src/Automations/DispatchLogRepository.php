@@ -19,8 +19,12 @@ use UniversalTelegram\Persistence\SchemaHealth;
  * event_id) pair, or — if a row already exists — returns
  * DispatchLogResult::SKIPPED_DUPLICATE and performs no further write of any
  * kind (M02 plan §7.5, docs/adr/0016).
+ *
+ * Not declared final: tests/unit/Automations/RuleEvaluatorTest.php and
+ * RuleSimulatorTest.php double this class via PHPUnit's createMock(),
+ * which cannot double a final class.
  */
-final class DispatchLogRepository {
+class DispatchLogRepository {
 
 	/**
 	 * Constructor.

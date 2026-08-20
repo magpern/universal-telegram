@@ -28,8 +28,12 @@ use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
  * DispatchResult. Has no dependency on Queue\JobEnvelope or Queue\Dispatcher
  * — the falsifiable evidence that M01's opaque-payload rule remains
  * enforced by construction.
+ *
+ * Not declared final: tests/unit/Automations/RuleEvaluatorTest.php and
+ * RuleSimulatorTest.php double this class via PHPUnit's createMock(),
+ * which cannot double a final class.
  */
-final class NotificationDispatcher {
+class NotificationDispatcher {
 
 	/**
 	 * Constructor.
