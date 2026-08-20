@@ -32,9 +32,13 @@ use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Inbound\UpdateRepository;
 use UniversalTelegram\Telegram\Inbound\WebhookController;
 use UniversalTelegram\Telegram\Inbound\WebhookSecretVerifier;
+use UniversalTelegram\Telegram\Client\TelegramFailureClassifier;
 use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
 use UniversalTelegram\Telegram\Outbound\SendMessageHandler;
+use UniversalTelegram\Telegram\Reliability\CircuitBreaker;
+use UniversalTelegram\Telegram\Reliability\QueueHealthAlert;
+use UniversalTelegram\Telegram\Reliability\RateLimiter;
 
 /**
  * Singleton composition root. Constructs and wires every M00 service by
@@ -201,6 +205,27 @@ final class Plugin {
 	private ?WebhookController $webhook_controller = null;
 
 	/**
+	 * The per-bot/per-destination rate limiter, constructed by init().
+	 *
+	 * @var RateLimiter|null
+	 */
+	private ?RateLimiter $rate_limiter = null;
+
+	/**
+	 * The per-bot/per-destination circuit breaker, constructed by init().
+	 *
+	 * @var CircuitBreaker|null
+	 */
+	private ?CircuitBreaker $circuit_breaker = null;
+
+	/**
+	 * The queue-health alert computation, constructed by init().
+	 *
+	 * @var QueueHealthAlert|null
+	 */
+	private ?QueueHealthAlert $queue_health_alert = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -278,12 +303,20 @@ final class Plugin {
 		$this->telegram_api_client         = new TelegramApiClient();
 		$this->outbound_message_repository = new OutboundMessageRepository( $this->schema_health, $this->credential_vault );
 		$this->message_dispatcher          = new MessageDispatcher( $this->outbound_message_repository, $this->dispatcher );
+		$this->rate_limiter                = new RateLimiter( $this->schema_health );
+		$this->circuit_breaker             = new CircuitBreaker( $this->schema_health, new RetryPolicy() );
+		$this->queue_health_alert          = new QueueHealthAlert( $this->outbound_message_repository, $this->circuit_breaker );
 
 		$send_message_handler = new SendMessageHandler(
 			$this->outbound_message_repository,
 			$this->bot_profile_repository,
 			$this->destination_repository,
-			$this->telegram_api_client
+			$this->telegram_api_client,
+			new TelegramFailureClassifier(),
+			$this->rate_limiter,
+			$this->circuit_breaker,
+			$this->audit_logger,
+			new RetryPolicy()
 		);
 		$this->handler_registry->register( MessageDispatcher::JOB_TYPE, array( $send_message_handler, 'handle_job' ) );
 
@@ -450,5 +483,26 @@ final class Plugin {
 	 */
 	public function webhook_controller(): ?WebhookController {
 		return $this->webhook_controller;
+	}
+
+	/**
+	 * The per-bot/per-destination rate limiter. Available only after init() has run.
+	 */
+	public function rate_limiter(): ?RateLimiter {
+		return $this->rate_limiter;
+	}
+
+	/**
+	 * The per-bot/per-destination circuit breaker. Available only after init() has run.
+	 */
+	public function circuit_breaker(): ?CircuitBreaker {
+		return $this->circuit_breaker;
+	}
+
+	/**
+	 * The queue-health alert computation. Available only after init() has run.
+	 */
+	public function queue_health_alert(): ?QueueHealthAlert {
+		return $this->queue_health_alert;
 	}
 }

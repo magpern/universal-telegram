@@ -157,4 +157,82 @@ final class CircuitBreakerTest extends WP_UnitTestCase {
 		$this->assertSame( CircuitBreakerState::CLOSED, $breaker->state( 'destination', 1 ) );
 		$this->assertTrue( $breaker->may_attempt( 'destination', 1 ) );
 	}
+
+	/**
+	 * Send-path-integrated: drives five consecutive faked 500 responses
+	 * through the real SendMessageHandler and confirms the bot-scope
+	 * breaker this WP5 test file exercises in isolation is the exact same
+	 * one WP8 wires into the send path.
+	 */
+	public function test_five_consecutive_send_failures_open_the_bot_scope_breaker(): void {
+		$schema_health = new SchemaHealth();
+		$vault         = new \UniversalTelegram\Core\Security\CredentialVault();
+
+		$bots         = new \UniversalTelegram\Telegram\Configuration\BotProfileRepository( $schema_health, $vault );
+		$destinations = new \UniversalTelegram\Telegram\Configuration\DestinationRepository( $schema_health );
+		$messages     = new \UniversalTelegram\Telegram\Outbound\OutboundMessageRepository( $schema_health, $vault );
+
+		$bot = $bots->create( 'Bot', 'token' );
+
+		// A distinct destination per attempt keeps the lower-threshold
+		// (3) destination-scope breaker from opening and starving
+		// subsequent bot-scope failure recordings before the bot-scope
+		// threshold (5) is reached.
+		$destination_ids = array();
+		for ( $d = 1; $d <= 5; $d++ ) {
+			$destination_ids[] = $destinations->create( $bot->id(), \UniversalTelegram\Telegram\Configuration\DestinationKind::PRIVATE, (string) ( 1000 + $d ), null, 'Chat ' . $d )->id();
+		}
+
+		$breaker = new CircuitBreaker( $schema_health, new RetryPolicy() );
+		$handler = new \UniversalTelegram\Telegram\Outbound\SendMessageHandler(
+			$messages,
+			$bots,
+			$destinations,
+			new \UniversalTelegram\Telegram\Client\TelegramApiClient(),
+			new \UniversalTelegram\Telegram\Client\TelegramFailureClassifier(),
+			new \UniversalTelegram\Telegram\Reliability\RateLimiter( $schema_health ),
+			$breaker,
+			new \UniversalTelegram\Audit\AuditLogger( $schema_health, new \UniversalTelegram\Privacy\Redactor() ),
+			new RetryPolicy()
+		);
+
+		$callback = static function () {
+			return array(
+				'response' => array( 'code' => 500 ),
+				'body'     => wp_json_encode(
+					array(
+						'ok'          => false,
+						'error_code'  => 500,
+						'description' => 'Internal Server Error',
+					)
+				),
+			);
+		};
+		add_filter( 'pre_http_request', $callback, 10, 0 );
+
+		foreach ( $destination_ids as $destination_id ) {
+			$message = $messages->create( $bot->id(), $destination_id, 'hi', null );
+
+			try {
+				$handler->handle_job(
+					array(
+						'job_id'   => $message->message_uuid(),
+						'job_type' => 'telegram_send_message',
+						'attempt'  => 1,
+						'payload'  => array(
+							'message_uuid'   => $message->message_uuid(),
+							'bot_id'         => $bot->id(),
+							'destination_id' => $destination_id,
+						),
+					)
+				);
+			} catch ( \RuntimeException $exception ) {
+				continue;
+			}
+		}
+
+		remove_filter( 'pre_http_request', $callback );
+
+		$this->assertSame( CircuitBreakerState::OPEN, $breaker->state( 'bot', $bot->id() ) );
+	}
 }

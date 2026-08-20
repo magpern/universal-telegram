@@ -16,8 +16,8 @@ use UniversalTelegram\Queue\RetryPolicy;
 /**
  * Two independent scopes, 'bot' and 'destination', each with its own
  * closed/open/half_open state row in universal_telegram_circuit_breaker_state
- * (docs/adr/0014). Not yet wired to the send path at WP5 — that is WP8's
- * job. Cooldown escalation on a repeated failed half-open probe reuses
+ * (docs/adr/0014). Wired into the send path by Telegram\Outbound\SendMessageHandler
+ * (WP8). Cooldown escalation on a repeated failed half-open probe reuses
  * Queue\RetryPolicy::delay_seconds(), keyed by how many consecutive
  * failures have occurred past the opening threshold, rather than a
  * duplicated backoff implementation.
@@ -121,6 +121,27 @@ class CircuitBreaker {
 		$row = $this->read( $scope_type, $scope_id );
 
 		return null === $row ? CircuitBreakerState::CLOSED : CircuitBreakerState::from( $row['state'] );
+	}
+
+	/**
+	 * Whether any scope (bot or destination) is currently open. Used by
+	 * QueueHealthAlert (WP8); never itself a write path.
+	 *
+	 * @return bool
+	 */
+	public function has_any_open(): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CIRCUIT_BREAKER_TABLE;
+		$count = $wpdb->get_var(
+			$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE state = %s", CircuitBreakerState::OPEN->value ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		);
+
+		return (int) $count > 0;
 	}
 
 	/**

@@ -314,6 +314,54 @@ final class OutboundMessageRepository {
 	}
 
 	/**
+	 * The current dead-letter count. Used by QueueHealthAlert (WP8).
+	 *
+	 * @return int
+	 */
+	public function dead_letter_count(): int {
+		if ( ! $this->schema_health->is_available() ) {
+			return 0;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::OUTBOUND_MESSAGES_TABLE;
+
+		return (int) $wpdb->get_var(
+			$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE status = %s", OutboundMessageStatus::DEAD_LETTER->value ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		);
+	}
+
+	/**
+	 * The count of pending/retry_scheduled/sending messages older than a
+	 * given staleness threshold. Used by QueueHealthAlert (WP8).
+	 *
+	 * @param int $threshold_seconds The staleness threshold, in seconds.
+	 *
+	 * @return int
+	 */
+	public function stale_pending_count( int $threshold_seconds ): int {
+		if ( ! $this->schema_health->is_available() ) {
+			return 0;
+		}
+
+		global $wpdb;
+
+		$table  = $wpdb->prefix . Migrator::OUTBOUND_MESSAGES_TABLE;
+		$cutoff = gmdate( 'Y-m-d H:i:s', time() - $threshold_seconds );
+
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$table} WHERE status IN (%s, %s, %s) AND created_at < %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				OutboundMessageStatus::PENDING->value,
+				OutboundMessageStatus::RETRY_SCHEDULED->value,
+				OutboundMessageStatus::SENDING->value,
+				$cutoff
+			)
+		);
+	}
+
+	/**
 	 * Shared partial-update helper.
 	 *
 	 * @param int                  $id     The message's primary key.
