@@ -17,6 +17,9 @@ use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Security\CredentialVault;
+use UniversalTelegram\Events\EventDispatcher;
+use UniversalTelegram\Events\EventEmitter;
+use UniversalTelegram\Events\Registry;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Persistence\MigrationFailedException;
 use UniversalTelegram\Persistence\MigrationLock;
@@ -258,6 +261,27 @@ final class Plugin {
 	private ?BotManagementController $bot_management_controller = null;
 
 	/**
+	 * The current request's event registry, constructed by init().
+	 *
+	 * @var Registry|null
+	 */
+	private ?Registry $event_registry = null;
+
+	/**
+	 * The internal event ingestion orchestrator, constructed by init().
+	 *
+	 * @var EventDispatcher|null
+	 */
+	private ?EventDispatcher $event_dispatcher = null;
+
+	/**
+	 * The safety-wrapped event emission façade, constructed by init().
+	 *
+	 * @var EventEmitter|null
+	 */
+	private ?EventEmitter $event_emitter = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -432,6 +456,25 @@ final class Plugin {
 		);
 		add_action( 'admin_menu', array( $this->diagnostics_page, 'register_menu' ) );
 		add_action( 'admin_notices', array( $this->diagnostics_page, 'render_admin_notice' ) );
+
+		// Events/Automations (M02): always constructed, unconditionally,
+		// regardless of schema availability — individual repositories
+		// check SchemaHealth at their own point of use (docs/adr/0007).
+		$this->event_registry   = new Registry();
+		$this->event_dispatcher = new EventDispatcher();
+		$this->event_emitter    = new EventEmitter( $this->event_registry, $this->event_dispatcher, $this->audit_logger );
+
+		// Fired once, at priority 20, after WooCommerce presence detection
+		// (already established above) and before any admin-menu
+		// registration — core WordPress event types (§8) register at
+		// priority 10 on this same hook (M02 plan §5.3).
+		add_action(
+			'init',
+			function () {
+				do_action( 'universal_telegram_register_event_types', $this->event_registry );
+			},
+			20
+		);
 	}
 
 	/**
@@ -626,5 +669,26 @@ final class Plugin {
 	 */
 	public function bot_management_controller(): ?BotManagementController {
 		return $this->bot_management_controller;
+	}
+
+	/**
+	 * The current request's event registry. Available only after init() has run.
+	 */
+	public function event_registry(): ?Registry {
+		return $this->event_registry;
+	}
+
+	/**
+	 * The internal event ingestion orchestrator. Available only after init() has run.
+	 */
+	public function event_dispatcher(): ?EventDispatcher {
+		return $this->event_dispatcher;
+	}
+
+	/**
+	 * The safety-wrapped event emission façade. Available only after init() has run.
+	 */
+	public function event_emitter(): ?EventEmitter {
+		return $this->event_emitter;
 	}
 }

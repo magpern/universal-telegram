@@ -23,6 +23,7 @@ define( 'UNIVERSAL_TELEGRAM_PLUGIN_FILE', __FILE__ );
 
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/vendor/woocommerce/action-scheduler/action-scheduler.php';
+require_once __DIR__ . '/universal-telegram-functions.php';
 
 add_action(
 	'before_woocommerce_init',
