@@ -7,11 +7,14 @@
 
 namespace UniversalTelegram\Core;
 
+use UniversalTelegram\Audit\AuditLogger;
+use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Persistence\MigrationFailedException;
 use UniversalTelegram\Persistence\MigrationLock;
 use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
+use UniversalTelegram\Privacy\Redactor;
 
 /**
  * Singleton composition root. Constructs and wires every M00 service by
@@ -42,6 +45,20 @@ final class Plugin {
 	 * @var SchemaHealth|null
 	 */
 	private ?SchemaHealth $schema_health = null;
+
+	/**
+	 * The audit log writer, constructed by init().
+	 *
+	 * @var AuditLogger|null
+	 */
+	private ?AuditLogger $audit_logger = null;
+
+	/**
+	 * The audit log reader, constructed by init().
+	 *
+	 * @var AuditLogRepository|null
+	 */
+	private ?AuditLogRepository $audit_log_repository = null;
 
 	/**
 	 * Private constructor; use instance().
@@ -81,6 +98,9 @@ final class Plugin {
 		} catch ( MigrationFailedException $exception ) {
 			$this->schema_health->mark_unavailable( $exception->failure_code() );
 		}
+
+		$this->audit_logger         = new AuditLogger( $this->schema_health, new Redactor() );
+		$this->audit_log_repository = new AuditLogRepository( $this->schema_health );
 	}
 
 	/**
@@ -89,5 +109,19 @@ final class Plugin {
 	 */
 	public function schema_health(): ?SchemaHealth {
 		return $this->schema_health;
+	}
+
+	/**
+	 * The audit log writer. Available only after init() has run.
+	 */
+	public function audit_logger(): ?AuditLogger {
+		return $this->audit_logger;
+	}
+
+	/**
+	 * The audit log reader. Available only after init() has run.
+	 */
+	public function audit_log_repository(): ?AuditLogRepository {
+		return $this->audit_log_repository;
 	}
 }
