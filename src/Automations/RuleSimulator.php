@@ -70,6 +70,9 @@ final class RuleSimulator {
 
 			/**
 			 * Reference to the enclosing simulate() call's own $entries array.
+			 * PHPStan cannot see that the by-reference binding in the
+			 * constructor below makes every append here visible to that
+			 * outer, later-read variable (ignored in phpstan.neon.dist).
 			 *
 			 * @var array<int, array{rule_id: int, rule_name: string, outcome: string, reason_code: string|null}>
 			 */

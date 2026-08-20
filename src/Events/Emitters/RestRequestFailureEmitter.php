@@ -11,9 +11,7 @@ namespace UniversalTelegram\Events\Emitters;
 
 use UniversalTelegram\Events\Registry;
 use UniversalTelegram\Privacy\Classification;
-use WP_Error;
 use WP_REST_Request;
-use WP_REST_Server;
 
 /**
  * A thin, reviewed filter callback on rest_request_after_callbacks,
@@ -68,7 +66,8 @@ final class RestRequestFailureEmitter {
 			return $response;
 		}
 
-		$status = $response instanceof WP_Error ? (int) ( $response->get_error_data()['status'] ?? WP_REST_Server::ERROR ) : 500;
+		$error_data = $response->get_error_data();
+		$status     = ( is_array( $error_data ) && isset( $error_data['status'] ) ) ? (int) $error_data['status'] : 500;
 
 		universal_telegram_emit_event(
 			self::REST_REQUEST_FAILED,
