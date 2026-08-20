@@ -18,7 +18,8 @@ final class HandlerRegistry {
 
 	/**
 	 * Maps a job type to the callable that handles it. Each callable
-	 * receives the job's payload array and returns void.
+	 * receives the job's full action-args array (job_id, job_type,
+	 * attempt, payload) and returns void.
 	 *
 	 * @var array<string, callable>
 	 */
@@ -28,7 +29,7 @@ final class HandlerRegistry {
 	 * Registers the handler for a job type.
 	 *
 	 * @param string   $job_type The job type this handler owns.
-	 * @param callable $handler  Receives the job's payload array.
+	 * @param callable $handler  Receives the job's full action-args array.
 	 */
 	public function register( string $job_type, callable $handler ): void {
 		$this->handlers[ $job_type ] = $handler;

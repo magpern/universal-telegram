@@ -101,7 +101,7 @@ final class WorkerRunner {
 		}
 
 		try {
-			$handler( $job['payload'] );
+			$handler( $job );
 		} catch ( Throwable $exception ) {
 			$this->handle_failure( $job );
 			throw $exception;

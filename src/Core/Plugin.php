@@ -7,6 +7,9 @@
 
 namespace UniversalTelegram\Core;
 
+use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
+use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
+use UniversalTelegram\Administration\Diagnostics\SelfTest;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
@@ -119,6 +122,20 @@ final class Plugin {
 	private ?WorkerRunner $worker_runner = null;
 
 	/**
+	 * The diagnostics admin page, constructed by init().
+	 *
+	 * @var DiagnosticsPage|null
+	 */
+	private ?DiagnosticsPage $diagnostics_page = null;
+
+	/**
+	 * The bounded diagnostic self-test, constructed by init().
+	 *
+	 * @var SelfTest|null
+	 */
+	private ?SelfTest $self_test = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -181,6 +198,24 @@ final class Plugin {
 			$this->audit_logger
 		);
 		add_action( WorkerRunner::HOOK, array( $this->worker_runner, 'run' ) );
+
+		$this->self_test = new SelfTest(
+			$this->schema_health,
+			$this->dispatcher,
+			$this->credential_vault,
+			$this->audit_logger
+		);
+		$this->handler_registry->register( SelfTest::JOB_TYPE, array( $this->self_test, 'handle_job' ) );
+		add_action( 'admin_post_' . $this->self_test->admin_post_action(), array( $this->self_test, 'handle_request' ) );
+
+		$report                 = new DiagnosticsReport(
+			$this->queue_health,
+			$this->audit_log_repository,
+			$this->woocommerce_support,
+			$this->schema_health
+		);
+		$this->diagnostics_page = new DiagnosticsPage( $report, $this->schema_health, $this->self_test );
+		add_action( 'admin_menu', array( $this->diagnostics_page, 'register_menu' ) );
 	}
 
 	/**
@@ -255,5 +290,20 @@ final class Plugin {
 	 */
 	public function worker_runner(): ?WorkerRunner {
 		return $this->worker_runner;
+	}
+
+	/**
+	 * The diagnostics admin page. Available only after init() has run.
+	 */
+	public function diagnostics_page(): ?DiagnosticsPage {
+		return $this->diagnostics_page;
+	}
+
+	/**
+	 * The bounded diagnostic self-test. Available only after init() has
+	 * run.
+	 */
+	public function self_test(): ?SelfTest {
+		return $this->self_test;
 	}
 }

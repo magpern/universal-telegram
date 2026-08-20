@@ -37,11 +37,11 @@ final class FailingJobFixture {
 	/**
 	 * The handler itself.
 	 *
-	 * @param array<string, mixed> $payload The job's payload (unused).
+	 * @param array<string, mixed> $job The job's full action-args array (unused).
 	 *
 	 * @throws RuntimeException When self::$should_throw is true.
 	 */
-	public function __invoke( array $payload ): void {
+	public function __invoke( array $job ): void {
 		++self::$invocation_count;
 
 		if ( self::$should_throw ) {
