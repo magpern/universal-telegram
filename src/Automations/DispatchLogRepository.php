@@ -149,6 +149,31 @@ final class DispatchLogRepository {
 	}
 
 	/**
+	 * Counts FAILED_BEFORE_HANDOFF rows dispatched within the last 24
+	 * hours. Used only for diagnostics aggregation.
+	 *
+	 * @return int
+	 */
+	public function failed_count_24h(): int {
+		if ( ! $this->schema_health->is_available() ) {
+			return 0;
+		}
+
+		global $wpdb;
+
+		$table     = $wpdb->prefix . Migrator::DISPATCH_LOG_TABLE;
+		$threshold = gmdate( 'Y-m-d H:i:s', time() - DAY_IN_SECONDS );
+
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$table} WHERE result = %s AND dispatched_at >= %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				DispatchLogResult::FAILED_BEFORE_HANDOFF->value,
+				$threshold
+			)
+		);
+	}
+
+	/**
 	 * Counts CLAIMED rows older than a staleness threshold — the
 	 * diagnosable, never-hidden signal for the one deliberately accepted,
 	 * non-retried limitation in this design (M02 plan §7.5).

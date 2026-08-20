@@ -85,6 +85,27 @@ final class EventHistoryRepository {
 	}
 
 	/**
+	 * Counts event_history rows recorded within the last 24 hours. Used
+	 * only for diagnostics aggregation.
+	 *
+	 * @return int
+	 */
+	public function count_24h(): int {
+		if ( ! $this->schema_health->is_available() ) {
+			return 0;
+		}
+
+		global $wpdb;
+
+		$table     = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
+		$threshold = gmdate( 'Y-m-d H:i:s', time() - DAY_IN_SECONDS );
+
+		return (int) $wpdb->get_var(
+			$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE occurred_at >= %s", $threshold ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		);
+	}
+
+	/**
 	 * Sets a value at a dot-notation path inside a nested array, creating
 	 * intermediate arrays as needed.
 	 *

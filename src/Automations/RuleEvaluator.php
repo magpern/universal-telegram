@@ -28,6 +28,8 @@ use UniversalTelegram\Events\Registry;
  */
 class RuleEvaluator {
 
+	public const LAST_EVALUATION_ERROR_CODE_OPTION = 'universal_telegram_automations_last_evaluation_error_code';
+
 	/**
 	 * Constructor.
 	 *
@@ -56,7 +58,14 @@ class RuleEvaluator {
 				$this->evaluate_rule( $rule, $event );
 			} catch ( Throwable $exception ) {
 				// One rule's exception never stops evaluation of the
-				// remaining rules (M02 plan §7.3).
+				// remaining rules (M02 plan §7.3). Recorded as a fixed,
+				// non-message-carrying diagnostic code only — never a raw
+				// exception message. Guarded so this class remains
+				// WordPress-free and unit-testable (tests/unit/Automations/
+				// RuleEvaluatorTest.php carries no WordPress bootstrap).
+				if ( function_exists( 'update_option' ) ) {
+					update_option( self::LAST_EVALUATION_ERROR_CODE_OPTION, 'rule_evaluation_exception', false );
+				}
 				continue;
 			}
 		}

@@ -2,6 +2,43 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.0] - Unreleased
+
+### Added
+
+- Normalized events and notifications (M02): deterministic SHA-256 event identity derived from a
+  mandatory, source-supplied idempotency key (`Events\EventIdentity`); an immutable event envelope
+  with fail-closed per-field privacy classification (`Events\EventEnvelope`); a per-request event
+  registry enforcing that every durable-history field is classified PUBLIC
+  (`Events\Registry`, docs/adr/0017); a safety-wrapped emission facade reducing any failure anywhere
+  in the event pipeline to one fixed diagnostic code, with no public `do_action()` emission hook
+  (`Events\EventEmitter`, docs/adr/0015); a PUBLIC-only, idempotently-written durable event history
+  with retention cleanup (`Events\EventHistoryRepository`, `Events\RetentionCleanup`); core
+  WordPress event emitters (logins, user lifecycle, content publishing, plugin/update activity,
+  scheduled-task and REST-request failures — both excluding the plugin's own queue group and REST
+  namespace to prevent notification feedback loops — email failures); a bounded, privacy-safe
+  two-phase fatal-error capture mechanism that never stores message text, a stack trace, or a raw
+  file path (`Events\Emitters\FatalErrorMarkerWriter`, `Events\Emitters\FatalErrorPromotionJob`); an
+  administrator-configurable notification rule engine with AND-only, non-nested conditions and a
+  fixed operator set (`Automations\NotificationRule`, `Automations\ConditionOperator`); deterministic
+  rule evaluation ordered by `(priority ASC, id ASC)` with per-rule failure isolation
+  (`Automations\RuleEvaluator`); a fixed-grammar, MarkdownV2-escaping message template renderer
+  (`Automations\TemplateRenderer`); an idempotent, honestly-scoped seven-state dispatch log —
+  `claimed`, `rejected`, `skipped_duplicate`, `skipped_cooldown`, `skipped_disabled_reference`,
+  `handed_off_to_m01`, `failed_before_handoff` — guaranteeing no second rule-engine handoff decision
+  for the same `(rule_id, event_id)` pair, dispatching through M01's own unchanged
+  `MessageDispatcher::send()` (`Automations\DispatchLogRepository`,
+  `Automations\NotificationDispatcher`, docs/adr/0016); capability-gated event catalog, rule
+  builder, rule simulator (no live Telegram traffic, no dispatch-log write), and event-history
+  browser admin screens; a plugin-row "Settings" action link to the existing Diagnostics landing
+  page; new Diagnostics fields for event/rule counts, dispatch failures, stuck claims, and stale
+  fatal-marker drops. Database schema version 10 (three new migration steps, four new tables).
+  Known limitation: M01's unmodified `MessageDispatcher::send()` does not return the created
+  outbound message's own UUID, so `notification_dispatch_log.outbound_message_uuid` remains
+  unpopulated on a successful handoff; the terminal result value itself remains the authoritative,
+  honest signal. A stuck `claimed` row from a mid-request termination is a deliberately accepted,
+  diagnosable, non-retried limitation, surfaced on the Diagnostics page.
+
 ## [0.1.0] - Unreleased
 
 ### Added

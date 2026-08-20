@@ -149,7 +149,22 @@ final class DiagnosticsPage {
 
 		echo '<table class="widefat striped"><tbody>';
 		foreach ( $data as $key => $value ) {
-			if ( 'recent_audit_entries' === $key ) {
+			if ( 'recent_audit_entries' === $key || str_starts_with( (string) $key, 'automations_' ) ) {
+				continue;
+			}
+
+			printf(
+				'<tr><th scope="row">%s</th><td>%s</td></tr>',
+				esc_html( (string) $key ),
+				esc_html( is_bool( $value ) ? ( $value ? 'yes' : 'no' ) : (string) $value )
+			);
+		}
+		echo '</tbody></table>';
+
+		echo '<h2>' . esc_html__( 'Automations (M02)', 'universal-telegram' ) . '</h2>';
+		echo '<table class="widefat striped"><tbody>';
+		foreach ( $data as $key => $value ) {
+			if ( ! str_starts_with( (string) $key, 'automations_' ) ) {
 				continue;
 			}
 

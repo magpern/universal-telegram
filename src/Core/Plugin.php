@@ -515,6 +515,16 @@ final class Plugin {
 		);
 		add_action( 'admin_menu', array( $this->bot_management_page, 'register_menu' ) );
 
+		// Events/Automations (M02) repositories: constructed here, ahead of
+		// DiagnosticsReport below (which reads their aggregate counts),
+		// always unconditionally regardless of schema availability —
+		// individual repositories check SchemaHealth at their own point of
+		// use (docs/adr/0007).
+		$this->event_registry               = new Registry();
+		$this->event_history_repository     = new EventHistoryRepository( $this->schema_health, $this->event_registry, new Redactor() );
+		$this->notification_rule_repository = new NotificationRuleRepository( $this->schema_health, $this->event_registry );
+		$this->dispatch_log_repository      = new DispatchLogRepository( $this->schema_health );
+
 		$report                 = new DiagnosticsReport(
 			$this->queue_health,
 			$this->audit_log_repository,
@@ -523,6 +533,9 @@ final class Plugin {
 			$this->bot_profile_repository,
 			$this->destination_repository,
 			$this->queue_health_alert,
+			$this->event_history_repository,
+			$this->notification_rule_repository,
+			$this->dispatch_log_repository,
 			(int) $settings_values['telegram_stale_pending_alert_seconds'],
 			(int) $settings_values['telegram_webhook_rotation_max_pending_hours']
 		);
@@ -537,14 +550,10 @@ final class Plugin {
 		add_action( 'admin_menu', array( $this->diagnostics_page, 'register_menu' ) );
 		add_action( 'admin_notices', array( $this->diagnostics_page, 'render_admin_notice' ) );
 
-		// Events/Automations (M02): always constructed, unconditionally,
-		// regardless of schema availability — individual repositories
-		// check SchemaHealth at their own point of use (docs/adr/0007).
-		$this->event_registry               = new Registry();
-		$this->event_history_repository     = new EventHistoryRepository( $this->schema_health, $this->event_registry, new Redactor() );
-		$this->notification_rule_repository = new NotificationRuleRepository( $this->schema_health, $this->event_registry );
-		$this->dispatch_log_repository      = new DispatchLogRepository( $this->schema_health );
-		$notification_dispatcher            = new NotificationDispatcher(
+		// Events/Automations (M02) continued: the repositories above are
+		// already constructed; wire the remaining dispatch/evaluation/
+		// emission services.
+		$notification_dispatcher = new NotificationDispatcher(
 			$this->dispatch_log_repository,
 			$this->bot_profile_repository,
 			$this->destination_repository,

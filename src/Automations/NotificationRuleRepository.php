@@ -200,6 +200,42 @@ final class NotificationRuleRepository {
 	}
 
 	/**
+	 * The total number of rules, regardless of event type or enabled
+	 * state. Used only for diagnostics aggregation.
+	 *
+	 * @return int
+	 */
+	public function count_all(): int {
+		if ( ! $this->schema_health->is_available() ) {
+			return 0;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::NOTIFICATION_RULES_TABLE;
+
+		return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+	}
+
+	/**
+	 * The total number of enabled rules. Used only for diagnostics
+	 * aggregation.
+	 *
+	 * @return int
+	 */
+	public function count_enabled(): int {
+		if ( ! $this->schema_health->is_available() ) {
+			return 0;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::NOTIFICATION_RULES_TABLE;
+
+		return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE enabled = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+	}
+
+	/**
 	 * Deletes a rule.
 	 *
 	 * @param int $id The rule's primary key.

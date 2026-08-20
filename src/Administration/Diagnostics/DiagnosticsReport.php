@@ -10,6 +10,11 @@ declare( strict_types=1 );
 namespace UniversalTelegram\Administration\Diagnostics;
 
 use UniversalTelegram\Audit\AuditLogRepository;
+use UniversalTelegram\Automations\DispatchLogRepository;
+use UniversalTelegram\Automations\NotificationRuleRepository;
+use UniversalTelegram\Automations\RuleEvaluator;
+use UniversalTelegram\Events\EventHistoryRepository;
+use UniversalTelegram\Events\RetentionCleanup;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Queue\QueueHealth;
@@ -36,6 +41,9 @@ final class DiagnosticsReport {
 	 * @param BotProfileRepository  $bots                       Telegram bot counts.
 	 * @param DestinationRepository $destinations               Telegram destination counts.
 	 * @param QueueHealthAlert      $queue_health_alert          The Telegram queue-health alert's own details.
+	 * @param EventHistoryRepository     $event_history       Event-history counts.
+	 * @param NotificationRuleRepository $notification_rules  Rule counts.
+	 * @param DispatchLogRepository      $dispatch_log        Dispatch-log failure/stuck-claim counts.
 	 * @param int                   $stale_pending_threshold_seconds The message-staleness threshold, in seconds.
 	 * @param int                   $stale_registration_threshold_hours The registration-staleness threshold, in hours.
 	 */
@@ -47,6 +55,9 @@ final class DiagnosticsReport {
 		private readonly BotProfileRepository $bots,
 		private readonly DestinationRepository $destinations,
 		private readonly QueueHealthAlert $queue_health_alert,
+		private readonly EventHistoryRepository $event_history,
+		private readonly NotificationRuleRepository $notification_rules,
+		private readonly DispatchLogRepository $dispatch_log,
 		private readonly int $stale_pending_threshold_seconds = 1800,
 		private readonly int $stale_registration_threshold_hours = 24
 	) {}
@@ -68,6 +79,13 @@ final class DiagnosticsReport {
 	 *     telegram_stale_pending_count: int,
 	 *     telegram_stale_unresolved_registrations_count: int,
 	 *     telegram_queue_health_alert_active: bool,
+	 *     automations_event_count_24h: int,
+	 *     automations_rule_count: int,
+	 *     automations_enabled_rule_count: int,
+	 *     automations_dispatch_failed_count_24h: int,
+	 *     automations_stuck_claim_count: int,
+	 *     automations_stale_fatal_markers_dropped_count: int,
+	 *     automations_last_evaluation_error_code: string,
 	 *     recent_audit_entries: array<int, array<string, mixed>>
 	 * }
 	 */
@@ -104,6 +122,13 @@ final class DiagnosticsReport {
 			'telegram_queue_health_alert_active' => $this->schema_health->is_available()
 				? $this->queue_health_alert->is_active( $this->stale_pending_threshold_seconds, $this->stale_registration_threshold_hours )
 				: false,
+			'automations_event_count_24h'                    => $this->schema_health->is_available() ? $this->event_history->count_24h() : 0,
+			'automations_rule_count'                          => $this->schema_health->is_available() ? $this->notification_rules->count_all() : 0,
+			'automations_enabled_rule_count'                  => $this->schema_health->is_available() ? $this->notification_rules->count_enabled() : 0,
+			'automations_dispatch_failed_count_24h'          => $this->schema_health->is_available() ? $this->dispatch_log->failed_count_24h() : 0,
+			'automations_stuck_claim_count'                   => $this->schema_health->is_available() ? $this->dispatch_log->stuck_claim_count() : 0,
+			'automations_stale_fatal_markers_dropped_count'  => (int) get_option( RetentionCleanup::STALE_FATAL_MARKERS_DROPPED_OPTION, 0 ),
+			'automations_last_evaluation_error_code'          => (string) get_option( RuleEvaluator::LAST_EVALUATION_ERROR_CODE_OPTION, 'none' ),
 			'recent_audit_entries'               => $this->audit_log_repository->recent( 20 ),
 		);
 	}

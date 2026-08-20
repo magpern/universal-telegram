@@ -10,8 +10,12 @@ use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
 use UniversalTelegram\Administration\Diagnostics\SelfTest;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
+use UniversalTelegram\Automations\DispatchLogRepository;
+use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Security\CredentialVault;
+use UniversalTelegram\Events\EventHistoryRepository;
+use UniversalTelegram\Events\Registry;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Persistence\MigrationFailureCode;
 use UniversalTelegram\Persistence\SchemaHealth;
@@ -51,8 +55,12 @@ final class DiagnosticsPageTest extends WP_UnitTestCase {
 		$messages             = new OutboundMessageRepository( $schema_health, $vault );
 		$breaker              = new CircuitBreaker( $schema_health, new RetryPolicy() );
 		$alert                = new QueueHealthAlert( $messages, $breaker, $bots );
+		$registry             = new Registry();
+		$event_history        = new EventHistoryRepository( $schema_health, $registry, new Redactor() );
+		$notification_rules   = new NotificationRuleRepository( $schema_health, $registry );
+		$dispatch_log         = new DispatchLogRepository( $schema_health );
 
-		$report    = new DiagnosticsReport( $queue_health, $audit_log_repository, $woocommerce_support, $schema_health, $bots, $destinations, $alert );
+		$report    = new DiagnosticsReport( $queue_health, $audit_log_repository, $woocommerce_support, $schema_health, $bots, $destinations, $alert, $event_history, $notification_rules, $dispatch_log );
 		$self_test = new SelfTest( $schema_health, $dispatcher, $vault, $audit_logger );
 
 		return new DiagnosticsPage( $report, $schema_health, $self_test, $alert );
