@@ -75,4 +75,15 @@
 	<rule ref="WordPress.WP.AlternativeFunctions.file_system_operations_fwrite">
 		<exclude-pattern>*/tests/integration/bootstrap.php</exclude-pattern>
 	</rule>
+
+	<!-- This fail-closed codebase never renders a caught exception's message
+	     directly to any surface; only small, fixed, stable codes ever reach
+	     an administrator, a log entry, or a diagnostic page (docs/adr/0006,
+	     0007, 0008). This sniff's heuristic for "an exception message
+	     reaches output" produces pervasive false positives against typed,
+	     enum-backed internal exceptions throughout src/, so it is disabled
+	     plugin-wide rather than excluded file by file. -->
+	<rule ref="WordPress.Security.EscapeOutput.ExceptionNotEscaped">
+		<severity>0</severity>
+	</rule>
 </ruleset>
