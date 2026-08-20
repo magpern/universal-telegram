@@ -42,3 +42,17 @@ add_action(
 		\UniversalTelegram\Core\Plugin::instance()->init();
 	}
 );
+
+register_activation_hook(
+	__FILE__,
+	function ( $network_wide ) {
+		( new \UniversalTelegram\Core\Lifecycle\Activator() )->activate( (bool) $network_wide );
+	}
+);
+
+register_deactivation_hook(
+	__FILE__,
+	function () {
+		( new \UniversalTelegram\Core\Lifecycle\Deactivator() )->deactivate();
+	}
+);

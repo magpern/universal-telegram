@@ -7,6 +7,8 @@
 
 namespace UniversalTelegram\Core;
 
+use UniversalTelegram\Core\Configuration\Settings;
+
 /**
  * Singleton composition root. Constructs and wires every M00 service by
  * hand inside init(); no dependency-injection container.
@@ -53,5 +55,8 @@ final class Plugin {
 		}
 
 		$this->booted = true;
+
+		$settings = new Settings();
+		add_action( 'admin_init', array( $settings, 'register' ) );
 	}
 }
