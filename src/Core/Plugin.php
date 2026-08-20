@@ -14,8 +14,11 @@ use UniversalTelegram\Administration\Telegram\BotManagementController;
 use UniversalTelegram\Administration\Telegram\BotManagementPage;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
+use UniversalTelegram\Automations\DispatchLogRepository;
+use UniversalTelegram\Automations\NotificationDispatcher;
 use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Automations\RuleEvaluator;
+use UniversalTelegram\Automations\TemplateRenderer;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Security\CredentialVault;
@@ -296,6 +299,27 @@ final class Plugin {
 	private ?EventEmitter $event_emitter = null;
 
 	/**
+	 * The notification rule repository, constructed by init().
+	 *
+	 * @var NotificationRuleRepository|null
+	 */
+	private ?NotificationRuleRepository $notification_rule_repository = null;
+
+	/**
+	 * The idempotent dispatch-log repository, constructed by init().
+	 *
+	 * @var DispatchLogRepository|null
+	 */
+	private ?DispatchLogRepository $dispatch_log_repository = null;
+
+	/**
+	 * The event history repository, constructed by init().
+	 *
+	 * @var EventHistoryRepository|null
+	 */
+	private ?EventHistoryRepository $event_history_repository = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -474,12 +498,21 @@ final class Plugin {
 		// Events/Automations (M02): always constructed, unconditionally,
 		// regardless of schema availability — individual repositories
 		// check SchemaHealth at their own point of use (docs/adr/0007).
-		$this->event_registry           = new Registry();
-		$event_history_repository       = new EventHistoryRepository( $this->schema_health, $this->event_registry, new Redactor() );
-		$notification_rule_repository   = new NotificationRuleRepository( $this->schema_health, $this->event_registry );
-		$rule_evaluator                 = new RuleEvaluator( $notification_rule_repository, $this->event_registry );
-		$this->event_dispatcher         = new EventDispatcher( $event_history_repository, $rule_evaluator );
-		$this->event_emitter            = new EventEmitter( $this->event_registry, $this->event_dispatcher, $this->audit_logger );
+		$this->event_registry               = new Registry();
+		$this->event_history_repository     = new EventHistoryRepository( $this->schema_health, $this->event_registry, new Redactor() );
+		$this->notification_rule_repository = new NotificationRuleRepository( $this->schema_health, $this->event_registry );
+		$this->dispatch_log_repository      = new DispatchLogRepository( $this->schema_health );
+		$notification_dispatcher            = new NotificationDispatcher(
+			$this->dispatch_log_repository,
+			$this->bot_profile_repository,
+			$this->destination_repository,
+			$this->event_registry,
+			new TemplateRenderer(),
+			$this->message_dispatcher
+		);
+		$rule_evaluator          = new RuleEvaluator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher );
+		$this->event_dispatcher = new EventDispatcher( $this->event_history_repository, $rule_evaluator );
+		$this->event_emitter    = new EventEmitter( $this->event_registry, $this->event_dispatcher, $this->audit_logger );
 
 		// Core WordPress event emitters (M02 plan §8): constructed and
 		// wired unconditionally, at bootstrap. Each registers its own
@@ -784,5 +817,26 @@ final class Plugin {
 	 */
 	public function event_emitter(): ?EventEmitter {
 		return $this->event_emitter;
+	}
+
+	/**
+	 * The notification rule repository. Available only after init() has run.
+	 */
+	public function notification_rule_repository(): ?NotificationRuleRepository {
+		return $this->notification_rule_repository;
+	}
+
+	/**
+	 * The idempotent dispatch-log repository. Available only after init() has run.
+	 */
+	public function dispatch_log_repository(): ?DispatchLogRepository {
+		return $this->dispatch_log_repository;
+	}
+
+	/**
+	 * The event history repository. Available only after init() has run.
+	 */
+	public function event_history_repository(): ?EventHistoryRepository {
+		return $this->event_history_repository;
 	}
 }

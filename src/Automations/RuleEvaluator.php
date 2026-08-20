@@ -31,12 +31,16 @@ class RuleEvaluator {
 	/**
 	 * Constructor.
 	 *
-	 * @param NotificationRuleRepository $rules    Supplies each event type's own enabled rules, deterministically ordered.
-	 * @param Registry                    $registry Supplies each event type's allowed variable fields.
+	 * @param NotificationRuleRepository $rules        Supplies each event type's own enabled rules, deterministically ordered.
+	 * @param Registry                    $registry     Supplies each event type's allowed variable fields.
+	 * @param DispatchLogRepository       $dispatch_log Records a rejected outcome for a non-matching rule.
+	 * @param NotificationDispatcher      $dispatcher   Executes the full dispatch sequence for a matched rule.
 	 */
 	public function __construct(
 		private readonly NotificationRuleRepository $rules,
-		private readonly Registry $registry
+		private readonly Registry $registry,
+		private readonly DispatchLogRepository $dispatch_log,
+		private readonly NotificationDispatcher $dispatcher
 	) {}
 
 	/**
@@ -114,22 +118,26 @@ class RuleEvaluator {
 	}
 
 	/**
-	 * Called when a rule's conditions all matched. No-op at WP6; wired to
-	 * Automations\NotificationDispatcher::dispatch() in WP7.
+	 * Called when a rule's conditions all matched: delegates the full
+	 * idempotent dispatch sequence to NotificationDispatcher.
 	 *
 	 * @param NotificationRule $rule  The matched rule.
 	 * @param EventEnvelope    $event The event occurrence.
 	 */
-	protected function on_matched( NotificationRule $rule, EventEnvelope $event ): void {}
+	protected function on_matched( NotificationRule $rule, EventEnvelope $event ): void {
+		$this->dispatcher->dispatch( $rule, $event );
+	}
 
 	/**
 	 * Called when a rule's conditions did not match, or its own
-	 * configuration was invalid. No-op at WP6; wired to
-	 * Automations\DispatchLogRepository::record_rejected() in WP7.
+	 * configuration was invalid: records the rejected outcome via the
+	 * same atomic claim-or-reject mechanism.
 	 *
-	 * @param NotificationRule $rule       The rejected rule.
-	 * @param EventEnvelope    $event      The event occurrence.
+	 * @param NotificationRule $rule        The rejected rule.
+	 * @param EventEnvelope    $event       The event occurrence.
 	 * @param string           $reason_code The fixed rejection reason code.
 	 */
-	protected function on_rejected( NotificationRule $rule, EventEnvelope $event, string $reason_code ): void {}
+	protected function on_rejected( NotificationRule $rule, EventEnvelope $event, string $reason_code ): void {
+		$this->dispatch_log->record_rejected( $rule->id(), $event->event_id() );
+	}
 }

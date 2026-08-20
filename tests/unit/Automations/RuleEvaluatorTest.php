@@ -6,6 +6,8 @@
 namespace UniversalTelegram\Tests\Automations;
 
 use PHPUnit\Framework\TestCase;
+use UniversalTelegram\Automations\DispatchLogRepository;
+use UniversalTelegram\Automations\NotificationDispatcher;
 use UniversalTelegram\Automations\NotificationRule;
 use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Automations\RuleEvaluator;
@@ -16,6 +18,14 @@ use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Classification;
 
 final class RuleEvaluatorTest extends TestCase {
+
+	private function fake_dispatch_log(): DispatchLogRepository {
+		return $this->createMock( DispatchLogRepository::class );
+	}
+
+	private function fake_dispatcher(): NotificationDispatcher {
+		return $this->createMock( NotificationDispatcher::class );
+	}
 
 	private function registry(): Registry {
 		$registry = new Registry();
@@ -46,11 +56,11 @@ final class RuleEvaluatorTest extends TestCase {
 		$repo->method( 'for_event_type' )->willReturn( array( $rules[0], $rules[2], $rules[1] ) );
 
 		$order     = array();
-		$evaluator = new class( $repo, $registry, $order ) extends RuleEvaluator {
+		$evaluator = new class( $repo, $registry, $this->fake_dispatch_log(), $this->fake_dispatcher(), $order ) extends RuleEvaluator {
 			private array $order_ref;
 
-			public function __construct( $repo, $registry, array &$order_ref ) {
-				parent::__construct( $repo, $registry );
+			public function __construct( $repo, $registry, $dispatch_log, $dispatcher, array &$order_ref ) {
+				parent::__construct( $repo, $registry, $dispatch_log, $dispatcher );
 				$this->order_ref = &$order_ref;
 			}
 
@@ -72,11 +82,11 @@ final class RuleEvaluatorTest extends TestCase {
 		$repo->method( 'for_event_type' )->willReturn( $rules );
 
 		$matched   = array();
-		$evaluator = new class( $repo, $registry, $matched ) extends RuleEvaluator {
+		$evaluator = new class( $repo, $registry, $this->fake_dispatch_log(), $this->fake_dispatcher(), $matched ) extends RuleEvaluator {
 			private array $matched_ref;
 
-			public function __construct( $repo, $registry, array &$matched_ref ) {
-				parent::__construct( $repo, $registry );
+			public function __construct( $repo, $registry, $dispatch_log, $dispatcher, array &$matched_ref ) {
+				parent::__construct( $repo, $registry, $dispatch_log, $dispatcher );
 				$this->matched_ref = &$matched_ref;
 			}
 
@@ -98,11 +108,11 @@ final class RuleEvaluatorTest extends TestCase {
 		$repo->method( 'for_event_type' )->willReturn( $rules );
 
 		$matched   = array();
-		$evaluator = new class( $repo, $registry, $matched ) extends RuleEvaluator {
+		$evaluator = new class( $repo, $registry, $this->fake_dispatch_log(), $this->fake_dispatcher(), $matched ) extends RuleEvaluator {
 			private array $matched_ref;
 
-			public function __construct( $repo, $registry, array &$matched_ref ) {
-				parent::__construct( $repo, $registry );
+			public function __construct( $repo, $registry, $dispatch_log, $dispatcher, array &$matched_ref ) {
+				parent::__construct( $repo, $registry, $dispatch_log, $dispatcher );
 				$this->matched_ref = &$matched_ref;
 			}
 
@@ -171,12 +181,12 @@ final class RuleEvaluatorTest extends TestCase {
 	}
 
 	private function recording_evaluator( $repo, Registry $registry, array &$matched, array &$rejected ): RuleEvaluator {
-		return new class( $repo, $registry, $matched, $rejected ) extends RuleEvaluator {
+		return new class( $repo, $registry, $this->fake_dispatch_log(), $this->fake_dispatcher(), $matched, $rejected ) extends RuleEvaluator {
 			private array $matched_ref;
 			private array $rejected_ref;
 
-			public function __construct( $repo, $registry, array &$matched_ref, array &$rejected_ref ) {
-				parent::__construct( $repo, $registry );
+			public function __construct( $repo, $registry, $dispatch_log, $dispatcher, array &$matched_ref, array &$rejected_ref ) {
+				parent::__construct( $repo, $registry, $dispatch_log, $dispatcher );
 				$this->matched_ref  = &$matched_ref;
 				$this->rejected_ref = &$rejected_ref;
 			}
