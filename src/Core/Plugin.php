@@ -35,6 +35,7 @@ use UniversalTelegram\Telegram\Inbound\WebhookSecretVerifier;
 use UniversalTelegram\Telegram\Client\TelegramFailureClassifier;
 use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
+use UniversalTelegram\Telegram\Outbound\RetentionCleanupHandler;
 use UniversalTelegram\Telegram\Outbound\SendMessageHandler;
 use UniversalTelegram\Telegram\Reliability\CircuitBreaker;
 use UniversalTelegram\Telegram\Reliability\QueueHealthAlert;
@@ -226,6 +227,13 @@ final class Plugin {
 	private ?QueueHealthAlert $queue_health_alert = null;
 
 	/**
+	 * The retention cleanup handler, constructed by init().
+	 *
+	 * @var RetentionCleanupHandler|null
+	 */
+	private ?RetentionCleanupHandler $retention_cleanup_handler = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -252,7 +260,8 @@ final class Plugin {
 
 		$this->booted = true;
 
-		$settings = new Settings();
+		$settings        = new Settings();
+		$settings_values = $settings->get();
 		add_action( 'admin_init', array( $settings, 'register' ) );
 
 		$this->schema_health = new SchemaHealth();
@@ -316,7 +325,9 @@ final class Plugin {
 			$this->rate_limiter,
 			$this->circuit_breaker,
 			$this->audit_logger,
-			new RetryPolicy()
+			new RetryPolicy(),
+			(int) $settings_values['telegram_rate_limit_fallback_wait_seconds'],
+			(int) $settings_values['telegram_max_pending_seconds']
 		);
 		$this->handler_registry->register( MessageDispatcher::JOB_TYPE, array( $send_message_handler, 'handle_job' ) );
 
@@ -326,9 +337,29 @@ final class Plugin {
 			$this->schema_health,
 			$this->bot_profile_repository,
 			$this->webhook_secret_verifier,
-			$this->update_repository
+			$this->update_repository,
+			(int) $settings_values['telegram_webhook_max_body_bytes']
 		);
 		add_action( 'rest_api_init', array( $this->webhook_controller, 'register_routes' ) );
+
+		$this->retention_cleanup_handler = new RetentionCleanupHandler(
+			$this->outbound_message_repository,
+			(int) $settings_values['telegram_message_retention_days'],
+			(int) $settings_values['telegram_delivery_log_retention_days']
+		);
+		add_action( RetentionCleanupHandler::HOOK, array( $this->retention_cleanup_handler, 'run' ) );
+
+		// Action Scheduler's own data store is only guaranteed ready once
+		// WordPress' own `init` action has fired; scheduling here,
+		// deferred, avoids calling it before that point (docs/adr/0006).
+		add_action(
+			'init',
+			static function () {
+				if ( ! as_has_scheduled_action( RetentionCleanupHandler::HOOK, array(), WorkerRunner::GROUP ) ) {
+					as_schedule_recurring_action( time() + DAY_IN_SECONDS, DAY_IN_SECONDS, RetentionCleanupHandler::HOOK, array(), WorkerRunner::GROUP );
+				}
+			}
+		);
 
 		$report                 = new DiagnosticsReport(
 			$this->queue_health,
@@ -504,5 +535,12 @@ final class Plugin {
 	 */
 	public function queue_health_alert(): ?QueueHealthAlert {
 		return $this->queue_health_alert;
+	}
+
+	/**
+	 * The retention cleanup handler. Available only after init() has run.
+	 */
+	public function retention_cleanup_handler(): ?RetentionCleanupHandler {
+		return $this->retention_cleanup_handler;
 	}
 }

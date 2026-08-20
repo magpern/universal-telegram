@@ -301,9 +301,10 @@ final class OutboundMessageRepository {
 		} else {
 			$rows = $wpdb->get_results(
 				$wpdb->prepare(
-					"SELECT * FROM {$table} WHERE status IN (%s, %s) AND created_at < %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					"SELECT * FROM {$table} WHERE status IN (%s, %s, %s) AND created_at < %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 					OutboundMessageStatus::SENT->value,
 					OutboundMessageStatus::DEAD_LETTER->value,
+					OutboundMessageStatus::PURGED->value,
 					$cutoff
 				),
 				ARRAY_A
