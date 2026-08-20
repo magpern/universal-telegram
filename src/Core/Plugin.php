@@ -20,6 +20,16 @@ use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Events\EventDispatcher;
 use UniversalTelegram\Events\EventEmitter;
 use UniversalTelegram\Events\EventHistoryRepository;
+use UniversalTelegram\Events\Emitters\ContentEmitter;
+use UniversalTelegram\Events\Emitters\FatalErrorMarkerWriter;
+use UniversalTelegram\Events\Emitters\FatalErrorPromotionJob;
+use UniversalTelegram\Events\Emitters\LoginEmitter;
+use UniversalTelegram\Events\Emitters\MailFailureEmitter;
+use UniversalTelegram\Events\Emitters\PluginLifecycleEmitter;
+use UniversalTelegram\Events\Emitters\RestRequestFailureEmitter;
+use UniversalTelegram\Events\Emitters\ScheduledTaskFailureEmitter;
+use UniversalTelegram\Events\Emitters\UpdateEmitter;
+use UniversalTelegram\Events\Emitters\UserLifecycleEmitter;
 use UniversalTelegram\Events\Registry;
 use UniversalTelegram\Events\RetentionCleanup;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
@@ -467,6 +477,30 @@ final class Plugin {
 		$this->event_dispatcher        = new EventDispatcher( $event_history_repository );
 		$this->event_emitter           = new EventEmitter( $this->event_registry, $this->event_dispatcher, $this->audit_logger );
 
+		// Core WordPress event emitters (M02 plan §8): constructed and
+		// wired unconditionally, at bootstrap. Each registers its own
+		// event type(s) at priority 10 on universal_telegram_register_event_types,
+		// and its own WordPress hook callback(s) directly.
+		$login_emitter               = new LoginEmitter();
+		$user_lifecycle_emitter      = new UserLifecycleEmitter();
+		$content_emitter             = new ContentEmitter();
+		$plugin_lifecycle_emitter    = new PluginLifecycleEmitter();
+		$update_emitter              = new UpdateEmitter();
+		$scheduled_task_failure_emitter = new ScheduledTaskFailureEmitter();
+		$rest_request_failure_emitter   = new RestRequestFailureEmitter();
+		$mail_failure_emitter         = new MailFailureEmitter();
+		$fatal_error_promotion_job   = new FatalErrorPromotionJob( $this->schema_health );
+
+		add_action( 'universal_telegram_register_event_types', array( $login_emitter, 'register_event_types' ), 10 );
+		add_action( 'universal_telegram_register_event_types', array( $user_lifecycle_emitter, 'register_event_types' ), 10 );
+		add_action( 'universal_telegram_register_event_types', array( $content_emitter, 'register_event_types' ), 10 );
+		add_action( 'universal_telegram_register_event_types', array( $plugin_lifecycle_emitter, 'register_event_types' ), 10 );
+		add_action( 'universal_telegram_register_event_types', array( $update_emitter, 'register_event_types' ), 10 );
+		add_action( 'universal_telegram_register_event_types', array( $scheduled_task_failure_emitter, 'register_event_types' ), 10 );
+		add_action( 'universal_telegram_register_event_types', array( $rest_request_failure_emitter, 'register_event_types' ), 10 );
+		add_action( 'universal_telegram_register_event_types', array( $mail_failure_emitter, 'register_event_types' ), 10 );
+		add_action( 'universal_telegram_register_event_types', array( $fatal_error_promotion_job, 'register_event_types' ), 10 );
+
 		// Fired once, at priority 20, after WooCommerce presence detection
 		// (already established above) and before any admin-menu
 		// registration — core WordPress event types (§8) register at
@@ -478,6 +512,42 @@ final class Plugin {
 			},
 			20
 		);
+
+		add_action( 'wp_login', array( $login_emitter, 'on_login' ), 10, 2 );
+		add_action( 'wp_login_failed', array( $login_emitter, 'on_login_failed' ), 10, 2 );
+		add_action( 'user_register', array( $user_lifecycle_emitter, 'on_user_registered' ), 10, 1 );
+		add_action( 'set_user_role', array( $user_lifecycle_emitter, 'on_role_changed' ), 10, 3 );
+		add_action( 'after_password_reset', array( $user_lifecycle_emitter, 'on_password_reset' ), 10, 2 );
+		add_action( 'transition_post_status', array( $content_emitter, 'on_post_status_transition' ), 10, 3 );
+		add_action( 'comment_post', array( $content_emitter, 'on_comment_submitted' ), 10, 2 );
+		add_action( 'activated_plugin', array( $plugin_lifecycle_emitter, 'on_activated' ), 10, 2 );
+		add_action( 'deactivated_plugin', array( $plugin_lifecycle_emitter, 'on_deactivated' ), 10, 2 );
+		add_action( 'upgrader_process_complete', array( $update_emitter, 'on_update_completed' ), 10, 2 );
+		add_action( 'action_scheduler_failed_action', array( $scheduled_task_failure_emitter, 'on_action_failed' ), 10, 2 );
+		add_filter( 'rest_request_after_callbacks', array( $rest_request_failure_emitter, 'on_rest_request_after_callbacks' ), 10, 3 );
+		add_action( 'wp_mail_failed', array( $mail_failure_emitter, 'on_mail_failed' ), 10, 1 );
+
+		add_action( UpdateEmitter::CHECK_HOOK, array( $update_emitter, 'check_for_updates' ) );
+		add_action(
+			'init',
+			static function () {
+				if ( ! as_has_scheduled_action( UpdateEmitter::CHECK_HOOK, array(), WorkerRunner::GROUP ) ) {
+					as_schedule_recurring_action( time() + DAY_IN_SECONDS, DAY_IN_SECONDS, UpdateEmitter::CHECK_HOOK, array(), WorkerRunner::GROUP );
+				}
+			}
+		);
+
+		add_action( FatalErrorPromotionJob::HOOK, array( $fatal_error_promotion_job, 'run' ) );
+		add_action(
+			'init',
+			static function () {
+				if ( ! as_has_scheduled_action( FatalErrorPromotionJob::HOOK, array(), WorkerRunner::GROUP ) ) {
+					as_schedule_recurring_action( time() + 5 * MINUTE_IN_SECONDS, 5 * MINUTE_IN_SECONDS, FatalErrorPromotionJob::HOOK, array(), WorkerRunner::GROUP );
+				}
+			}
+		);
+
+		( new FatalErrorMarkerWriter() )->register();
 
 		$retention_cleanup = new RetentionCleanup(
 			$this->schema_health,
