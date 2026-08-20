@@ -41,6 +41,13 @@ final class UninstallTest extends WP_UnitTestCase {
 		Migrator::RATE_LIMIT_TABLE,
 	);
 
+	private const M02_TABLES = array(
+		Migrator::EVENT_HISTORY_TABLE,
+		Migrator::FATAL_ERROR_MARKERS_TABLE,
+		Migrator::NOTIFICATION_RULES_TABLE,
+		Migrator::DISPATCH_LOG_TABLE,
+	);
+
 	protected function setUp(): void {
 		parent::setUp();
 		( new CapabilityRegistrar() )->grant_to_administrator();
@@ -96,7 +103,7 @@ final class UninstallTest extends WP_UnitTestCase {
 		// Retention-gated: the tables, settings, and schema version remain.
 		$table = $wpdb->prefix . Migrator::AUDIT_LOG_TABLE;
 		$this->assertTrue( $this->table_exists( $table ) );
-		foreach ( self::M01_TABLES as $table_name ) {
+		foreach ( array_merge( self::M01_TABLES, self::M02_TABLES ) as $table_name ) {
 			$this->assertTrue( $this->table_exists( $wpdb->prefix . $table_name ), "Expected {$table_name} to still exist." );
 		}
 		$this->assertNotFalse( get_option( 'universal_telegram_db_version' ) );
@@ -162,7 +169,7 @@ final class UninstallTest extends WP_UnitTestCase {
 			$table = $wpdb->prefix . Migrator::AUDIT_LOG_TABLE;
 			$this->assertFalse( $this->table_exists( $table ) );
 
-			foreach ( self::M01_TABLES as $table_name ) {
+			foreach ( array_merge( self::M01_TABLES, self::M02_TABLES ) as $table_name ) {
 				$this->assertFalse( $this->table_exists( $wpdb->prefix . $table_name ), "Expected {$table_name} to have been dropped." );
 			}
 
@@ -324,8 +331,76 @@ final class UninstallTest extends WP_UnitTestCase {
 				UNIQUE KEY scope (scope_type, scope_id)
 			) {$charset_collate}"
 		);
+		$event_history_table = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$event_history_table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				event_id CHAR(64) NOT NULL,
+				event_type VARCHAR(190) NOT NULL,
+				schema_version SMALLINT UNSIGNED NOT NULL,
+				occurred_at DATETIME NOT NULL,
+				source VARCHAR(32) NOT NULL,
+				projected_fields_json TEXT NOT NULL,
+				created_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY event_id (event_id),
+				KEY event_type_occurred_at (event_type, occurred_at)
+			) {$charset_collate}"
+		);
+
+		$fatal_markers_table = $wpdb->prefix . Migrator::FATAL_ERROR_MARKERS_TABLE;
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$fatal_markers_table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				error_type VARCHAR(32) NOT NULL,
+				location_hash CHAR(64) NOT NULL,
+				status VARCHAR(16) NOT NULL DEFAULT 'pending',
+				occurred_at DATETIME NOT NULL,
+				promoted_at DATETIME NULL,
+				created_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY error_type_location (error_type, location_hash)
+			) {$charset_collate}"
+		);
+
+		$rules_table = $wpdb->prefix . Migrator::NOTIFICATION_RULES_TABLE;
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$rules_table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				name VARCHAR(190) NOT NULL,
+				event_type VARCHAR(190) NOT NULL,
+				schema_version_min SMALLINT UNSIGNED NOT NULL,
+				conditions_json TEXT NOT NULL,
+				bot_id BIGINT UNSIGNED NOT NULL,
+				destination_id BIGINT UNSIGNED NOT NULL,
+				template TEXT NOT NULL,
+				enabled TINYINT(1) NOT NULL DEFAULT 1,
+				priority INT NOT NULL DEFAULT 100,
+				cooldown_seconds INT UNSIGNED NOT NULL DEFAULT 0,
+				created_at DATETIME NOT NULL,
+				updated_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				KEY event_type_enabled_priority (event_type, enabled, priority, id)
+			) {$charset_collate}"
+		);
+
+		$dispatch_log_table = $wpdb->prefix . Migrator::DISPATCH_LOG_TABLE;
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$dispatch_log_table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				rule_id BIGINT UNSIGNED NOT NULL,
+				event_id CHAR(64) NOT NULL,
+				outbound_message_uuid CHAR(36) NULL,
+				result VARCHAR(32) NOT NULL,
+				reason_code VARCHAR(64) NULL,
+				dispatched_at DATETIME NOT NULL,
+				updated_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY rule_event (rule_id, event_id)
+			) {$charset_collate}"
+		);
 		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 
-		update_option( 'universal_telegram_db_version', 7 );
+		update_option( 'universal_telegram_db_version', 10 );
 	}
 }

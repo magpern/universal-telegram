@@ -8,11 +8,12 @@ namespace UniversalTelegram\Tests\Core;
 use PHPUnit\Framework\TestCase;
 
 /**
- * The five boundaries M01 does not implement (Events, Automations,
- * Conversations, ChatWidget, AI — see docs/ARCHITECTURE.md) must not exist
- * under src/ until their own owning milestone's frozen plan authorizes
- * creating them. Telegram was permitted starting at M01
- * (docs/plans/m01-telegram-connectivity-plan-v1.md).
+ * The three boundaries not yet implemented (Conversations, ChatWidget, AI —
+ * see docs/ARCHITECTURE.md) must not exist under src/ until their own
+ * owning milestone's frozen plan authorizes creating them. Telegram was
+ * permitted starting at M01 (docs/plans/m01-telegram-connectivity-plan-v1.md);
+ * Events and Automations were permitted starting at M02
+ * (docs/plans/m02-normalized-events-and-notifications-plan-v1.md).
  */
 final class StructuralBoundariesTest extends TestCase {
 
@@ -21,8 +22,6 @@ final class StructuralBoundariesTest extends TestCase {
 	 */
 	public function undocumented_boundaries_provider(): array {
 		return array(
-			'Events'        => array( 'Events' ),
-			'Automations'   => array( 'Automations' ),
 			'Conversations' => array( 'Conversations' ),
 			'ChatWidget'    => array( 'ChatWidget' ),
 			'AI'            => array( 'AI' ),

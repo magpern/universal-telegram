@@ -51,6 +51,13 @@ final class Uninstaller {
 		Migrator::RATE_LIMIT_TABLE,
 	);
 
+	private const M02_TABLES = array(
+		Migrator::EVENT_HISTORY_TABLE,
+		Migrator::FATAL_ERROR_MARKERS_TABLE,
+		Migrator::NOTIFICATION_RULES_TABLE,
+		Migrator::DISPATCH_LOG_TABLE,
+	);
+
 	/**
 	 * Runs the uninstall routine.
 	 */
@@ -75,6 +82,7 @@ final class Uninstaller {
 
 		$this->drop_audit_table();
 		$this->drop_m01_tables();
+		$this->drop_m02_tables();
 		delete_option( Settings::OPTION_NAME );
 		delete_option( 'universal_telegram_db_version' );
 
@@ -133,6 +141,19 @@ final class Uninstaller {
 		global $wpdb;
 
 		foreach ( self::M01_TABLES as $table_name ) {
+			$table = $wpdb->prefix . $table_name;
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
+			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
+		}
+	}
+
+	/**
+	 * Drops the four tables M02 added (docs/adr/0017, M02 plan §5.5).
+	 */
+	private function drop_m02_tables(): void {
+		global $wpdb;
+
+		foreach ( self::M02_TABLES as $table_name ) {
 			$table = $wpdb->prefix . $table_name;
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
 			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
