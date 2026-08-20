@@ -6,6 +6,8 @@
 namespace UniversalTelegram\Tests\Integration\Events;
 
 use UniversalTelegram\Audit\AuditLogger;
+use UniversalTelegram\Automations\NotificationRuleRepository;
+use UniversalTelegram\Automations\RuleEvaluator;
 use UniversalTelegram\Events\EventDispatcher;
 use UniversalTelegram\Events\EventEmitter;
 use UniversalTelegram\Events\EventEnvelope;
@@ -32,15 +34,17 @@ final class EventEmitterTest extends WP_UnitTestCase {
 	}
 
 	private function real_dispatcher( Registry $registry ): EventDispatcher {
-		$history = new EventHistoryRepository( new SchemaHealth(), $registry, new Redactor() );
+		$history        = new EventHistoryRepository( new SchemaHealth(), $registry, new Redactor() );
+		$rule_evaluator = new RuleEvaluator( new NotificationRuleRepository( new SchemaHealth(), $registry ), $registry );
 
-		return new EventDispatcher( $history );
+		return new EventDispatcher( $history, $rule_evaluator );
 	}
 
 	public function test_a_downstream_exception_never_propagates_out_of_emit(): void {
 		$registry   = $this->registered_registry();
 		$history    = new EventHistoryRepository( new SchemaHealth(), $registry, new Redactor() );
-		$dispatcher = new class( $history ) extends EventDispatcher {
+		$rule_evaluator = new RuleEvaluator( new NotificationRuleRepository( new SchemaHealth(), $registry ), $registry );
+		$dispatcher = new class( $history, $rule_evaluator ) extends EventDispatcher {
 			public function handle( EventEnvelope $event ): void {
 				throw new \RuntimeException( 'Simulated downstream failure.' );
 			}

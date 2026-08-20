@@ -14,6 +14,8 @@ use UniversalTelegram\Administration\Telegram\BotManagementController;
 use UniversalTelegram\Administration\Telegram\BotManagementPage;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
+use UniversalTelegram\Automations\NotificationRuleRepository;
+use UniversalTelegram\Automations\RuleEvaluator;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Security\CredentialVault;
@@ -472,10 +474,12 @@ final class Plugin {
 		// Events/Automations (M02): always constructed, unconditionally,
 		// regardless of schema availability — individual repositories
 		// check SchemaHealth at their own point of use (docs/adr/0007).
-		$this->event_registry          = new Registry();
-		$event_history_repository      = new EventHistoryRepository( $this->schema_health, $this->event_registry, new Redactor() );
-		$this->event_dispatcher        = new EventDispatcher( $event_history_repository );
-		$this->event_emitter           = new EventEmitter( $this->event_registry, $this->event_dispatcher, $this->audit_logger );
+		$this->event_registry           = new Registry();
+		$event_history_repository       = new EventHistoryRepository( $this->schema_health, $this->event_registry, new Redactor() );
+		$notification_rule_repository   = new NotificationRuleRepository( $this->schema_health, $this->event_registry );
+		$rule_evaluator                 = new RuleEvaluator( $notification_rule_repository, $this->event_registry );
+		$this->event_dispatcher         = new EventDispatcher( $event_history_repository, $rule_evaluator );
+		$this->event_emitter            = new EventEmitter( $this->event_registry, $this->event_dispatcher, $this->audit_logger );
 
 		// Core WordPress event emitters (M02 plan §8): constructed and
 		// wired unconditionally, at bootstrap. Each registers its own
