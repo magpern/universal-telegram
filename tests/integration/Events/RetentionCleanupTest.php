@@ -100,7 +100,7 @@ final class RetentionCleanupTest extends WP_UnitTestCase {
 
 		( new RetentionCleanup( new SchemaHealth(), 90, 90, 30 ) )->run();
 
-		$table = $wpdb->prefix . Migrator::FATAL_ERROR_MARKERS_TABLE;
+		$table     = $wpdb->prefix . Migrator::FATAL_ERROR_MARKERS_TABLE;
 		$remaining = $wpdb->get_col( "SELECT location_hash FROM {$table}" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 
 		$this->assertNotContains( hash( 'sha256', 'old-loc' ), $remaining );

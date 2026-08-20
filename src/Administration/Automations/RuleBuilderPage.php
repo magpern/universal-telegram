@@ -30,7 +30,7 @@ final class RuleBuilderPage {
 	 * Constructor.
 	 *
 	 * @param NotificationRuleRepository $rules        Notification rules.
-	 * @param Registry                    $registry     The current request's event registry.
+	 * @param Registry                   $registry     The current request's event registry.
 	 * @param BotProfileRepository       $bots         Bot profiles.
 	 * @param DestinationRepository      $destinations Destinations.
 	 */

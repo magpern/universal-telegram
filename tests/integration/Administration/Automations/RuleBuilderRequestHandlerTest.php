@@ -43,7 +43,7 @@ final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 		wp_set_current_user( $subscriber );
 
 		$_POST['_wpnonce'] = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
-		$_POST['op']        = 'save_rule';
+		$_POST['op']       = 'save_rule';
 
 		$rules   = new NotificationRuleRepository( new SchemaHealth(), $this->registry() );
 		$handler = $this->handler( $rules );
@@ -72,17 +72,25 @@ final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 		( new CapabilityRegistrar() )->grant_to_administrator();
 		wp_set_current_user( $admin );
 
-		$_POST['_wpnonce']          = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
-		$_POST['op']                = 'save_rule';
-		$_POST['name']              = 'Test';
-		$_POST['event_type']        = 'wordpress.user_registered';
+		$_POST['_wpnonce']           = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$_POST['op']                 = 'save_rule';
+		$_POST['name']               = 'Test';
+		$_POST['event_type']         = 'wordpress.user_registered';
 		$_POST['schema_version_min'] = '1';
-		$_POST['bot_id']            = '1';
-		$_POST['destination_id']    = '1';
-		$_POST['template']          = 'x';
-		$_POST['priority']          = '100';
-		$_POST['cooldown_seconds']  = '0';
-		$_POST['conditions_json']   = wp_json_encode( array( array( 'field' => 'subject.not_allowed', 'operator' => 'equals', 'value' => 'x' ) ) );
+		$_POST['bot_id']             = '1';
+		$_POST['destination_id']     = '1';
+		$_POST['template']           = 'x';
+		$_POST['priority']           = '100';
+		$_POST['cooldown_seconds']   = '0';
+		$_POST['conditions_json']    = wp_json_encode(
+			array(
+				array(
+					'field'    => 'subject.not_allowed',
+					'operator' => 'equals',
+					'value'    => 'x',
+				),
+			)
+		);
 
 		$registry = $this->registry();
 		$rules    = new NotificationRuleRepository( new SchemaHealth(), $registry );
@@ -98,17 +106,25 @@ final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 		( new CapabilityRegistrar() )->grant_to_administrator();
 		wp_set_current_user( $admin );
 
-		$_POST['_wpnonce']          = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
-		$_POST['op']                = 'save_rule';
-		$_POST['name']              = 'Test';
-		$_POST['event_type']        = 'wordpress.user_registered';
+		$_POST['_wpnonce']           = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$_POST['op']                 = 'save_rule';
+		$_POST['name']               = 'Test';
+		$_POST['event_type']         = 'wordpress.user_registered';
 		$_POST['schema_version_min'] = '1';
-		$_POST['bot_id']            = '1';
-		$_POST['destination_id']    = '1';
-		$_POST['template']          = 'x';
-		$_POST['priority']          = '100';
-		$_POST['cooldown_seconds']  = '0';
-		$_POST['conditions_json']   = wp_json_encode( array( array( 'field' => 'subject.user_id', 'operator' => 'equals', 'value' => 1 ) ) );
+		$_POST['bot_id']             = '1';
+		$_POST['destination_id']     = '1';
+		$_POST['template']           = 'x';
+		$_POST['priority']           = '100';
+		$_POST['cooldown_seconds']   = '0';
+		$_POST['conditions_json']    = wp_json_encode(
+			array(
+				array(
+					'field'    => 'subject.user_id',
+					'operator' => 'equals',
+					'value'    => 1,
+				),
+			)
+		);
 
 		$registry = $this->registry();
 		$rules    = new NotificationRuleRepository( new SchemaHealth(), $registry );

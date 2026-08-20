@@ -37,7 +37,7 @@ final class NotificationDispatcher {
 	 * @param DispatchLogRepository $dispatch_log       The idempotent dispatch-log state machine.
 	 * @param BotProfileRepository  $bots               Re-validated at dispatch time.
 	 * @param DestinationRepository $destinations        Re-validated at dispatch time.
-	 * @param Registry               $registry            Supplies the event type's allowed template fields.
+	 * @param Registry              $registry            Supplies the event type's allowed template fields.
 	 * @param TemplateRenderer      $template_renderer   Renders the rule's own template.
 	 * @param MessageDispatcher     $message_dispatcher  M01's own, unchanged outbound transport.
 	 */
@@ -54,7 +54,7 @@ final class NotificationDispatcher {
 	 * Executes the full dispatch sequence for one matched rule.
 	 *
 	 * @param \UniversalTelegram\Automations\NotificationRule $rule  The matched rule.
-	 * @param EventEnvelope                                    $event The event occurrence.
+	 * @param EventEnvelope                                   $event The event occurrence.
 	 */
 	public function dispatch( NotificationRule $rule, EventEnvelope $event ): void {
 		$claim = $this->dispatch_log->claim_or_reject( $rule->id(), $event->event_id(), DispatchLogResult::CLAIMED );

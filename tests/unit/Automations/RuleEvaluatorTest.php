@@ -131,7 +131,16 @@ final class RuleEvaluatorTest extends TestCase {
 
 	public function test_a_rule_with_a_matching_condition_is_matched(): void {
 		$registry = $this->registry();
-		$rule     = $this->rule( 1, array( array( 'field' => 'subject.post_id', 'operator' => 'equals', 'value' => 5 ) ) );
+		$rule     = $this->rule(
+			1,
+			array(
+				array(
+					'field'    => 'subject.post_id',
+					'operator' => 'equals',
+					'value'    => 5,
+				),
+			)
+		);
 
 		$repo = $this->createMock( NotificationRuleRepository::class );
 		$repo->method( 'for_event_type' )->willReturn( array( $rule ) );
@@ -148,7 +157,16 @@ final class RuleEvaluatorTest extends TestCase {
 
 	public function test_a_rule_with_a_non_matching_condition_is_rejected(): void {
 		$registry = $this->registry();
-		$rule     = $this->rule( 1, array( array( 'field' => 'subject.post_id', 'operator' => 'equals', 'value' => 999 ) ) );
+		$rule     = $this->rule(
+			1,
+			array(
+				array(
+					'field'    => 'subject.post_id',
+					'operator' => 'equals',
+					'value'    => 999,
+				),
+			)
+		);
 
 		$repo = $this->createMock( NotificationRuleRepository::class );
 		$repo->method( 'for_event_type' )->willReturn( array( $rule ) );
@@ -165,13 +183,22 @@ final class RuleEvaluatorTest extends TestCase {
 
 	public function test_an_unknown_operator_is_rejected_as_invalid_configuration(): void {
 		$registry = $this->registry();
-		$rule     = $this->rule( 1, array( array( 'field' => 'subject.post_id', 'operator' => 'not_a_real_operator', 'value' => 1 ) ) );
+		$rule     = $this->rule(
+			1,
+			array(
+				array(
+					'field'    => 'subject.post_id',
+					'operator' => 'not_a_real_operator',
+					'value'    => 1,
+				),
+			)
+		);
 
 		$repo = $this->createMock( NotificationRuleRepository::class );
 		$repo->method( 'for_event_type' )->willReturn( array( $rule ) );
 
-		$matched  = array();
-		$rejected = array();
+		$matched   = array();
+		$rejected  = array();
 		$evaluator = $this->recording_evaluator( $repo, $registry, $matched, $rejected );
 
 		$evaluator->evaluate( $this->envelope( $registry, 5 ) );

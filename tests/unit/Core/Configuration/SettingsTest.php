@@ -93,8 +93,8 @@ final class SettingsTest extends TestCase {
 			'telegram_rate_limit_fallback_wait_seconds'   => array( 'telegram_rate_limit_fallback_wait_seconds' ),
 			'telegram_webhook_rotation_max_pending_hours' => array( 'telegram_webhook_rotation_max_pending_hours' ),
 			'event_retention_days'                        => array( 'event_retention_days' ),
-			'dispatch_log_retention_days'                  => array( 'dispatch_log_retention_days' ),
-			'fatal_marker_retention_days'                  => array( 'fatal_marker_retention_days' ),
+			'dispatch_log_retention_days'                 => array( 'dispatch_log_retention_days' ),
+			'fatal_marker_retention_days'                 => array( 'fatal_marker_retention_days' ),
 		);
 	}
 }

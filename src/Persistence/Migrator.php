@@ -22,17 +22,17 @@ namespace UniversalTelegram\Persistence;
  */
 class Migrator {
 
-	public const AUDIT_LOG_TABLE            = 'universal_telegram_audit_log';
-	public const BOTS_TABLE                 = 'universal_telegram_bots';
-	public const DESTINATIONS_TABLE         = 'universal_telegram_destinations';
-	public const OUTBOUND_MESSAGES_TABLE    = 'universal_telegram_outbound_messages';
-	public const INBOUND_UPDATES_TABLE      = 'universal_telegram_inbound_updates';
-	public const CIRCUIT_BREAKER_TABLE      = 'universal_telegram_circuit_breaker_state';
-	public const RATE_LIMIT_TABLE           = 'universal_telegram_rate_limit_state';
-	public const EVENT_HISTORY_TABLE        = 'universal_telegram_event_history';
-	public const FATAL_ERROR_MARKERS_TABLE  = 'universal_telegram_fatal_error_markers';
-	public const NOTIFICATION_RULES_TABLE   = 'universal_telegram_notification_rules';
-	public const DISPATCH_LOG_TABLE         = 'universal_telegram_notification_dispatch_log';
+	public const AUDIT_LOG_TABLE           = 'universal_telegram_audit_log';
+	public const BOTS_TABLE                = 'universal_telegram_bots';
+	public const DESTINATIONS_TABLE        = 'universal_telegram_destinations';
+	public const OUTBOUND_MESSAGES_TABLE   = 'universal_telegram_outbound_messages';
+	public const INBOUND_UPDATES_TABLE     = 'universal_telegram_inbound_updates';
+	public const CIRCUIT_BREAKER_TABLE     = 'universal_telegram_circuit_breaker_state';
+	public const RATE_LIMIT_TABLE          = 'universal_telegram_rate_limit_state';
+	public const EVENT_HISTORY_TABLE       = 'universal_telegram_event_history';
+	public const FATAL_ERROR_MARKERS_TABLE = 'universal_telegram_fatal_error_markers';
+	public const NOTIFICATION_RULES_TABLE  = 'universal_telegram_notification_rules';
+	public const DISPATCH_LOG_TABLE        = 'universal_telegram_notification_dispatch_log';
 
 	private const DB_VERSION_OPTION = 'universal_telegram_db_version';
 
@@ -128,15 +128,15 @@ class Migrator {
 	 */
 	protected function run_step( int $number ): void {
 		$steps = array(
-			1 => array( array( $this, 'step_1_create_audit_log_table' ), array( $this, 'verify_step_1' ) ),
-			2 => array( array( $this, 'step_2_create_bots_table' ), array( $this, 'verify_step_2' ) ),
-			3 => array( array( $this, 'step_3_create_destinations_table' ), array( $this, 'verify_step_3' ) ),
-			4 => array( array( $this, 'step_4_create_outbound_messages_table' ), array( $this, 'verify_step_4' ) ),
-			5 => array( array( $this, 'step_5_create_inbound_updates_table' ), array( $this, 'verify_step_5' ) ),
-			6 => array( array( $this, 'step_6_create_circuit_breaker_table' ), array( $this, 'verify_step_6' ) ),
-			7 => array( array( $this, 'step_7_create_rate_limit_table' ), array( $this, 'verify_step_7' ) ),
-			8 => array( array( $this, 'step_8_create_events_and_markers_tables' ), array( $this, 'verify_step_8' ) ),
-			9 => array( array( $this, 'step_9_create_notification_rules_table' ), array( $this, 'verify_step_9' ) ),
+			1  => array( array( $this, 'step_1_create_audit_log_table' ), array( $this, 'verify_step_1' ) ),
+			2  => array( array( $this, 'step_2_create_bots_table' ), array( $this, 'verify_step_2' ) ),
+			3  => array( array( $this, 'step_3_create_destinations_table' ), array( $this, 'verify_step_3' ) ),
+			4  => array( array( $this, 'step_4_create_outbound_messages_table' ), array( $this, 'verify_step_4' ) ),
+			5  => array( array( $this, 'step_5_create_inbound_updates_table' ), array( $this, 'verify_step_5' ) ),
+			6  => array( array( $this, 'step_6_create_circuit_breaker_table' ), array( $this, 'verify_step_6' ) ),
+			7  => array( array( $this, 'step_7_create_rate_limit_table' ), array( $this, 'verify_step_7' ) ),
+			8  => array( array( $this, 'step_8_create_events_and_markers_tables' ), array( $this, 'verify_step_8' ) ),
+			9  => array( array( $this, 'step_9_create_notification_rules_table' ), array( $this, 'verify_step_9' ) ),
 			10 => array( array( $this, 'step_10_create_notification_dispatch_log_table' ), array( $this, 'verify_step_10' ) ),
 		);
 

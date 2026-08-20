@@ -46,15 +46,15 @@ final class NotificationDispatcherTest extends WP_UnitTestCase {
 	}
 
 	private function build(): array {
-		$schema_health    = new SchemaHealth();
-		$vault            = new CredentialVault();
-		$bots             = new BotProfileRepository( $schema_health, $vault );
-		$destinations     = new DestinationRepository( $schema_health );
-		$messages         = new OutboundMessageRepository( $schema_health, $vault );
-		$queue_dispatcher = new Dispatcher( $schema_health );
+		$schema_health      = new SchemaHealth();
+		$vault              = new CredentialVault();
+		$bots               = new BotProfileRepository( $schema_health, $vault );
+		$destinations       = new DestinationRepository( $schema_health );
+		$messages           = new OutboundMessageRepository( $schema_health, $vault );
+		$queue_dispatcher   = new Dispatcher( $schema_health );
 		$message_dispatcher = new MessageDispatcher( $messages, $queue_dispatcher );
-		$dispatch_log     = new DispatchLogRepository( $schema_health );
-		$registry         = $this->registry();
+		$dispatch_log       = new DispatchLogRepository( $schema_health );
+		$registry           = $this->registry();
 
 		$dispatcher = new NotificationDispatcher(
 			$dispatch_log,

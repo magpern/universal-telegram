@@ -13,9 +13,9 @@ use UniversalTelegram\Events\Registry;
 use UniversalTelegram\Privacy\Classification;
 
 /**
- * wordpress.update_available is checked daily against the site's own
+ * WordPress.update_available is checked daily against the site's own
  * update transients, deduplicated per component/version/day.
- * wordpress.update_completed fires on upgrader_process_complete,
+ * WordPress.update_completed fires on upgrader_process_complete,
  * deduplicated per upgrade action's own signature (M02 plan §8).
  */
 final class UpdateEmitter {
@@ -35,7 +35,7 @@ final class UpdateEmitter {
 			self::UPDATE_AVAILABLE,
 			1,
 			array(
-				'payload.component'  => Classification::PUBLIC,
+				'payload.component'   => Classification::PUBLIC,
 				'payload.new_version' => Classification::PUBLIC,
 			),
 			array( 'payload.component', 'payload.new_version' ),
@@ -121,7 +121,7 @@ final class UpdateEmitter {
 	}
 
 	/**
-	 * Emits one wordpress.update_available occurrence, deduplicated per
+	 * Emits one WordPress.update_available occurrence, deduplicated per
 	 * component/version/calendar day.
 	 *
 	 * @param string $component  The updatable component's stable identifier.
@@ -132,7 +132,12 @@ final class UpdateEmitter {
 
 		universal_telegram_emit_event(
 			self::UPDATE_AVAILABLE,
-			array( 'payload' => array( 'component' => $component, 'new_version' => $new_version ) ),
+			array(
+				'payload' => array(
+					'component'   => $component,
+					'new_version' => $new_version,
+				),
+			),
 			hash( 'sha256', "update_available:{$component}:{$new_version}:{$day}" )
 		);
 	}
@@ -158,7 +163,12 @@ final class UpdateEmitter {
 
 		universal_telegram_emit_event(
 			self::UPDATE_COMPLETED,
-			array( 'payload' => array( 'type' => $type, 'action' => $action ) ),
+			array(
+				'payload' => array(
+					'type'   => $type,
+					'action' => $action,
+				),
+			),
 			hash( 'sha256', 'update_completed:' . wp_json_encode( $signature_source ) )
 		);
 	}

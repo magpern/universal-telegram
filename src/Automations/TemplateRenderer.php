@@ -33,9 +33,9 @@ final class TemplateRenderer {
 	/**
 	 * Renders a template against one event occurrence.
 	 *
-	 * @param string               $template       The message template.
-	 * @param EventEnvelope        $event          The event occurrence.
-	 * @param array<int, string>   $allowed_fields The event type's own allowed variable fields.
+	 * @param string             $template       The message template.
+	 * @param EventEnvelope      $event          The event occurrence.
+	 * @param array<int, string> $allowed_fields The event type's own allowed variable fields.
 	 *
 	 * @return string
 	 */
@@ -54,9 +54,9 @@ final class TemplateRenderer {
 	/**
 	 * Resolves one {{ field.path }} token.
 	 *
-	 * @param string              $field          The dot-notation field path.
-	 * @param EventEnvelope       $event          The event occurrence.
-	 * @param array<int, string>  $allowed_fields The event type's own allowed variable fields.
+	 * @param string             $field          The dot-notation field path.
+	 * @param EventEnvelope      $event          The event occurrence.
+	 * @param array<int, string> $allowed_fields The event type's own allowed variable fields.
 	 *
 	 * @return string
 	 */

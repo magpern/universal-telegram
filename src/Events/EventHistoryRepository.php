@@ -50,9 +50,9 @@ final class EventHistoryRepository {
 			return;
 		}
 
-		$event_type          = $event->event_type();
-		$projection_fields   = $this->registry->history_projection_fields_for( $event_type );
-		$classification_map  = $this->registry->classification_map_for( $event_type );
+		$event_type         = $event->event_type();
+		$projection_fields  = $this->registry->history_projection_fields_for( $event_type );
+		$classification_map = $this->registry->classification_map_for( $event_type );
 
 		$candidate = array();
 		foreach ( $projection_fields as $path ) {
@@ -110,8 +110,8 @@ final class EventHistoryRepository {
 	 * intermediate arrays as needed.
 	 *
 	 * @param array<string, mixed> $data  The array to modify, by reference.
-	 * @param string                $path  The dot-notation path.
-	 * @param mixed                 $value The value to set.
+	 * @param string               $path  The dot-notation path.
+	 * @param mixed                $value The value to set.
 	 */
 	private function set_path( array &$data, string $path, $value ): void {
 		$segments = explode( '.', $path );

@@ -29,9 +29,9 @@ final class EventEmitter {
 	/**
 	 * Constructor.
 	 *
-	 * @param Registry       $registry   The current request's event registry.
+	 * @param Registry        $registry   The current request's event registry.
 	 * @param EventDispatcher $dispatcher Internal ingestion orchestration.
-	 * @param AuditLogger    $audit      Records the fixed failure code on any downstream failure.
+	 * @param AuditLogger     $audit      Records the fixed failure code on any downstream failure.
 	 */
 	public function __construct(
 		private readonly Registry $registry,

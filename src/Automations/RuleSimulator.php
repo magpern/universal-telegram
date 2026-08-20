@@ -29,9 +29,9 @@ final class RuleSimulator {
 	 * Constructor.
 	 *
 	 * @param NotificationRuleRepository $rules        Supplies each event type's own enabled rules.
-	 * @param Registry                    $registry     The current request's event registry.
-	 * @param DispatchLogRepository       $dispatch_log Required only to satisfy RuleEvaluator's constructor; never invoked during simulation.
-	 * @param NotificationDispatcher      $dispatcher   Required only to satisfy RuleEvaluator's constructor; never invoked during simulation.
+	 * @param Registry                   $registry     The current request's event registry.
+	 * @param DispatchLogRepository      $dispatch_log Required only to satisfy RuleEvaluator's constructor; never invoked during simulation.
+	 * @param NotificationDispatcher     $dispatcher   Required only to satisfy RuleEvaluator's constructor; never invoked during simulation.
 	 */
 	public function __construct(
 		private readonly NotificationRuleRepository $rules,
@@ -43,9 +43,9 @@ final class RuleSimulator {
 	/**
 	 * Runs a simulation.
 	 *
-	 * @param string                $event_type      A registered event type.
-	 * @param array<string, mixed>  $sample_data     actor/subject/context/payload sub-arrays.
-	 * @param string                $idempotency_key A sample idempotency key. Never written anywhere.
+	 * @param string               $event_type      A registered event type.
+	 * @param array<string, mixed> $sample_data     actor/subject/context/payload sub-arrays.
+	 * @param string               $idempotency_key A sample idempotency key. Never written anywhere.
 	 *
 	 * @return SimulationResult
 	 */
@@ -69,16 +69,33 @@ final class RuleSimulator {
 		$evaluator = new class( $this->rules, $this->registry, $this->dispatch_log, $this->dispatcher, $entries ) extends RuleEvaluator {
 
 			/**
+			 * Reference to the enclosing simulate() call's own $entries array.
+			 *
 			 * @var array<int, array{rule_id: int, rule_name: string, outcome: string, reason_code: string|null}>
 			 */
 			private array $entries_ref;
 
+			/**
+			 * Constructor.
+			 *
+			 * @param NotificationRuleRepository                                                                    $rules        Supplies each event type's own enabled rules.
+			 * @param Registry                                                                                      $registry     The current request's event registry.
+			 * @param DispatchLogRepository                                                                         $dispatch_log Never invoked; satisfies the parent constructor only.
+			 * @param NotificationDispatcher                                                                        $dispatcher   Never invoked; satisfies the parent constructor only.
+			 * @param array<int, array{rule_id: int, rule_name: string, outcome: string, reason_code: string|null}> $entries_ref Reference to the outer $entries array.
+			 */
 			public function __construct( $rules, $registry, $dispatch_log, $dispatcher, array &$entries_ref ) {
 				parent::__construct( $rules, $registry, $dispatch_log, $dispatcher );
 				$this->entries_ref = &$entries_ref;
 			}
 
-			protected function on_matched( NotificationRule $rule, EventEnvelope $event ): void {
+			/**
+			 * Records a matched outcome instead of dispatching.
+			 *
+			 * @param NotificationRule $rule  The matched rule.
+			 * @param EventEnvelope    $event Unused; required only to match the parent signature.
+			 */
+			protected function on_matched( NotificationRule $rule, EventEnvelope $event ): void { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- $event is required to match the parent RuleEvaluator::on_matched() signature.
 				$this->entries_ref[] = array(
 					'rule_id'     => $rule->id(),
 					'rule_name'   => $rule->name(),
@@ -87,6 +104,13 @@ final class RuleSimulator {
 				);
 			}
 
+			/**
+			 * Records a rejected outcome instead of writing to the dispatch log.
+			 *
+			 * @param NotificationRule $rule        The rejected rule.
+			 * @param EventEnvelope    $event       Unused; required only to match the parent signature.
+			 * @param string           $reason_code The fixed rejection reason code.
+			 */
 			protected function on_rejected( NotificationRule $rule, EventEnvelope $event, string $reason_code ): void {
 				$this->entries_ref[] = array(
 					'rule_id'     => $rule->id(),

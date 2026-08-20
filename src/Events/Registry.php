@@ -21,28 +21,28 @@ use UniversalTelegram\Privacy\Classification;
 final class Registry {
 
 	/**
-	 * event_type => schema_version.
+	 * Maps each event type to its registered schema version.
 	 *
 	 * @var array<string, int>
 	 */
 	private array $schema_versions = array();
 
 	/**
-	 * event_type => (dot-path => Classification).
+	 * Maps each event type to its dot-path-to-Classification map.
 	 *
 	 * @var array<string, array<string, Classification>>
 	 */
 	private array $classification_maps = array();
 
 	/**
-	 * event_type => list of allowed variable-field dot-paths.
+	 * Maps each event type to its list of allowed variable-field dot-paths.
 	 *
 	 * @var array<string, array<int, string>>
 	 */
 	private array $allowed_variable_fields = array();
 
 	/**
-	 * event_type => list of PUBLIC-only history-projection dot-paths.
+	 * Maps each event type to its list of PUBLIC-only history-projection dot-paths.
 	 *
 	 * @var array<string, array<int, string>>
 	 */
@@ -52,11 +52,11 @@ final class Registry {
 	 * Registers one event type. Fail-closed on three independent checks
 	 * (M02 plan §5.2, docs/adr/0017).
 	 *
-	 * @param string                         $event_type                The namespaced, dot-separated event type.
-	 * @param int                            $schema_version            The event type's schema version.
-	 * @param array<string, Classification>  $field_classification_map  Dot-notation path to classification; every allowed field.
-	 * @param array<int, string>             $allowed_variable_fields    Subset of the map's paths; usable in conditions/templates only.
-	 * @param array<int, string>             $history_projection_fields  Subset of the map's paths; MUST be classified PUBLIC.
+	 * @param string                        $event_type                The namespaced, dot-separated event type.
+	 * @param int                           $schema_version            The event type's schema version.
+	 * @param array<string, Classification> $field_classification_map  Dot-notation path to classification; every allowed field.
+	 * @param array<int, string>            $allowed_variable_fields    Subset of the map's paths; usable in conditions/templates only.
+	 * @param array<int, string>            $history_projection_fields  Subset of the map's paths; MUST be classified PUBLIC.
 	 *
 	 * @throws EventTypeAlreadyRegisteredException If (event_type, schema_version) was already registered.
 	 * @throws UnclassifiedFieldException          If an allowed/history field is not a member of the classification map.
@@ -91,10 +91,10 @@ final class Registry {
 			}
 		}
 
-		$this->schema_versions[ $event_type ]            = $schema_version;
-		$this->classification_maps[ $event_type ]        = $field_classification_map;
-		$this->allowed_variable_fields[ $event_type ]     = $allowed_variable_fields;
-		$this->history_projection_fields[ $event_type ]   = $history_projection_fields;
+		$this->schema_versions[ $event_type ]           = $schema_version;
+		$this->classification_maps[ $event_type ]       = $field_classification_map;
+		$this->allowed_variable_fields[ $event_type ]   = $allowed_variable_fields;
+		$this->history_projection_fields[ $event_type ] = $history_projection_fields;
 	}
 
 	/**
@@ -170,10 +170,10 @@ final class Registry {
 
 		foreach ( $this->schema_versions as $event_type => $schema_version ) {
 			$result[] = array(
-				'event_type'                 => $event_type,
-				'schema_version'              => $schema_version,
-				'allowed_variable_fields'     => $this->allowed_variable_fields[ $event_type ] ?? array(),
-				'history_projection_fields'   => $this->history_projection_fields[ $event_type ] ?? array(),
+				'event_type'                => $event_type,
+				'schema_version'            => $schema_version,
+				'allowed_variable_fields'   => $this->allowed_variable_fields[ $event_type ] ?? array(),
+				'history_projection_fields' => $this->history_projection_fields[ $event_type ] ?? array(),
 			);
 		}
 

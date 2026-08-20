@@ -46,7 +46,7 @@ final class MigratorEventsSchemaTest extends WP_UnitTestCase {
 	public function test_event_history_table_has_the_documented_unique_event_id_key(): void {
 		global $wpdb;
 
-		$table = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
+		$table   = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
 		$indexes = $wpdb->get_results( "SHOW INDEX FROM {$table} WHERE Key_name = 'event_id'" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$this->assertNotEmpty( $indexes );

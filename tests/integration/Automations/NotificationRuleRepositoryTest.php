@@ -36,7 +36,13 @@ final class NotificationRuleRepositoryTest extends WP_UnitTestCase {
 			'Test rule',
 			'wordpress.user_registered',
 			1,
-			array( array( 'field' => 'subject.not_allowed', 'operator' => 'equals', 'value' => 'x' ) ),
+			array(
+				array(
+					'field'    => 'subject.not_allowed',
+					'operator' => 'equals',
+					'value'    => 'x',
+				),
+			),
 			1,
 			1,
 			'Hello',
@@ -54,7 +60,13 @@ final class NotificationRuleRepositoryTest extends WP_UnitTestCase {
 			'Test rule',
 			'wordpress.user_registered',
 			1,
-			array( array( 'field' => 'subject.user_id', 'operator' => 'equals', 'value' => 42 ) ),
+			array(
+				array(
+					'field'    => 'subject.user_id',
+					'operator' => 'equals',
+					'value'    => 42,
+				),
+			),
 			1,
 			1,
 			'Hello {{ subject.user_id }}',
@@ -65,7 +77,16 @@ final class NotificationRuleRepositoryTest extends WP_UnitTestCase {
 
 		$this->assertNotNull( $rule );
 		$this->assertSame( 'Test rule', $rule->name() );
-		$this->assertSame( array( array( 'field' => 'subject.user_id', 'operator' => 'equals', 'value' => 42 ) ), $rule->conditions() );
+		$this->assertSame(
+			array(
+				array(
+					'field'    => 'subject.user_id',
+					'operator' => 'equals',
+					'value'    => 42,
+				),
+			),
+			$rule->conditions()
+		);
 	}
 
 	public function test_for_event_type_orders_by_priority_then_id(): void {

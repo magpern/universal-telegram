@@ -21,7 +21,7 @@ use WP_Post;
  */
 final class ContentEmitter {
 
-	public const POST_PUBLISHED     = 'wordpress.post_published';
+	public const POST_PUBLISHED    = 'wordpress.post_published';
 	public const COMMENT_SUBMITTED = 'wordpress.comment_submitted';
 
 	/**

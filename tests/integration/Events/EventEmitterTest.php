@@ -41,16 +41,16 @@ final class EventEmitterTest extends WP_UnitTestCase {
 	}
 
 	public function test_a_downstream_exception_never_propagates_out_of_emit(): void {
-		$registry   = $this->registered_registry();
-		$history    = new EventHistoryRepository( new SchemaHealth(), $registry, new Redactor() );
+		$registry       = $this->registered_registry();
+		$history        = new EventHistoryRepository( new SchemaHealth(), $registry, new Redactor() );
 		$rule_evaluator = new RuleEvaluator( new NotificationRuleRepository( new SchemaHealth(), $registry ), $registry );
-		$dispatcher = new class( $history, $rule_evaluator ) extends EventDispatcher {
+		$dispatcher     = new class( $history, $rule_evaluator ) extends EventDispatcher {
 			public function handle( EventEnvelope $event ): void {
 				throw new \RuntimeException( 'Simulated downstream failure.' );
 			}
 		};
-		$audit   = new AuditLogger( new SchemaHealth(), new Redactor() );
-		$emitter = new EventEmitter( $registry, $dispatcher, $audit );
+		$audit          = new AuditLogger( new SchemaHealth(), new Redactor() );
+		$emitter        = new EventEmitter( $registry, $dispatcher, $audit );
 
 		// No exception should escape this call.
 		$emitter->emit( 'wordpress.user_registered', array( 'subject' => array( 'user_id' => 1 ) ), 'key' );

@@ -17,7 +17,7 @@ namespace UniversalTelegram\Events;
  */
 enum EventSource: string {
 	case WORDPRESS_CORE = 'wordpress_core';
-	case WOOCOMMERCE = 'woocommerce';
-	case VISITOR = 'visitor';
-	case CUSTOM = 'custom';
+	case WOOCOMMERCE    = 'woocommerce';
+	case VISITOR        = 'visitor';
+	case CUSTOM         = 'custom';
 }

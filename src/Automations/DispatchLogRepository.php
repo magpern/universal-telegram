@@ -33,13 +33,14 @@ final class DispatchLogRepository {
 	 * Atomically claims or rejects one (rule_id, event_id) pair. Returns
 	 * null only if the schema is unavailable (no write attempted).
 	 *
-	 * @param int                $rule_id        The matched (or rejected) rule's primary key.
-	 * @param string             $event_id       The event's deterministic identity.
-	 * @param DispatchLogResult  $initial_result CLAIMED (a rule matched) or REJECTED (it did not).
+	 * @param int               $rule_id        The matched (or rejected) rule's primary key.
+	 * @param string            $event_id       The event's deterministic identity.
+	 * @param DispatchLogResult $initial_result CLAIMED (a rule matched) or REJECTED (it did not).
+	 * @param string|null       $reason_code    Set only when $initial_result is REJECTED.
 	 *
 	 * @return DispatchLogResult|null
 	 */
-	public function claim_or_reject( int $rule_id, string $event_id, DispatchLogResult $initial_result ): ?DispatchLogResult {
+	public function claim_or_reject( int $rule_id, string $event_id, DispatchLogResult $initial_result, ?string $reason_code = null ): ?DispatchLogResult {
 		if ( ! $this->schema_health->is_available() ) {
 			return null;
 		}
@@ -49,10 +50,16 @@ final class DispatchLogRepository {
 		$table = $wpdb->prefix . Migrator::DISPATCH_LOG_TABLE;
 		$now   = current_time( 'mysql', true );
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
+		// A null $reason_code must become a genuine SQL NULL, never an
+		// empty-string %s placeholder value (docs/closure/m01 precedent:
+		// $wpdb->prepare() coerces a null argument passed through %s to
+		// '', not NULL).
+		$reason_code_fragment = null === $reason_code ? 'NULL' : $wpdb->prepare( '%s', $reason_code ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- re-prepared immediately below as a single already-escaped fragment.
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input; $reason_code_fragment is itself either the fixed literal NULL or an already wpdb->prepare()'d value.
 		$affected = $wpdb->query(
 			$wpdb->prepare(
-				"INSERT IGNORE INTO {$table} (rule_id, event_id, result, dispatched_at, updated_at) VALUES (%d, %s, %s, %s, %s)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"INSERT IGNORE INTO {$table} (rule_id, event_id, result, reason_code, dispatched_at, updated_at) VALUES (%d, %s, %s, {$reason_code_fragment}, %s, %s)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 				$rule_id,
 				$event_id,
 				$initial_result->value,
@@ -72,21 +79,22 @@ final class DispatchLogRepository {
 	 * Convenience wrapper: records a rejected outcome for a (rule_id,
 	 * event_id) pair that never reached the claimed state.
 	 *
-	 * @param int    $rule_id  The rejected rule's primary key.
-	 * @param string $event_id The event's deterministic identity.
+	 * @param int    $rule_id     The rejected rule's primary key.
+	 * @param string $event_id    The event's deterministic identity.
+	 * @param string $reason_code The fixed rejection reason code.
 	 */
-	public function record_rejected( int $rule_id, string $event_id ): void {
-		$this->claim_or_reject( $rule_id, $event_id, DispatchLogResult::REJECTED );
+	public function record_rejected( int $rule_id, string $event_id, string $reason_code ): void {
+		$this->claim_or_reject( $rule_id, $event_id, DispatchLogResult::REJECTED, $reason_code );
 	}
 
 	/**
 	 * Updates a previously claimed row to its terminal state.
 	 *
-	 * @param int                $rule_id                The rule's primary key.
-	 * @param string             $event_id               The event's deterministic identity.
-	 * @param DispatchLogResult  $result                 The terminal result.
-	 * @param string|null        $outbound_message_uuid   Set only on a successful handoff, when known.
-	 * @param string|null        $reason_code             Set only on a skip/failure outcome.
+	 * @param int               $rule_id                The rule's primary key.
+	 * @param string            $event_id               The event's deterministic identity.
+	 * @param DispatchLogResult $result                 The terminal result.
+	 * @param string|null       $outbound_message_uuid   Set only on a successful handoff, when known.
+	 * @param string|null       $reason_code             Set only on a skip/failure outcome.
 	 */
 	public function update(
 		int $rule_id,
@@ -106,10 +114,10 @@ final class DispatchLogRepository {
 		$wpdb->update(
 			$table,
 			array(
-				'result'                 => $result->value,
-				'outbound_message_uuid'  => $outbound_message_uuid,
-				'reason_code'            => $reason_code,
-				'updated_at'             => current_time( 'mysql', true ),
+				'result'                => $result->value,
+				'outbound_message_uuid' => $outbound_message_uuid,
+				'reason_code'           => $reason_code,
+				'updated_at'            => current_time( 'mysql', true ),
 			),
 			array(
 				'rule_id'  => $rule_id,

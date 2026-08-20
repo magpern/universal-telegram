@@ -30,7 +30,7 @@ final class RuleSimulatorPage {
 	 * Constructor.
 	 *
 	 * @param RuleSimulator $simulator The simulation engine.
-	 * @param Registry       $registry  The current request's event registry.
+	 * @param Registry      $registry  The current request's event registry.
 	 */
 	public function __construct(
 		private readonly RuleSimulator $simulator,
@@ -92,7 +92,7 @@ final class RuleSimulatorPage {
 	 */
 	private function render_result(): void {
 		$event_type  = isset( $_GET['event_type'] ) ? sanitize_text_field( wp_unslash( $_GET['event_type'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$sample_json = isset( $_GET['sample_data'] ) ? wp_unslash( $_GET['sample_data'] ) : '{}'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$sample_json = isset( $_GET['sample_data'] ) ? sanitize_textarea_field( wp_unslash( $_GET['sample_data'] ) ) : '{}'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$sample_data = json_decode( (string) $sample_json, true );
 
 		if ( ! is_array( $sample_data ) ) {

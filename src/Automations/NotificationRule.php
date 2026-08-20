@@ -19,19 +19,19 @@ final class NotificationRule {
 	/**
 	 * Constructor.
 	 *
-	 * @param int                             $id                  Primary key.
-	 * @param string                          $name                Admin-facing name.
-	 * @param string                          $event_type          The triggering event type.
-	 * @param int                             $schema_version_min  The minimum schema version this rule applies to.
+	 * @param int                                                              $id                  Primary key.
+	 * @param string                                                           $name                Admin-facing name.
+	 * @param string                                                           $event_type          The triggering event type.
+	 * @param int                                                              $schema_version_min  The minimum schema version this rule applies to.
 	 * @param array<int, array{field: string, operator: string, value: mixed}> $conditions Flat AND-only clause array.
-	 * @param int                             $bot_id              The Telegram bot to send through.
-	 * @param int                             $destination_id      The Telegram destination to send to.
-	 * @param string                          $template            The message template.
-	 * @param bool                            $enabled             Whether this rule is currently evaluated.
-	 * @param int                             $priority            Deterministic evaluation ordering (ascending).
-	 * @param int                             $cooldown_seconds    Minimum seconds between successful dispatches.
-	 * @param string                          $created_at          Creation timestamp.
-	 * @param string                          $updated_at          Last-update timestamp.
+	 * @param int                                                              $bot_id              The Telegram bot to send through.
+	 * @param int                                                              $destination_id      The Telegram destination to send to.
+	 * @param string                                                           $template            The message template.
+	 * @param bool                                                             $enabled             Whether this rule is currently evaluated.
+	 * @param int                                                              $priority            Deterministic evaluation ordering (ascending).
+	 * @param int                                                              $cooldown_seconds    Minimum seconds between successful dispatches.
+	 * @param string                                                           $created_at          Creation timestamp.
+	 * @param string                                                           $updated_at          Last-update timestamp.
 	 */
 	public function __construct(
 		private readonly int $id,

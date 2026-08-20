@@ -562,22 +562,22 @@ final class Plugin {
 			$this->message_dispatcher
 		);
 		$rule_evaluator          = new RuleEvaluator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher );
-		$this->event_dispatcher = new EventDispatcher( $this->event_history_repository, $rule_evaluator );
-		$this->event_emitter    = new EventEmitter( $this->event_registry, $this->event_dispatcher, $this->audit_logger );
+		$this->event_dispatcher  = new EventDispatcher( $this->event_history_repository, $rule_evaluator );
+		$this->event_emitter     = new EventEmitter( $this->event_registry, $this->event_dispatcher, $this->audit_logger );
 
 		// Core WordPress event emitters (M02 plan §8): constructed and
 		// wired unconditionally, at bootstrap. Each registers its own
 		// event type(s) at priority 10 on universal_telegram_register_event_types,
 		// and its own WordPress hook callback(s) directly.
-		$login_emitter               = new LoginEmitter();
-		$user_lifecycle_emitter      = new UserLifecycleEmitter();
-		$content_emitter             = new ContentEmitter();
-		$plugin_lifecycle_emitter    = new PluginLifecycleEmitter();
-		$update_emitter              = new UpdateEmitter();
+		$login_emitter                  = new LoginEmitter();
+		$user_lifecycle_emitter         = new UserLifecycleEmitter();
+		$content_emitter                = new ContentEmitter();
+		$plugin_lifecycle_emitter       = new PluginLifecycleEmitter();
+		$update_emitter                 = new UpdateEmitter();
 		$scheduled_task_failure_emitter = new ScheduledTaskFailureEmitter();
 		$rest_request_failure_emitter   = new RestRequestFailureEmitter();
-		$mail_failure_emitter         = new MailFailureEmitter();
-		$fatal_error_promotion_job   = new FatalErrorPromotionJob( $this->schema_health );
+		$mail_failure_emitter           = new MailFailureEmitter();
+		$fatal_error_promotion_job      = new FatalErrorPromotionJob( $this->schema_health );
 
 		add_action( 'universal_telegram_register_event_types', array( $login_emitter, 'register_event_types' ), 10 );
 		add_action( 'universal_telegram_register_event_types', array( $user_lifecycle_emitter, 'register_event_types' ), 10 );
@@ -596,6 +596,16 @@ final class Plugin {
 		add_action(
 			'init',
 			function () {
+				/**
+				 * Fires once, at init priority 20, so third-party code (and
+				 * later milestones) can register their own event types
+				 * against the shared Events\Registry instance (M02 plan
+				 * §5.3).
+				 *
+				 * @since 0.2.0
+				 *
+				 * @param Registry $event_registry The current request's event registry.
+				 */
 				do_action( 'universal_telegram_register_event_types', $this->event_registry );
 			},
 			20

@@ -34,9 +34,9 @@ class RuleEvaluator {
 	 * Constructor.
 	 *
 	 * @param NotificationRuleRepository $rules        Supplies each event type's own enabled rules, deterministically ordered.
-	 * @param Registry                    $registry     Supplies each event type's allowed variable fields.
-	 * @param DispatchLogRepository       $dispatch_log Records a rejected outcome for a non-matching rule.
-	 * @param NotificationDispatcher      $dispatcher   Executes the full dispatch sequence for a matched rule.
+	 * @param Registry                   $registry     Supplies each event type's allowed variable fields.
+	 * @param DispatchLogRepository      $dispatch_log Records a rejected outcome for a non-matching rule.
+	 * @param NotificationDispatcher     $dispatcher   Executes the full dispatch sequence for a matched rule.
 	 */
 	public function __construct(
 		private readonly NotificationRuleRepository $rules,
@@ -147,6 +147,6 @@ class RuleEvaluator {
 	 * @param string           $reason_code The fixed rejection reason code.
 	 */
 	protected function on_rejected( NotificationRule $rule, EventEnvelope $event, string $reason_code ): void {
-		$this->dispatch_log->record_rejected( $rule->id(), $event->event_id() );
+		$this->dispatch_log->record_rejected( $rule->id(), $event->event_id(), $reason_code );
 	}
 }

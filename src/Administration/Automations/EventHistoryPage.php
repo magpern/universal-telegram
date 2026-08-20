@@ -85,10 +85,10 @@ final class EventHistoryPage {
 	private function render_rows(): void {
 		global $wpdb;
 
-		$page        = isset( $_GET['paged'] ) ? max( 1, (int) $_GET['paged'] ) : 1; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only pagination.
-		$event_type  = isset( $_GET['event_type'] ) ? sanitize_text_field( wp_unslash( $_GET['event_type'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$offset      = ( $page - 1 ) * self::PER_PAGE;
-		$table       = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
+		$page       = isset( $_GET['paged'] ) ? max( 1, (int) $_GET['paged'] ) : 1; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only pagination.
+		$event_type = isset( $_GET['event_type'] ) ? sanitize_text_field( wp_unslash( $_GET['event_type'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$offset     = ( $page - 1 ) * self::PER_PAGE;
+		$table      = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
 
 		if ( '' !== $event_type ) {
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared

@@ -43,9 +43,9 @@ final class UserLifecycleEmitter {
 			self::USER_ROLE_CHANGED,
 			1,
 			array(
-				'subject.user_id'        => Classification::PUBLIC,
-				'payload.new_role'       => Classification::PUBLIC,
-				'payload.old_roles_csv'  => Classification::INTERNAL,
+				'subject.user_id'       => Classification::PUBLIC,
+				'payload.new_role'      => Classification::PUBLIC,
+				'payload.old_roles_csv' => Classification::INTERNAL,
 			),
 			array( 'subject.user_id', 'payload.new_role', 'payload.old_roles_csv' ),
 			array( 'subject.user_id', 'payload.new_role' )
@@ -76,9 +76,9 @@ final class UserLifecycleEmitter {
 	/**
 	 * The set_user_role callback.
 	 *
-	 * @param int                 $user_id  The user whose role changed.
-	 * @param string              $role     The new role.
-	 * @param array<int, string>  $old_roles The user's previous roles.
+	 * @param int                $user_id  The user whose role changed.
+	 * @param string             $role     The new role.
+	 * @param array<int, string> $old_roles The user's previous roles.
 	 */
 	public function on_role_changed( int $user_id, string $role, array $old_roles ): void {
 		universal_telegram_emit_event(

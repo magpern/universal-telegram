@@ -47,9 +47,9 @@ final class RestRequestFailureEmitter {
 	/**
 	 * The rest_request_after_callbacks filter callback.
 	 *
-	 * @param mixed            $response The response, possibly a WP_Error.
-	 * @param mixed            $handler  The matched route handler. Not read.
-	 * @param WP_REST_Request  $request  The request.
+	 * @param mixed           $response The response, possibly a WP_Error.
+	 * @param mixed           $handler  The matched route handler. Not read.
+	 * @param WP_REST_Request $request  The request.
 	 *
 	 * @return mixed The response, unmodified.
 	 */
@@ -72,7 +72,12 @@ final class RestRequestFailureEmitter {
 
 		universal_telegram_emit_event(
 			self::REST_REQUEST_FAILED,
-			array( 'payload' => array( 'route' => $route, 'status' => $status ) ),
+			array(
+				'payload' => array(
+					'route'  => $route,
+					'status' => $status,
+				),
+			),
 			wp_generate_uuid4()
 		);
 

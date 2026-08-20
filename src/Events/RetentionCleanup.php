@@ -25,7 +25,7 @@ final class RetentionCleanup {
 
 	public const STALE_FATAL_MARKERS_DROPPED_OPTION = 'universal_telegram_stale_fatal_markers_dropped_count';
 
-	private const BATCH_SIZE                      = 500;
+	private const BATCH_SIZE                   = 500;
 	private const PENDING_MARKER_CEILING_HOURS = 24;
 
 	/**
@@ -108,7 +108,7 @@ final class RetentionCleanup {
 
 		do {
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
-			$deleted = $wpdb->query( $wpdb->prepare( "DELETE FROM {$table} WHERE status = 'pending' AND occurred_at < %s LIMIT %d", $threshold, self::BATCH_SIZE ) );
+			$deleted  = $wpdb->query( $wpdb->prepare( "DELETE FROM {$table} WHERE status = 'pending' AND occurred_at < %s LIMIT %d", $threshold, self::BATCH_SIZE ) );
 			$dropped += is_int( $deleted ) ? $deleted : 0;
 		} while ( is_int( $deleted ) && $deleted > 0 );
 

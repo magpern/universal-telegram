@@ -65,9 +65,9 @@ final class LoginEmitter {
 	/**
 	 * The wp_login_failed callback.
 	 *
-	 * @param string        $username The submitted username. Free-form,
-	 *                                 possibly attacker-controlled; never
-	 *                                 projected to durable history.
+	 * @param string         $username The submitted username. Free-form,
+	 *                                  possibly attacker-controlled; never
+	 *                                  projected to durable history.
 	 * @param \WP_Error|null $error   The failure detail. Never read.
 	 */
 	public function on_login_failed( string $username, $error = null ): void {

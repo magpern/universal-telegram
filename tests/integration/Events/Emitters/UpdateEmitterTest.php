@@ -58,8 +58,8 @@ final class UpdateEmitterTest extends WP_UnitTestCase {
 			'upgrader_process_complete',
 			null,
 			array(
-				'action' => 'update',
-				'type'   => 'plugin',
+				'action'  => 'update',
+				'type'    => 'plugin',
 				'plugins' => array( 'some-plugin/some-plugin.php' ),
 			)
 		);

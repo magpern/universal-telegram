@@ -51,7 +51,17 @@ final class RuleSimulatorTest extends TestCase {
 		$simulator = new RuleSimulator( $rules_repo, $registry, $dispatch_log, $dispatcher );
 		$result    = $simulator->simulate( 'wordpress.post_published', array( 'subject' => array( 'post_id' => 5 ) ), 'sample-key' );
 
-		$this->assertSame( array( array( 'rule_id' => 1, 'rule_name' => 'Rule 1', 'outcome' => 'matched', 'reason_code' => null ) ), $result->entries() );
+		$this->assertSame(
+			array(
+				array(
+					'rule_id'     => 1,
+					'rule_name'   => 'Rule 1',
+					'outcome'     => 'matched',
+					'reason_code' => null,
+				),
+			),
+			$result->entries()
+		);
 	}
 
 	public function test_outcome_ordering_matches_real_evaluation_ordering(): void {

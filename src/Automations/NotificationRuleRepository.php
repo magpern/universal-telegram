@@ -38,17 +38,17 @@ final class NotificationRuleRepository {
 	 * Creates or updates a rule. Validates every condition clause's field
 	 * against the event type's own allowlist before writing anything.
 	 *
-	 * @param int|null                                                            $id                 Null to create; an existing ID to update.
-	 * @param string                                                              $name               Admin-facing name.
-	 * @param string                                                              $event_type         The triggering event type.
-	 * @param int                                                                 $schema_version_min The minimum schema version this rule applies to.
-	 * @param array<int, array{field: string, operator: string, value: mixed}>    $conditions         Flat AND-only clause array.
-	 * @param int                                                                 $bot_id             The Telegram bot to send through.
-	 * @param int                                                                 $destination_id     The Telegram destination to send to.
-	 * @param string                                                              $template           The message template.
-	 * @param bool                                                                $enabled            Whether this rule is currently evaluated.
-	 * @param int                                                                 $priority           Deterministic evaluation ordering (ascending).
-	 * @param int                                                                 $cooldown_seconds   Minimum seconds between successful dispatches.
+	 * @param int|null                                                         $id                 Null to create; an existing ID to update.
+	 * @param string                                                           $name               Admin-facing name.
+	 * @param string                                                           $event_type         The triggering event type.
+	 * @param int                                                              $schema_version_min The minimum schema version this rule applies to.
+	 * @param array<int, array{field: string, operator: string, value: mixed}> $conditions         Flat AND-only clause array.
+	 * @param int                                                              $bot_id             The Telegram bot to send through.
+	 * @param int                                                              $destination_id     The Telegram destination to send to.
+	 * @param string                                                           $template           The message template.
+	 * @param bool                                                             $enabled            Whether this rule is currently evaluated.
+	 * @param int                                                              $priority           Deterministic evaluation ordering (ascending).
+	 * @param int                                                              $cooldown_seconds   Minimum seconds between successful dispatches.
 	 *
 	 * @return NotificationRule|null Null if the schema is unavailable or the write failed.
 	 *
@@ -88,18 +88,18 @@ final class NotificationRuleRepository {
 		$table = $wpdb->prefix . Migrator::NOTIFICATION_RULES_TABLE;
 		$now   = current_time( 'mysql', true );
 
-		$row = array(
-			'name'                => $name,
-			'event_type'          => $event_type,
-			'schema_version_min'  => $schema_version_min,
-			'conditions_json'     => wp_json_encode( array_values( $conditions ) ),
-			'bot_id'              => $bot_id,
-			'destination_id'      => $destination_id,
-			'template'            => $template,
-			'enabled'             => $enabled ? 1 : 0,
-			'priority'            => $priority,
-			'cooldown_seconds'    => $cooldown_seconds,
-			'updated_at'          => $now,
+		$row     = array(
+			'name'               => $name,
+			'event_type'         => $event_type,
+			'schema_version_min' => $schema_version_min,
+			'conditions_json'    => wp_json_encode( array_values( $conditions ) ),
+			'bot_id'             => $bot_id,
+			'destination_id'     => $destination_id,
+			'template'           => $template,
+			'enabled'            => $enabled ? 1 : 0,
+			'priority'           => $priority,
+			'cooldown_seconds'   => $cooldown_seconds,
+			'updated_at'         => $now,
 		);
 		$formats = array( '%s', '%s', '%d', '%s', '%d', '%d', '%s', '%d', '%d', '%d', '%s' );
 

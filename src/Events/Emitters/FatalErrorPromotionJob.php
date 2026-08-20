@@ -18,7 +18,7 @@ use UniversalTelegram\Privacy\Classification;
  * Phase 2 of the two-phase fatal-error mechanism (M02 plan §8.6): a
  * recurring Action Scheduler action running in the normal, safe queued-job
  * execution context. Selects pending markers and emits
- * wordpress.fatal_error for each, keyed by the marker's own stable
+ * WordPress.fatal_error for each, keyed by the marker's own stable
  * identity — idempotent by construction via Events\EventIdentity, not a
  * lock, so an interrupted-and-rerun job never produces a second
  * notification.

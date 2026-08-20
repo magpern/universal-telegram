@@ -85,7 +85,10 @@ final class EventEnvelopeTest extends TestCase {
 			'key',
 			EventSource::WORDPRESS_CORE,
 			array(),
-			array( 'user_id' => 42, 'unclassified_field' => 'x' ),
+			array(
+				'user_id'            => 42,
+				'unclassified_field' => 'x',
+			),
 			array(),
 			array()
 		);

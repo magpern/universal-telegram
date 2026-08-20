@@ -46,7 +46,12 @@ final class PluginLifecycleEmitter {
 	public function on_activated( string $plugin, bool $network_wide ): void {
 		universal_telegram_emit_event(
 			self::PLUGIN_ACTIVATED,
-			array( 'payload' => array( 'plugin' => $plugin, 'network_wide' => $network_wide ) ),
+			array(
+				'payload' => array(
+					'plugin'       => $plugin,
+					'network_wide' => $network_wide,
+				),
+			),
 			wp_generate_uuid4()
 		);
 	}
@@ -60,7 +65,12 @@ final class PluginLifecycleEmitter {
 	public function on_deactivated( string $plugin, bool $network_wide ): void {
 		universal_telegram_emit_event(
 			self::PLUGIN_DEACTIVATED,
-			array( 'payload' => array( 'plugin' => $plugin, 'network_wide' => $network_wide ) ),
+			array(
+				'payload' => array(
+					'plugin'       => $plugin,
+					'network_wide' => $network_wide,
+				),
+			),
 			wp_generate_uuid4()
 		);
 	}

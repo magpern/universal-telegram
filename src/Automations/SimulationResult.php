@@ -20,7 +20,7 @@ final class SimulationResult {
 	 * Constructor.
 	 *
 	 * @param array<int, array{rule_id: int, rule_name: string, outcome: string, reason_code: string|null}> $entries Per-rule outcomes, in evaluation order.
-	 * @param string|null $error_code A fixed error code if the sample data itself could not be evaluated (e.g. an unregistered event type).
+	 * @param string|null                                                                                   $error_code A fixed error code if the sample data itself could not be evaluated (e.g. an unregistered event type).
 	 */
 	public function __construct(
 		private readonly array $entries,

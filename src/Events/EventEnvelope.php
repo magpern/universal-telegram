@@ -24,33 +24,95 @@ use DateTimeZone;
  */
 final class EventEnvelope {
 
+	/**
+	 * E.g. "wordpress.user_registered".
+	 *
+	 * @var string
+	 */
 	private string $event_type;
+
+	/**
+	 * The event type's registered schema version.
+	 *
+	 * @var int
+	 */
 	private int $schema_version;
+
+	/**
+	 * Source-supplied, mandatory idempotency key.
+	 *
+	 * @var string
+	 */
 	private string $idempotency_key;
+
+	/**
+	 * The deterministic identity derived from event_type, schema_version,
+	 * and idempotency_key.
+	 *
+	 * @var string
+	 */
 	private string $event_id;
+
+	/**
+	 * UTC occurrence time.
+	 *
+	 * @var DateTimeImmutable
+	 */
 	private DateTimeImmutable $occurred_at;
+
+	/**
+	 * The emitting subsystem.
+	 *
+	 * @var EventSource
+	 */
 	private EventSource $source;
+
+	/**
+	 * E.g. ['user_id' => 42].
+	 *
+	 * @var array<string, mixed>
+	 */
 	private array $actor;
+
+	/**
+	 * E.g. ['post_id' => 17].
+	 *
+	 * @var array<string, mixed>
+	 */
 	private array $subject;
+
+	/**
+	 * E.g. ['ip_hash' => '...'].
+	 *
+	 * @var array<string, mixed>
+	 */
 	private array $context;
+
+	/**
+	 * Event-type-specific structured fields.
+	 *
+	 * @var array<string, mixed>
+	 */
 	private array $payload;
 
 	/**
 	 * Constructor.
 	 *
-	 * @param Registry              $registry        The current request's event registry.
-	 * @param string                $event_type      e.g. "wordpress.user_registered".
-	 * @param string                $idempotency_key Source-supplied, mandatory, never generated internally.
-	 * @param EventSource           $source          The emitting subsystem.
-	 * @param array<string, mixed>  $actor           e.g. ['user_id' => 42].
-	 * @param array<string, mixed>  $subject         e.g. ['post_id' => 17].
-	 * @param array<string, mixed>  $context         e.g. ['ip_hash' => '...'].
-	 * @param array<string, mixed>  $payload         Event-type-specific structured fields.
+	 * @param Registry               $registry        The current request's event registry.
+	 * @param string                 $event_type      e.g. "wordpress.user_registered".
+	 * @param string                 $idempotency_key Source-supplied, mandatory, never generated internally.
+	 * @param EventSource            $source          The emitting subsystem.
+	 * @param array<string, mixed>   $actor           e.g. ['user_id' => 42].
+	 * @param array<string, mixed>   $subject         e.g. ['post_id' => 17].
+	 * @param array<string, mixed>   $context         e.g. ['ip_hash' => '...'].
+	 * @param array<string, mixed>   $payload         Event-type-specific structured fields.
 	 * @param DateTimeImmutable|null $occurred_at     UTC occurrence time; defaults to now.
 	 *
-	 * @throws UnregisteredEventTypeException  If $event_type is not registered.
-	 * @throws InvalidIdempotencyKeyException  If $idempotency_key is not 1-255 bytes.
-	 * @throws UnclassifiedFieldException      If any field has no classification-map entry.
+	 * @throws UnregisteredEventTypeException If $event_type is not registered.
+	 * @throws InvalidIdempotencyKeyException If $idempotency_key is not 1-255 bytes. Also propagates
+	 *                                         UnclassifiedFieldException, thrown by the private
+	 *                                         assert_fields_classified() helper this constructor calls,
+	 *                                         if any field has no classification-map entry.
 	 */
 	public function __construct(
 		Registry $registry,
@@ -79,18 +141,27 @@ final class EventEnvelope {
 
 		$classification_map = $registry->classification_map_for( $event_type );
 
-		$this->assert_fields_classified( array( 'actor' => $actor, 'subject' => $subject, 'context' => $context, 'payload' => $payload ), $classification_map, '' );
+		$this->assert_fields_classified(
+			array(
+				'actor'   => $actor,
+				'subject' => $subject,
+				'context' => $context,
+				'payload' => $payload,
+			),
+			$classification_map,
+			''
+		);
 
 		$this->event_type      = $event_type;
 		$this->schema_version  = $schema_version;
 		$this->idempotency_key = $idempotency_key;
 		$this->event_id        = EventIdentity::derive( $event_type, $schema_version, $idempotency_key );
 		$this->occurred_at     = $occurred_at ?? new DateTimeImmutable( 'now', new DateTimeZone( 'UTC' ) );
-		$this->source           = $source;
-		$this->actor            = $actor;
-		$this->subject          = $subject;
-		$this->context          = $context;
-		$this->payload          = $payload;
+		$this->source          = $source;
+		$this->actor           = $actor;
+		$this->subject         = $subject;
+		$this->context         = $context;
+		$this->payload         = $payload;
 	}
 
 	/**
@@ -98,9 +169,9 @@ final class EventEnvelope {
 	 * payload has a classification-map entry at its own dot-notation path,
 	 * mirroring Privacy\Redactor's own path-walking convention.
 	 *
-	 * @param array<string, mixed>          $data                The data to validate at this depth.
+	 * @param array<string, mixed>                                     $data                The data to validate at this depth.
 	 * @param array<string, \UniversalTelegram\Privacy\Classification> $classification_map Dot-notation path to classification.
-	 * @param string                        $prefix              The dot-notation path prefix so far.
+	 * @param string                                                   $prefix              The dot-notation path prefix so far.
 	 *
 	 * @throws UnclassifiedFieldException If any leaf field has no classification-map entry.
 	 */
@@ -120,7 +191,7 @@ final class EventEnvelope {
 	}
 
 	/**
-	 * e.g. "wordpress.user_registered".
+	 * E.g. "wordpress.user_registered".
 	 *
 	 * @return string
 	 */
@@ -175,7 +246,7 @@ final class EventEnvelope {
 	}
 
 	/**
-	 * e.g. ['user_id' => 42].
+	 * E.g. ['user_id' => 42].
 	 *
 	 * @return array<string, mixed>
 	 */
@@ -184,7 +255,7 @@ final class EventEnvelope {
 	}
 
 	/**
-	 * e.g. ['post_id' => 17].
+	 * E.g. ['post_id' => 17].
 	 *
 	 * @return array<string, mixed>
 	 */
@@ -193,7 +264,7 @@ final class EventEnvelope {
 	}
 
 	/**
-	 * e.g. ['ip_hash' => '...'].
+	 * E.g. ['ip_hash' => '...'].
 	 *
 	 * @return array<string, mixed>
 	 */

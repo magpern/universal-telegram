@@ -20,8 +20,8 @@ final class TemplateRendererTest extends TestCase {
 			'wordpress.post_published',
 			1,
 			array(
-				'subject.post_id'    => Classification::PUBLIC,
-				'context.ip_hash'    => Classification::INTERNAL,
+				'subject.post_id' => Classification::PUBLIC,
+				'context.ip_hash' => Classification::INTERNAL,
 			),
 			array( 'subject.post_id', 'context.ip_hash' ),
 			array( 'subject.post_id' )

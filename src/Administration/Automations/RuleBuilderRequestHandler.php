@@ -78,7 +78,7 @@ class RuleBuilderRequestHandler {
 		$priority           = isset( $_POST['priority'] ) ? (int) $_POST['priority'] : 100;
 		$cooldown_seconds   = isset( $_POST['cooldown_seconds'] ) ? max( 0, (int) $_POST['cooldown_seconds'] ) : 0;
 
-		$conditions_raw = isset( $_POST['conditions_json'] ) ? wp_unslash( $_POST['conditions_json'] ) : '[]';
+		$conditions_raw = isset( $_POST['conditions_json'] ) ? sanitize_textarea_field( wp_unslash( $_POST['conditions_json'] ) ) : '[]';
 		$conditions     = json_decode( (string) $conditions_raw, true );
 
 		if ( ! is_array( $conditions ) ) {

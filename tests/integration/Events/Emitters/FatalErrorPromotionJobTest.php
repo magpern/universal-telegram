@@ -82,6 +82,14 @@ final class FatalErrorPromotionJobTest extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( '.php', $row['projected_fields_json'] );
 
 		$projected = json_decode( $row['projected_fields_json'], true );
-		$this->assertSame( array( 'payload' => array( 'error_type' => 'E_ERROR', 'location_hash' => $hash ) ), $projected );
+		$this->assertSame(
+			array(
+				'payload' => array(
+					'error_type'    => 'E_ERROR',
+					'location_hash' => $hash,
+				),
+			),
+			$projected
+		);
 	}
 }

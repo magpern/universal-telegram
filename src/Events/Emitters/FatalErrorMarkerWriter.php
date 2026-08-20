@@ -75,7 +75,9 @@ final class FatalErrorMarkerWriter {
 				)
 			);
 		} catch ( Throwable $exception ) {
-			// A shutdown handler must never itself fatal.
+			// A shutdown handler must never itself fatal; every failure
+			// mode here is silently swallowed by design.
+			unset( $exception );
 		}
 	}
 
