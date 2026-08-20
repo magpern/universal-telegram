@@ -33,6 +33,9 @@
         },
         "sort-packages": true
     },
+    "scripts": {
+        "check-doc-links": "php bin/check-doc-links.php docs README.md"
+    },
     "minimum-stability": "stable",
     "prefer-stable": true
 }

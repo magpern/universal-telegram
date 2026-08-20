@@ -6,6 +6,7 @@
 	<file>uninstall.php</file>
 	<file>src</file>
 	<file>tests</file>
+	<file>bin/check-doc-links.php</file>
 
 	<exclude-pattern>*/vendor/*</exclude-pattern>
 
@@ -92,5 +93,19 @@
 	     plugin-wide rather than excluded file by file. -->
 	<rule ref="WordPress.Security.EscapeOutput.ExceptionNotEscaped">
 		<severity>0</severity>
+	</rule>
+
+	<!-- bin/check-doc-links.php is a standalone CLI script, never loaded by
+	     WordPress: STDERR diagnostics and reading local Markdown files are
+	     its own normal, non-web-facing operation, not WordPress runtime
+	     output or filesystem access needing WP_Filesystem/escaping. -->
+	<rule ref="WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents">
+		<exclude-pattern>*/bin/check-doc-links.php</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.WP.AlternativeFunctions.file_system_operations_fwrite">
+		<exclude-pattern>*/bin/check-doc-links.php</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.Security.EscapeOutput.OutputNotEscaped">
+		<exclude-pattern>*/bin/check-doc-links.php</exclude-pattern>
 	</rule>
 </ruleset>
