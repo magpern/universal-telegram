@@ -72,3 +72,27 @@ jobs:
         run: bin/docker/composer.sh install --no-interaction
       - name: Build ZIP
         run: bin/docker/build-zip.sh
+
+  package-acceptance:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - wp-version: '6.9'
+            php-version: '8.1'
+            woocommerce: ''
+          - wp-version: '7.1'
+            php-version: '8.3'
+            woocommerce: ''
+          - wp-version: '7.1'
+            php-version: '8.3'
+            woocommerce: '11.0.1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package acceptance (WordPress ${{ matrix.wp-version }}, PHP ${{ matrix.php-version }}${{ matrix.woocommerce && format(', WooCommerce {0}', matrix.woocommerce) }})
+        run: |
+          if [ -n "${{ matrix.woocommerce }}" ]; then
+            bin/docker/test-package.sh --wp-version=${{ matrix.wp-version }} --php-version=${{ matrix.php-version }} --woocommerce=${{ matrix.woocommerce }}
+          else
+            bin/docker/test-package.sh --wp-version=${{ matrix.wp-version }} --php-version=${{ matrix.php-version }}
+          fi
