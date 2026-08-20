@@ -1,0 +1,11 @@
+parameters:
+    level: 5
+    paths:
+        - src
+    scanFiles:
+        - vendor/woocommerce/action-scheduler/functions.php
+    scanDirectories:
+        - vendor/woocommerce/action-scheduler/classes
+
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon

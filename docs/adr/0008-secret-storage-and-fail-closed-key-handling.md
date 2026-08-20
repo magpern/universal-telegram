@@ -1,0 +1,33 @@
+# ADR-0008 — Secret Storage and Fail-Closed Key Handling
+
+## Status
+
+Accepted
+
+## Context
+
+This milestone's own charter requires fail-closed secret handling, with credential-key rotation and the effect of WordPress's own salt rotation on previously encrypted secrets both explicitly designed rather than left implicit, and explicitly forbids any fallback key beyond one that may be injected only by a test's own bootstrap. A comparable design already present elsewhere in this Product Owner's own fleet uses an unauthenticated cipher together with a hardcoded, insecure fallback key usable outside of a WordPress context entirely — a pattern this same milestone's own charter directly forbids repeating. Review of an intermediate draft of this decision also identified that automatically erasing a stored ciphertext the moment its own decryption failed would foreclose any operator recovery and any future key-rotation workflow built on top of it, and that naming the envelope's own per-ciphertext derivation-tier marker a "key identifier" was imprecise, since it identifies which source produced a given key, not a specific version of one particular key.
+
+## Decision
+
+Secret storage uses an authenticated encryption cipher, not an unauthenticated one: a fresh, cryptographically random nonce is generated for every single encryption operation and never reused; an explicit authentication tag is requested rather than relied upon as an implicit default; and the caller's own supplied context string is used as authenticated additional data, cryptographically binding a given ciphertext to the specific thing it was encrypted for, so that attempting to decrypt it under a different context fails authentication even with the otherwise-correct key. Stored ciphertext carries a fixed envelope-version marker, together with a separate, per-ciphertext byte recording which of three key-derivation sources produced the key material actually used for that specific value — the envelope version would change only if the ciphertext's own layout changed entirely, while the per-ciphertext source marker can differ between values encrypted under the same envelope version, depending on which source happened to resolve at the time each one was encrypted. Key resolution proceeds through three sources in order: an explicit constant, if defined, which must match a strict, specific format, and which fails the entire resolution closed immediately, without falling through to either remaining source, if it is defined but does not match that format; failing that, all four of WordPress's own authentication-related constants, concatenated and hashed together, if every one of them is defined and none still holds WordPress's own shipped default value; and failing that, WordPress's own site-salt function. If none of the three sources resolves to usable key material at all, the vault fails closed, and there is no fourth, always-available, hardcoded key anywhere in this plugin's own production code; the only way a deterministic key ever reaches the vault outside these three ordinary sources is through the very same explicit constant, defined only inside a test's own bootstrap file. A decryption failure — most commonly, the natural consequence of WordPress's own site salts having since been rotated, invalidating whatever key material a given ciphertext's own source previously produced — never erases or otherwise modifies the ciphertext itself; the vault instead reports one of three distinct states, and only an explicit operator action, through whichever future feature actually stores a real credential, ever overwrites what is stored. A dedicated re-encryption operation, thoroughly unit-tested at this milestone even though nothing yet stores a real credential for it to operate on, allows a stored value to be decrypted under either the currently resolved key or an explicitly supplied override, and then re-encrypted under whichever key is currently resolved — the primitive a future milestone's own rotation workflow would build upon once it has a genuine credential, and an operator's own retained prior key material, to actually rotate.
+
+## Alternatives
+
+An unauthenticated cipher, matching the pattern already present elsewhere in this Product Owner's own fleet, purely for stylistic consistency with that precedent — rejected, since that precedent's own hardcoded insecure fallback directly violates this same milestone's own fail-closed requirement, and matching its cipher choice for consistency's sake alone is not a good reason to repeat a weaker pattern this milestone's own charter already forbids. Automatically erasing a ciphertext the instant its own decryption fails — rejected, since doing so destroys any possibility of operator recovery and forecloses any future rotation workflow entirely. A hardcoded, always-available fallback key — rejected, since it directly contradicts this milestone's own explicit requirement that a deterministic fallback may be injected only by a test. Retaining the earlier, imprecise name for the envelope's own per-ciphertext derivation marker — rejected, since it identifies a key's own source, not a version of one specific key, and the corrected name avoids implying a versioning scheme this design does not actually have.
+
+## Consequences
+
+Any later milestone that stores a genuine credential — the Telegram bot token, first introduced by the milestone immediately following this one, or an artificial-intelligence provider's own key, introduced considerably later — uses this same vault exactly as it stands, rather than building its own. No automatic recovery exists across a genuine, uncoordinated loss of WordPress's own site salts, since the prior key material cannot be reconstructed once truly gone; this is a deliberate, explicitly documented tradeoff, not an oversight.
+
+## Security and privacy impact
+
+This decision is itself this plugin's own core secret-handling security boundary. Choosing an authenticated cipher over an unauthenticated one, failing closed with no insecure fallback of any kind, and preserving rather than erasing a ciphertext on a failed decryption are each direct, deliberate hardening decisions, reviewed here in full rather than inherited unreviewed from any earlier precedent.
+
+## Affected Documents/Milestones
+
+The milestone immediately following this one, which stores this plugin's first genuine credential, a Telegram bot token; the later milestone introducing artificial-intelligence provider credentials; any future milestone that builds an end-to-end rotation workflow on top of the re-encryption primitive this decision introduces.
+
+## Compatibility/Migration Impact
+
+None. No code or stored secret of any kind exists in this repository yet.

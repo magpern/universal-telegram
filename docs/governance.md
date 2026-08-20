@@ -19,7 +19,7 @@ No role approves its own work product as final.
 4. Frozen documentation commit — plan and every ADR it depends on are committed, code-free, as one freeze package (see Freeze model below). No implementation begins before this commit exists.
 5. Implementation — only the frozen plan is executed; deviations return to step 1.
 6. Technical verification — automated tests and CI per docs/testing/test-strategy.md.
-7. Independent Vlad acceptance — per docs/testing/vlad-acceptance-template.md.
+7. Independent Vlad acceptance — per docs/testing/vlad-acceptance-template.md. Per ADR-0011, this step does not apply to milestones M00 through M09: for those milestones, required quality evidence is the frozen plan, code review, mandatory automated validation, and green CI, without a separate manual acceptance session. It applies as originally defined from milestone M10 onward, unless a later ADR changes this again.
 8. Remediation — fixes only what steps 6 and 7 found.
 9. Closure — per docs/closure/milestone-closure-template.md, with Product Owner acceptance.
 
