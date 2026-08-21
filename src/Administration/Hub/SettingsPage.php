@@ -91,6 +91,13 @@ class SettingsPage {
 			? wp_unslash( $_POST['universal_telegram_settings'] ) // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 			: array();
 
+		// Unchecked checkboxes are omitted from $_POST entirely, so their
+		// absence must be treated as an explicit false here — otherwise the
+		// array_merge below would fall back to the old stored value and an
+		// unchecked box could never actually be saved as off.
+		$input['remove_data_on_uninstall'] = isset( $input['remove_data_on_uninstall'] );
+		$input['chat_widget_enabled']      = isset( $input['chat_widget_enabled'] );
+
 		$sanitized = $this->settings->sanitize( array_merge( $this->settings->get(), $input ) );
 		update_option( Settings::OPTION_NAME, $sanitized );
 
