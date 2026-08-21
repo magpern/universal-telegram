@@ -2,7 +2,9 @@
 
 ## Status
 
-Not Started
+In Progress. Frozen implementation plan:
+`docs/plans/m04-visitor-and-browser-events-plan-v1.md`. Proposes
+`docs/adr/0019-visitor-event-source-threading-and-browser-ingestion-boundary.md`.
 
 ## Dependencies
 

@@ -9,6 +9,7 @@ use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Automations\DispatchLogRepository;
 use UniversalTelegram\Automations\NotificationRuleRepository;
+use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Events\EventHistoryRepository;
 use UniversalTelegram\Events\Registry;
@@ -24,7 +25,7 @@ use UniversalTelegram\Telegram\Reliability\CircuitBreaker;
 use UniversalTelegram\Telegram\Reliability\QueueHealthAlert;
 use WP_UnitTestCase;
 
-final class DiagnosticsReportWooCommerceTest extends WP_UnitTestCase {
+final class DiagnosticsReportVisitorTest extends WP_UnitTestCase {
 
 	private function report(): DiagnosticsReport {
 		$schema_health = new SchemaHealth();
@@ -47,27 +48,33 @@ final class DiagnosticsReportWooCommerceTest extends WP_UnitTestCase {
 			new EventHistoryRepository( $schema_health, $registry, new Redactor() ),
 			new NotificationRuleRepository( $schema_health, $registry ),
 			new DispatchLogRepository( $schema_health ),
-			new \UniversalTelegram\Core\Configuration\Settings()
+			new Settings()
 		);
 	}
 
-	public function test_woocommerce_diagnostics_keys_are_present(): void {
+	public function test_visitor_diagnostics_keys_are_present_and_aggregation_only(): void {
 		$data = $this->report()->generate();
 
-		$this->assertArrayHasKey( 'woocommerce_hpos_enabled', $data );
-		$this->assertArrayHasKey( 'woocommerce_event_emitters_registered', $data );
-		$this->assertIsBool( $data['woocommerce_hpos_enabled'] );
-		$this->assertIsBool( $data['woocommerce_event_emitters_registered'] );
+		$this->assertArrayHasKey( 'visitor_tracking_enabled', $data );
+		$this->assertArrayHasKey( 'visitor_tracker_asset_available', $data );
+		$this->assertArrayHasKey( 'visitor_events_recorded_24h', $data );
+		$this->assertArrayHasKey( 'visitor_events_rejected_24h', $data );
+		$this->assertArrayHasKey( 'visitor_events_rate_limited_24h', $data );
+		$this->assertArrayHasKey( 'visitor_events_bot_filtered_24h', $data );
+
+		$this->assertIsBool( $data['visitor_tracking_enabled'] );
+		$this->assertIsBool( $data['visitor_tracker_asset_available'] );
+		$this->assertIsInt( $data['visitor_events_recorded_24h'] );
+		$this->assertIsInt( $data['visitor_events_rejected_24h'] );
+		$this->assertIsInt( $data['visitor_events_rate_limited_24h'] );
+		$this->assertIsInt( $data['visitor_events_bot_filtered_24h'] );
 	}
 
-	public function test_woocommerce_diagnostics_match_the_current_configuration(): void {
-		$expected_active = (bool) getenv( 'UT_TEST_WC_ACTIVE' );
-		$data            = $this->report()->generate();
+	public function test_visitor_tracking_enabled_reflects_the_current_setting(): void {
+		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'visitor_tracking_enabled' => true ) ) );
+		$this->assertTrue( $this->report()->generate()['visitor_tracking_enabled'] );
 
-		$this->assertSame( $expected_active, $data['woocommerce_event_emitters_registered'] );
-
-		if ( ! $expected_active ) {
-			$this->assertFalse( $data['woocommerce_hpos_enabled'], 'HPOS must report false when WooCommerce is absent.' );
-		}
+		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'visitor_tracking_enabled' => false ) ) );
+		$this->assertFalse( $this->report()->generate()['visitor_tracking_enabled'] );
 	}
 }

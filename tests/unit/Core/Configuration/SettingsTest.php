@@ -97,4 +97,75 @@ final class SettingsTest extends TestCase {
 			'fatal_marker_retention_days'                 => array( 'fatal_marker_retention_days' ),
 		);
 	}
+
+	public function test_visitor_tracking_and_every_family_toggle_default_off(): void {
+		$defaults = ( new Settings() )->defaults();
+
+		$this->assertFalse( $defaults['visitor_tracking_enabled'] );
+		$this->assertFalse( $defaults['visitor_family_page_views'] );
+		$this->assertFalse( $defaults['visitor_family_navigation'] );
+		$this->assertFalse( $defaults['visitor_family_search'] );
+		$this->assertFalse( $defaults['visitor_family_clicks'] );
+		$this->assertFalse( $defaults['visitor_family_errors'] );
+		$this->assertFalse( $defaults['visitor_family_commerce'] );
+		$this->assertSame( 'required', $defaults['visitor_consent_mode'] );
+		$this->assertSame( 100, $defaults['visitor_sampling_percent'] );
+		$this->assertSame( array(), $defaults['visitor_click_target_allowlist'] );
+		$this->assertTrue( $defaults['visitor_exclude_administrators'] );
+	}
+
+	/**
+	 * @dataProvider visitor_boolean_field_provider
+	 */
+	public function test_sanitize_accepts_a_visitor_boolean_override( string $field ): void {
+		$settings = new Settings();
+
+		$this->assertTrue( $settings->sanitize( array( $field => true ) )[ $field ] );
+		$this->assertFalse( $settings->sanitize( array( $field => false ) )[ $field ] );
+	}
+
+	/**
+	 * @return array<string, array{0: string}>
+	 */
+	public function visitor_boolean_field_provider(): array {
+		return array(
+			'visitor_tracking_enabled'       => array( 'visitor_tracking_enabled' ),
+			'visitor_family_page_views'      => array( 'visitor_family_page_views' ),
+			'visitor_family_navigation'      => array( 'visitor_family_navigation' ),
+			'visitor_family_search'          => array( 'visitor_family_search' ),
+			'visitor_family_clicks'          => array( 'visitor_family_clicks' ),
+			'visitor_family_errors'          => array( 'visitor_family_errors' ),
+			'visitor_family_commerce'        => array( 'visitor_family_commerce' ),
+			'visitor_exclude_administrators' => array( 'visitor_exclude_administrators' ),
+		);
+	}
+
+	public function test_sanitize_rejects_an_unrecognized_consent_mode(): void {
+		$settings = new Settings();
+
+		$this->assertSame( 'required', $settings->sanitize( array( 'visitor_consent_mode' => 'sort-of' ) )['visitor_consent_mode'] );
+		$this->assertSame( 'disabled', $settings->sanitize( array( 'visitor_consent_mode' => 'disabled' ) )['visitor_consent_mode'] );
+	}
+
+	public function test_sanitize_clamps_sampling_percent_to_1_100(): void {
+		$settings = new Settings();
+
+		$this->assertSame( 1, $settings->sanitize( array( 'visitor_sampling_percent' => 0 ) )['visitor_sampling_percent'] );
+		$this->assertSame( 100, $settings->sanitize( array( 'visitor_sampling_percent' => 500 ) )['visitor_sampling_percent'] );
+		$this->assertSame( 42, $settings->sanitize( array( 'visitor_sampling_percent' => 42 ) )['visitor_sampling_percent'] );
+	}
+
+	public function test_sanitize_bounds_the_click_target_allowlist_to_eight_sanitized_keys(): void {
+		$settings = new Settings();
+		$input    = array_map(
+			static function ( int $i ): string {
+				return "key-$i";
+			},
+			range( 1, 12 )
+		);
+
+		$result = $settings->sanitize( array( 'visitor_click_target_allowlist' => $input ) )['visitor_click_target_allowlist'];
+
+		$this->assertCount( 8, $result );
+	}
 }

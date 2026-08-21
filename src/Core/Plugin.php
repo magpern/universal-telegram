@@ -18,6 +18,7 @@ use UniversalTelegram\Administration\Diagnostics\SelfTest;
 use UniversalTelegram\Administration\PluginActionLinks;
 use UniversalTelegram\Administration\Telegram\BotManagementController;
 use UniversalTelegram\Administration\Telegram\BotManagementPage;
+use UniversalTelegram\Administration\Visitor\VisitorTrackingPage;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Automations\DispatchLogRepository;
@@ -42,11 +43,19 @@ use UniversalTelegram\Events\Emitters\RestRequestFailureEmitter;
 use UniversalTelegram\Events\Emitters\ScheduledTaskFailureEmitter;
 use UniversalTelegram\Events\Emitters\UpdateEmitter;
 use UniversalTelegram\Events\Emitters\UserLifecycleEmitter;
+use UniversalTelegram\Events\Visitor\BotFilter;
+use UniversalTelegram\Events\Visitor\IngestController;
+use UniversalTelegram\Events\Visitor\IngestRequestValidator;
+use UniversalTelegram\Events\Visitor\PageContext;
+use UniversalTelegram\Events\Visitor\Sampler;
+use UniversalTelegram\Events\Visitor\TrackerAssets;
+use UniversalTelegram\Events\Visitor\VisitorEventCatalog;
 use UniversalTelegram\Integrations\WooCommerce\Events\CartEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Events\CheckoutEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Events\CouponEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Events\OrderEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Events\StockEventEmitter;
+use UniversalTelegram\Integrations\WooCommerce\Visitor\VisitorCommerceEventCatalog;
 use UniversalTelegram\Events\Registry;
 use UniversalTelegram\Events\RetentionCleanup;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
@@ -367,6 +376,13 @@ final class Plugin {
 	private ?EventHistoryPage $event_history_page = null;
 
 	/**
+	 * The visitor tracking settings admin page, constructed by init().
+	 *
+	 * @var VisitorTrackingPage|null
+	 */
+	private ?VisitorTrackingPage $visitor_tracking_page = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -541,6 +557,7 @@ final class Plugin {
 			$this->event_history_repository,
 			$this->notification_rule_repository,
 			$this->dispatch_log_repository,
+			$settings,
 			(int) $settings_values['telegram_stale_pending_alert_seconds'],
 			(int) $settings_values['telegram_webhook_rotation_max_pending_hours']
 		);
@@ -594,6 +611,31 @@ final class Plugin {
 		add_action( 'universal_telegram_register_event_types', array( $mail_failure_emitter, 'register_event_types' ), 10 );
 		add_action( 'universal_telegram_register_event_types', array( $fatal_error_promotion_job, 'register_event_types' ), 10 );
 
+		// Visitor/browser event catalog (M04 plan §4.2, ADR-0019): the six
+		// always-on visitor.* types, registered unconditionally at priority
+		// 20, independent of WooCommerce presence.
+		$visitor_event_catalog = new VisitorEventCatalog();
+		add_action( 'universal_telegram_register_event_types', array( $visitor_event_catalog, 'register_event_types' ), 20 );
+
+		// Public visitor event ingestion endpoint (M04 plan §4.4,
+		// ADR-0019): unauthenticated at the WP-REST layer, reusing the
+		// same generic RateLimiter instance already constructed above
+		// under two new scope_type values.
+		$ingest_controller = new IngestController(
+			$this->schema_health,
+			$this->event_registry,
+			$settings,
+			$this->rate_limiter,
+			new IngestRequestValidator(),
+			new BotFilter(),
+			new Sampler(),
+			$this->audit_logger
+		);
+		add_action( 'rest_api_init', array( $ingest_controller, 'register_routes' ) );
+
+		$tracker_assets = new TrackerAssets( $settings, new PageContext(), $this->woocommerce_support );
+		add_action( 'wp_enqueue_scripts', array( $tracker_assets, 'enqueue' ) );
+
 		// WooCommerce event emitters (M03 plan §4, ADR-0018): constructed
 		// and wired only when WooCommerceSupport::is_active() is true.
 		// WooCommerce absent/inactive/incompatible -> this entire block is
@@ -618,6 +660,13 @@ final class Plugin {
 			$cart_event_emitter->register_hooks();
 			$coupon_event_emitter->register_hooks();
 			$checkout_event_emitter->register_hooks();
+
+			// Visitor/browser commerce-gated event types (M04 plan §4.6):
+			// registered only here, alongside the rest of M03's WooCommerce
+			// wiring — no hook binding of their own, since both types are
+			// entirely driven by IngestController via the tracker client.
+			$visitor_commerce_event_catalog = new VisitorCommerceEventCatalog();
+			add_action( 'universal_telegram_register_event_types', array( $visitor_commerce_event_catalog, 'register_event_types' ), 20 );
 		}
 
 		// Fired once, at priority 20, after WooCommerce presence detection
@@ -706,6 +755,10 @@ final class Plugin {
 
 		$this->event_history_page = new EventHistoryPage( $this->schema_health );
 		add_action( 'admin_menu', array( $this->event_history_page, 'register_menu' ) );
+
+		$this->visitor_tracking_page = new VisitorTrackingPage( $settings );
+		add_action( 'admin_menu', array( $this->visitor_tracking_page, 'register_menu' ) );
+		add_action( 'admin_post_' . VisitorTrackingPage::ADMIN_POST_ACTION, array( $this->visitor_tracking_page, 'handle_request' ) );
 
 		$retention_cleanup = new RetentionCleanup(
 			$this->schema_health,
@@ -994,5 +1047,13 @@ final class Plugin {
 	 */
 	public function event_history_page(): ?EventHistoryPage {
 		return $this->event_history_page;
+	}
+
+	/**
+	 * The visitor tracking settings admin page. Available only after
+	 * init() has run.
+	 */
+	public function visitor_tracking_page(): ?VisitorTrackingPage {
+		return $this->visitor_tracking_page;
 	}
 }

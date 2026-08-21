@@ -56,6 +56,17 @@ final class Settings {
 			'event_retention_days'                        => 90,
 			'dispatch_log_retention_days'                 => 90,
 			'fatal_marker_retention_days'                 => 30,
+			'visitor_tracking_enabled'                    => false,
+			'visitor_family_page_views'                   => false,
+			'visitor_family_navigation'                   => false,
+			'visitor_family_search'                       => false,
+			'visitor_family_clicks'                       => false,
+			'visitor_family_errors'                       => false,
+			'visitor_family_commerce'                     => false,
+			'visitor_consent_mode'                        => 'required',
+			'visitor_sampling_percent'                    => 100,
+			'visitor_click_target_allowlist'              => array(),
+			'visitor_exclude_administrators'              => true,
 		);
 	}
 
@@ -75,6 +86,46 @@ final class Settings {
 
 		if ( isset( $input['remove_data_on_uninstall'] ) ) {
 			$sanitized['remove_data_on_uninstall'] = (bool) $input['remove_data_on_uninstall'];
+		}
+
+		$boolean_fields = array(
+			'visitor_tracking_enabled',
+			'visitor_family_page_views',
+			'visitor_family_navigation',
+			'visitor_family_search',
+			'visitor_family_clicks',
+			'visitor_family_errors',
+			'visitor_family_commerce',
+			'visitor_exclude_administrators',
+		);
+
+		foreach ( $boolean_fields as $field ) {
+			if ( isset( $input[ $field ] ) ) {
+				$sanitized[ $field ] = (bool) $input[ $field ];
+			}
+		}
+
+		if ( isset( $input['visitor_consent_mode'] ) && in_array( $input['visitor_consent_mode'], array( 'required', 'disabled' ), true ) ) {
+			$sanitized['visitor_consent_mode'] = $input['visitor_consent_mode'];
+		}
+
+		if ( isset( $input['visitor_sampling_percent'] ) && is_numeric( $input['visitor_sampling_percent'] ) ) {
+			$sanitized['visitor_sampling_percent'] = max( 1, min( 100, (int) $input['visitor_sampling_percent'] ) );
+		}
+
+		if ( isset( $input['visitor_click_target_allowlist'] ) && is_array( $input['visitor_click_target_allowlist'] ) ) {
+			$allowlist = array();
+
+			foreach ( array_slice( $input['visitor_click_target_allowlist'], 0, 8 ) as $key ) {
+				if ( is_string( $key ) && '' !== $key ) {
+					$normalized = strtolower( preg_replace( '/[^a-z0-9_\-]/i', '', $key ) ?? '' );
+					if ( '' !== $normalized ) {
+						$allowlist[] = $normalized;
+					}
+				}
+			}
+
+			$sanitized['visitor_click_target_allowlist'] = array_values( array_unique( $allowlist ) );
 		}
 
 		$positive_integer_fields = array(

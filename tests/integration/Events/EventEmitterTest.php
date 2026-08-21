@@ -16,7 +16,9 @@ use UniversalTelegram\Events\EventDispatcher;
 use UniversalTelegram\Events\EventEmitter;
 use UniversalTelegram\Events\EventEnvelope;
 use UniversalTelegram\Events\EventHistoryRepository;
+use UniversalTelegram\Events\EventSource;
 use UniversalTelegram\Events\Registry;
+use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Classification;
 use UniversalTelegram\Privacy\Redactor;
@@ -125,5 +127,37 @@ final class EventEmitterTest extends WP_UnitTestCase {
 
 		$this->assertFalse( $fired );
 		$this->assertSame( 0, did_action( 'universal_telegram_event' ) );
+	}
+
+	public function test_a_three_argument_emit_call_still_records_wordpress_core_as_the_source(): void {
+		global $wpdb;
+
+		$registry   = $this->registered_registry();
+		$dispatcher = $this->real_dispatcher( $registry );
+		$audit      = new AuditLogger( new SchemaHealth(), new Redactor() );
+		$emitter    = new EventEmitter( $registry, $dispatcher, $audit );
+
+		$emitter->emit( 'wordpress.user_registered', array( 'subject' => array( 'user_id' => 1 ) ), 'three-arg-key' );
+
+		$table  = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
+		$source = $wpdb->get_var( $wpdb->prepare( "SELECT source FROM {$table} WHERE event_type = %s ORDER BY id DESC LIMIT 1", 'wordpress.user_registered' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		$this->assertSame( EventSource::WORDPRESS_CORE->value, $source );
+	}
+
+	public function test_a_four_argument_emit_call_with_visitor_source_reaches_the_history_source_column(): void {
+		global $wpdb;
+
+		$registry   = $this->registered_registry();
+		$dispatcher = $this->real_dispatcher( $registry );
+		$audit      = new AuditLogger( new SchemaHealth(), new Redactor() );
+		$emitter    = new EventEmitter( $registry, $dispatcher, $audit );
+
+		$emitter->emit( 'wordpress.user_registered', array( 'subject' => array( 'user_id' => 1 ) ), 'four-arg-key', EventSource::VISITOR );
+
+		$table  = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
+		$source = $wpdb->get_var( $wpdb->prepare( "SELECT source FROM {$table} WHERE event_type = %s ORDER BY id DESC LIMIT 1", 'wordpress.user_registered' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		$this->assertSame( EventSource::VISITOR->value, $source );
 	}
 }
