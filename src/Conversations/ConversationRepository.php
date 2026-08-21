@@ -174,6 +174,117 @@ class ConversationRepository {
 	}
 
 	/**
+	 * The single atomic compare-and-set guard that makes topic creation
+	 * idempotent and concurrency-safe: only the caller whose UPDATE
+	 * actually matches a row (topic_creation_state still 'none') may
+	 * enqueue a TopicCreationHandler job (M05 plan §5, docs/adr/0021).
+	 * Retries, duplicate first-message submissions, or concurrent requests
+	 * can therefore never produce two topics for one conversation.
+	 *
+	 * @param int $id The conversation's primary key.
+	 *
+	 * @return bool True only if this call won the compare-and-set.
+	 */
+	public function try_begin_topic_creation( int $id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'topic_creation_state' => 'pending',
+				'updated_at'            => current_time( 'mysql', true ),
+			),
+			array(
+				'id'                    => $id,
+				'topic_creation_state'  => 'none',
+			),
+			array( '%s', '%s' ),
+			array( '%d', '%s' )
+		);
+
+		return false !== $updated && $updated > 0;
+	}
+
+	/**
+	 * Records a successful topic creation: the topic id, the destination
+	 * row it now routes through, and the `new -> open` status transition
+	 * (M05 plan §5, §7).
+	 *
+	 * @param int $id                The conversation's primary key.
+	 * @param int $telegram_topic_id The Telegram forum topic id.
+	 * @param int $destination_id    The conversation's own destination row id.
+	 *
+	 * @return bool
+	 */
+	public function mark_topic_created( int $id, int $telegram_topic_id, int $destination_id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'topic_creation_state' => 'created',
+				'telegram_topic_id'    => $telegram_topic_id,
+				'destination_id'       => $destination_id,
+				'updated_at'           => current_time( 'mysql', true ),
+			),
+			array( 'id' => $id ),
+			array( '%s', '%d', '%d', '%s' ),
+			array( '%d' )
+		);
+
+		if ( false === $updated ) {
+			return false;
+		}
+
+		$this->transition( $id, ConversationStatus::NEW, ConversationStatus::OPEN );
+
+		return true;
+	}
+
+	/**
+	 * Records a bounded-retry exhaustion: topic creation ends 'failed', a
+	 * surfaced degraded state, never a silent drop (M05 plan §5).
+	 *
+	 * @param int $id The conversation's primary key.
+	 *
+	 * @return bool
+	 */
+	public function mark_topic_failed( int $id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'topic_creation_state' => 'failed',
+				'updated_at'           => current_time( 'mysql', true ),
+			),
+			array( 'id' => $id ),
+			array( '%s', '%s' ),
+			array( '%d' )
+		);
+
+		return false !== $updated;
+	}
+
+	/**
 	 * Sets the conversation's own destination row id, once its Telegram
 	 * topic exists.
 	 *

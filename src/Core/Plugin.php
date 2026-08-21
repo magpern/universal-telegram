@@ -37,6 +37,8 @@ use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\Rest\ConversationsController;
+use UniversalTelegram\Conversations\TopicCreationDispatcher;
+use UniversalTelegram\Conversations\TopicCreationHandler;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
@@ -310,6 +312,13 @@ final class Plugin {
 	private ?ConversationsController $conversations_controller = null;
 
 	/**
+	 * Idempotent Telegram forum-topic creation dispatch, constructed by init().
+	 *
+	 * @var TopicCreationDispatcher|null
+	 */
+	private ?TopicCreationDispatcher $topic_creation_dispatcher = null;
+
+	/**
 	 * The per-bot/per-destination circuit breaker, constructed by init().
 	 *
 	 * @var CircuitBreaker|null
@@ -551,10 +560,21 @@ final class Plugin {
 			$this->conversation_repository,
 			$this->message_repository,
 			new VisitorTokenGenerator(),
-			new ChatProfileResolver( $this->bot_profile_repository ),
+			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
 			$this->rate_limiter
 		);
 		add_action( 'rest_api_init', array( $this->conversations_controller, 'register_routes' ) );
+
+		$this->topic_creation_dispatcher = new TopicCreationDispatcher( $this->conversation_repository, $this->dispatcher );
+		$topic_creation_handler          = new TopicCreationHandler(
+			$this->conversation_repository,
+			$this->bot_profile_repository,
+			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
+			$this->destination_repository,
+			$this->telegram_api_client,
+			new RetryPolicy()
+		);
+		$this->handler_registry->register( TopicCreationHandler::JOB_TYPE, array( $topic_creation_handler, 'handle_job' ) );
 
 		$this->retention_cleanup_handler = new RetentionCleanupHandler(
 			$this->outbound_message_repository,
@@ -1085,6 +1105,13 @@ final class Plugin {
 	 */
 	public function conversations_controller(): ?ConversationsController {
 		return $this->conversations_controller;
+	}
+
+	/**
+	 * Idempotent Telegram forum-topic creation dispatch. Available only after init() has run.
+	 */
+	public function topic_creation_dispatcher(): ?TopicCreationDispatcher {
+		return $this->topic_creation_dispatcher;
 	}
 
 	/**

@@ -13,6 +13,7 @@ use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
+use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
 use WP_REST_Request;
 use WP_UnitTestCase;
@@ -23,6 +24,7 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 	private MessageRepository $messages;
 	private VisitorTokenGenerator $tokens;
 	private BotProfileRepository $bots;
+	private DestinationRepository $destinations;
 	private ConversationsController $controller;
 
 	protected function setUp(): void {
@@ -35,13 +37,14 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$this->messages       = new MessageRepository( $schema_health, $vault );
 		$this->tokens         = new VisitorTokenGenerator();
 		$this->bots           = new BotProfileRepository( $schema_health, $vault );
+		$this->destinations   = new DestinationRepository( $schema_health );
 
 		$this->controller = new ConversationsController(
 			$schema_health,
 			$this->conversations,
 			$this->messages,
 			$this->tokens,
-			new ChatProfileResolver( $this->bots ),
+			new ChatProfileResolver( $this->bots, $this->destinations ),
 			new RateLimiter( $schema_health )
 		);
 	}
@@ -264,7 +267,7 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 			$this->conversations,
 			$this->messages,
 			$this->tokens,
-			new ChatProfileResolver( $this->bots ),
+			new ChatProfileResolver( $this->bots, $this->destinations ),
 			$limiter
 		);
 

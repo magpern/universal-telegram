@@ -209,6 +209,42 @@ final class TelegramApiClientTest extends WP_UnitTestCase {
 		( new TelegramApiClient() )->get_me( 'fake-token' );
 	}
 
+	public function test_create_forum_topic_success(): void {
+		$this->fake_response(
+			200,
+			array(
+				'ok'     => true,
+				'result' => array(
+					'message_thread_id' => 42,
+					'name'              => 'Conversation abc',
+				),
+			)
+		);
+
+		$client = new TelegramApiClient();
+		$result = $client->create_forum_topic( 'fake-token', '-1001234567890', 'Conversation abc' );
+
+		$this->assertTrue( $result->ok() );
+		$this->assertSame( 42, $result->result()['message_thread_id'] );
+	}
+
+	public function test_create_forum_topic_chat_not_forum_error(): void {
+		$this->fake_response(
+			400,
+			array(
+				'ok'          => false,
+				'error_code'  => 400,
+				'description' => 'Bad Request: the group chat is not a forum',
+			)
+		);
+
+		$client = new TelegramApiClient();
+		$result = $client->create_forum_topic( 'fake-token', '-1001234567890', 'Conversation abc' );
+
+		$this->assertFalse( $result->ok() );
+		$this->assertSame( 400, $result->http_status() );
+	}
+
 	public function test_set_webhook_and_delete_webhook_success(): void {
 		$this->fake_response(
 			200,
