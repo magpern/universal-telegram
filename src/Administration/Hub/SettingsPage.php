@@ -116,6 +116,10 @@ class SettingsPage {
 			checked( ! empty( $values['remove_data_on_uninstall'] ), true, false ) . ' /> ' .
 			esc_html__( 'Remove all plugin data on uninstall', 'universal-telegram' ) . '</label></p>';
 
+		echo '<p><label><input type="checkbox" name="universal_telegram_settings[chat_widget_enabled]" value="1" ' .
+			checked( ! empty( $values['chat_widget_enabled'] ), true, false ) . ' /> ' .
+			esc_html__( 'Enable chat widget', 'universal-telegram' ) . '</label></p>';
+
 		echo '<table class="form-table"><tbody>';
 		foreach ( self::INTEGER_FIELDS as $field ) {
 			printf(

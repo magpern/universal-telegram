@@ -33,6 +33,8 @@ final class SettingsPageTest extends WP_UnitTestCase {
 
 		$this->assertStringContainsString( 'Remove all plugin data on uninstall', $output );
 		$this->assertStringContainsString( 'universal_telegram_settings[event_retention_days]', $output );
+		$this->assertStringContainsString( 'universal_telegram_settings[chat_widget_enabled]', $output );
+		$this->assertStringContainsString( 'Enable chat widget', $output );
 	}
 
 	public function test_handle_request_denies_a_user_lacking_the_capability(): void {
