@@ -118,7 +118,10 @@ final class Settings {
 
 			foreach ( array_slice( $input['visitor_click_target_allowlist'], 0, 8 ) as $key ) {
 				if ( is_string( $key ) && '' !== $key ) {
-					$allowlist[] = sanitize_key( $key );
+					$normalized = strtolower( preg_replace( '/[^a-z0-9_\-]/i', '', $key ) ?? '' );
+					if ( '' !== $normalized ) {
+						$allowlist[] = $normalized;
+					}
 				}
 			}
 
