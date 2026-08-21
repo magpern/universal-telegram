@@ -54,7 +54,13 @@ final class VisitorCommerceEventCatalogTest extends WP_UnitTestCase {
 
 		update_option(
 			Settings::OPTION_NAME,
-			array_merge( ( new Settings() )->defaults(), array( 'visitor_tracking_enabled' => true, 'visitor_family_commerce' => true ) )
+			array_merge(
+				( new Settings() )->defaults(),
+				array(
+					'visitor_tracking_enabled' => true,
+					'visitor_family_commerce'  => true,
+				)
+			)
 		);
 
 		$schema_health = new SchemaHealth();

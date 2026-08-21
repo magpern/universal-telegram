@@ -38,9 +38,9 @@ final class IngestControllerTest extends WP_UnitTestCase {
 			array_merge(
 				( new Settings() )->defaults(),
 				array(
-					'visitor_tracking_enabled'  => true,
-					'visitor_family_page_views' => true,
-					'visitor_family_clicks'     => true,
+					'visitor_tracking_enabled'       => true,
+					'visitor_family_page_views'      => true,
+					'visitor_family_clicks'          => true,
 					'visitor_click_target_allowlist' => array( 'hero-cta' ),
 				)
 			)
@@ -124,7 +124,7 @@ final class IngestControllerTest extends WP_UnitTestCase {
 
 		global $wpdb;
 		$table = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
-		$count = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . $table . ' WHERE event_type = %s', VisitorEventCatalog::PAGE_VIEWED ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE event_type = %s", VisitorEventCatalog::PAGE_VIEWED ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$this->assertSame( 0, $count );
 	}
@@ -141,7 +141,7 @@ final class IngestControllerTest extends WP_UnitTestCase {
 
 		global $wpdb;
 		$table = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
-		$count = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . $table . ' WHERE event_type = %s', VisitorEventCatalog::PAGE_VIEWED ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE event_type = %s", VisitorEventCatalog::PAGE_VIEWED ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$this->assertSame( 0, $count );
 	}
@@ -152,7 +152,7 @@ final class IngestControllerTest extends WP_UnitTestCase {
 
 		global $wpdb;
 		$table = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
-		$count = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . $table . ' WHERE event_type = %s', VisitorEventCatalog::PAGE_VIEWED ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE event_type = %s", VisitorEventCatalog::PAGE_VIEWED ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$this->assertSame( 1, $count );
 	}
@@ -163,10 +163,10 @@ final class IngestControllerTest extends WP_UnitTestCase {
 		$wpdb->insert(
 			$table,
 			array(
-				'scope_type'        => 'visitor_site',
-				'scope_id'          => 0,
-				'tokens_available'  => 0,
-				'last_refill_at'    => gmdate( 'Y-m-d H:i:s' ),
+				'scope_type'       => 'visitor_site',
+				'scope_id'         => 0,
+				'tokens_available' => 0,
+				'last_refill_at'   => gmdate( 'Y-m-d H:i:s' ),
 			)
 		);
 

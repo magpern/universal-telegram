@@ -36,7 +36,7 @@ final class TrackerAssetStructureTest extends TestCase {
 	}
 
 	public function test_asset_is_valid_utf8(): void {
-		$contents = file_get_contents( $this->asset_path() );
+		$contents = file_get_contents( $this->asset_path() ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 		$this->assertTrue( mb_check_encoding( $contents, 'UTF-8' ) );
 	}
 
@@ -44,7 +44,7 @@ final class TrackerAssetStructureTest extends TestCase {
 	 * @dataProvider disallowed_token_provider
 	 */
 	public function test_asset_contains_no_disallowed_token( string $token ): void {
-		$contents = file_get_contents( $this->asset_path() );
+		$contents = file_get_contents( $this->asset_path() ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 		$this->assertStringNotContainsString( $token, $contents );
 	}
 

@@ -26,16 +26,14 @@ final class TrackerAssets {
 	/**
 	 * Constructor.
 	 *
-	 * @param Settings              $settings             Reads the current visitor tracking configuration.
-	 * @param PageContext           $page_context          Server-rendered page-type/path/commerce detection.
-	 * @param WooCommerceSupport    $woocommerce_support   Whether WooCommerce is active.
-	 * @param CapabilityRegistrar   $capability_registrar  Used to check the administrator-exclusion setting.
+	 * @param Settings           $settings            Reads the current visitor tracking configuration.
+	 * @param PageContext        $page_context        Server-rendered page-type/path/commerce detection.
+	 * @param WooCommerceSupport $woocommerce_support Whether WooCommerce is active.
 	 */
 	public function __construct(
 		private readonly Settings $settings,
 		private readonly PageContext $page_context,
-		private readonly WooCommerceSupport $woocommerce_support,
-		private readonly CapabilityRegistrar $capability_registrar
+		private readonly WooCommerceSupport $woocommerce_support
 	) {}
 
 	/**
@@ -61,8 +59,9 @@ final class TrackerAssets {
 			return;
 		}
 
-		$url = plugins_url( 'assets/js/visitor-tracker.js', UNIVERSAL_TELEGRAM_PLUGIN_FILE );
-		wp_enqueue_script( 'universal-telegram-visitor-tracker', $url, array(), UNIVERSAL_TELEGRAM_VERSION, true );
+		$url     = plugins_url( 'assets/js/visitor-tracker.js', UNIVERSAL_TELEGRAM_PLUGIN_FILE );
+		$version = defined( 'UNIVERSAL_TELEGRAM_VERSION' ) ? UNIVERSAL_TELEGRAM_VERSION : 'unknown';
+		wp_enqueue_script( 'universal-telegram-visitor-tracker', $url, array(), $version, true );
 
 		$commerce_active = $settings_values['visitor_family_commerce'] && $this->woocommerce_support->is_active();
 

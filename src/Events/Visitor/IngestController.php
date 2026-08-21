@@ -31,12 +31,12 @@ use WP_REST_Response;
  */
 final class IngestController {
 
-	private const ROUTE_NAMESPACE      = 'universal-telegram/v1';
-	private const ROUTE                = '/visitor-events';
+	private const ROUTE_NAMESPACE          = 'universal-telegram/v1';
+	private const ROUTE                    = '/visitor-events';
 	private const RATE_LIMIT_SECRET_OPTION = 'universal_telegram_visitor_rate_limit_secret';
 
-	private const SITE_BUCKET_SCOPE   = 'visitor_site';
-	private const SITE_BUCKET_ID      = 0;
+	private const SITE_BUCKET_SCOPE    = 'visitor_site';
+	private const SITE_BUCKET_ID       = 0;
 	private const SITE_BUCKET_CAPACITY = 300.0;
 	private const SITE_BUCKET_REFILL   = 5.0;
 
@@ -258,7 +258,7 @@ final class IngestController {
 		);
 
 		foreach ( $event['fields'] as $field_name => $value ) {
-			$section                     = $this->section_for( $event_type, $field_name );
+			$section                         = $this->section_for( $event_type );
 			$data[ $section ][ $field_name ] = $value;
 		}
 
@@ -270,15 +270,14 @@ final class IngestController {
 	}
 
 	/**
-	 * Maps a validated field name to the actor/subject/context/payload
-	 * section it belongs to, per the catalog (M04 plan §4.2).
+	 * Maps an event type to the actor/subject/context/payload section its
+	 * fields belong to, per the catalog (M04 plan §4.2).
 	 *
 	 * @param string $event_type The full event type.
-	 * @param string $field_name The field name.
 	 *
 	 * @return string
 	 */
-	private function section_for( string $event_type, string $field_name ): string {
+	private function section_for( string $event_type ): string {
 		if ( 'visitor.search_performed' === $event_type || 'visitor.javascript_error' === $event_type ) {
 			return 'payload';
 		}
@@ -350,7 +349,7 @@ final class IngestController {
 	 * @return int
 	 */
 	private function client_bucket_scope_id( WP_REST_Request $request ): int {
-		$ip         = isset( $_SERVER['REMOTE_ADDR'] ) ? (string) $_SERVER['REMOTE_ADDR'] : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$ip         = isset( $_SERVER['REMOTE_ADDR'] ) ? (string) wp_unslash( $_SERVER['REMOTE_ADDR'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		$user_agent = $this->raw_user_agent( $request ) ?? '';
 		$day        = gmdate( 'Y-m-d' );
 

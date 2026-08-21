@@ -50,7 +50,7 @@ final class PageContext {
 	 * @return string
 	 */
 	public function path(): string {
-		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '/'; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '/'; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		$parsed      = wp_parse_url( $request_uri );
 		$path        = is_array( $parsed ) && isset( $parsed['path'] ) ? $parsed['path'] : '/';
 

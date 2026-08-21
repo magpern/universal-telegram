@@ -633,7 +633,7 @@ final class Plugin {
 		);
 		add_action( 'rest_api_init', array( $ingest_controller, 'register_routes' ) );
 
-		$tracker_assets = new TrackerAssets( $settings, new PageContext(), $this->woocommerce_support, $this->capability_registrar );
+		$tracker_assets = new TrackerAssets( $settings, new PageContext(), $this->woocommerce_support );
 		add_action( 'wp_enqueue_scripts', array( $tracker_assets, 'enqueue' ) );
 
 		// WooCommerce event emitters (M03 plan §4, ADR-0018): constructed

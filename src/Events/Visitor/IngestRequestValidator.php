@@ -22,9 +22,9 @@ namespace UniversalTelegram\Events\Visitor;
  */
 final class IngestRequestValidator {
 
-	public const MAX_BODY_BYTES = 8192;
-	private const MAX_EVENTS      = 10;
-	private const MAX_DATA_KEYS   = 6;
+	public const MAX_BODY_BYTES    = 8192;
+	private const MAX_EVENTS       = 10;
+	private const MAX_DATA_KEYS    = 6;
 	private const MAX_SCALAR_BYTES = 190;
 
 	private const UUID4_PATTERN = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/';
@@ -43,9 +43,10 @@ final class IngestRequestValidator {
 	);
 
 	/**
-	 * Dot-free field name to a validation rule name; the field's classified
-	 * dot-path (subject.*/payload.*) is assigned by IngestController, not
-	 * here — this class only proves the raw client value is well-formed.
+	 * Dot-free field name to a validation rule name for each event type;
+	 * assigning the field's dot-path (subject dot-star, payload dot-star)
+	 * is IngestController's job, not this class's — this class only
+	 * proves the raw client value is well-formed.
 	 *
 	 * @var array<string, array<string, string>>
 	 */
@@ -122,6 +123,8 @@ final class IngestRequestValidator {
 	}
 
 	/**
+	 * Validates one element of the "events" array.
+	 *
 	 * @param mixed $raw_event One element of the "events" array.
 	 *
 	 * @return array{uuid: string, event_type: string, fields: array<string, mixed>}|null
@@ -184,6 +187,8 @@ final class IngestRequestValidator {
 	}
 
 	/**
+	 * Validates one field's raw value against a fixed rule name.
+	 *
 	 * @param string $rule  One of the fixed rule names in FIELD_SPECS.
 	 * @param mixed  $value The raw client-supplied value.
 	 *

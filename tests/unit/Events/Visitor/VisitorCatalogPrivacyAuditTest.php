@@ -48,7 +48,7 @@ final class VisitorCatalogPrivacyAuditTest extends TestCase {
 
 		foreach ( $registry->all() as $entry ) {
 			if ( 0 === strpos( $entry['event_type'], 'visitor.' ) ) {
-				$count++;
+				++$count;
 			}
 		}
 

@@ -5,7 +5,6 @@
 
 namespace UniversalTelegram\Tests\Integration\Events\Visitor;
 
-use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Events\Visitor\PageContext;
 use UniversalTelegram\Events\Visitor\TrackerAssets;
@@ -20,7 +19,7 @@ final class TrackerAssetsTest extends WP_UnitTestCase {
 	}
 
 	private function tracker_assets(): TrackerAssets {
-		return new TrackerAssets( new Settings(), new PageContext(), new WooCommerceSupport(), new CapabilityRegistrar() );
+		return new TrackerAssets( new Settings(), new PageContext(), new WooCommerceSupport() );
 	}
 
 	public function test_the_tracker_is_not_enqueued_when_tracking_is_disabled(): void {
