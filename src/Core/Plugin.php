@@ -34,6 +34,8 @@ use UniversalTelegram\Automations\RuleEvaluator;
 use UniversalTelegram\Automations\RuleSimulator;
 use UniversalTelegram\Automations\TemplateRenderer;
 use UniversalTelegram\Conversations\ChatProfileResolver;
+use UniversalTelegram\Conversations\ConversationOutboundDispatcher;
+use UniversalTelegram\Conversations\ConversationOutboundHandler;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\Rest\ConversationsController;
@@ -553,17 +555,8 @@ final class Plugin {
 		);
 		add_action( 'rest_api_init', array( $this->webhook_controller, 'register_routes' ) );
 
-		$this->conversation_repository  = new ConversationRepository( $this->schema_health );
-		$this->message_repository       = new MessageRepository( $this->schema_health, $this->credential_vault );
-		$this->conversations_controller = new ConversationsController(
-			$this->schema_health,
-			$this->conversation_repository,
-			$this->message_repository,
-			new VisitorTokenGenerator(),
-			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
-			$this->rate_limiter
-		);
-		add_action( 'rest_api_init', array( $this->conversations_controller, 'register_routes' ) );
+		$this->conversation_repository = new ConversationRepository( $this->schema_health );
+		$this->message_repository      = new MessageRepository( $this->schema_health, $this->credential_vault );
 
 		$this->topic_creation_dispatcher = new TopicCreationDispatcher( $this->conversation_repository, $this->dispatcher );
 		$topic_creation_handler          = new TopicCreationHandler(
@@ -575,6 +568,27 @@ final class Plugin {
 			new RetryPolicy()
 		);
 		$this->handler_registry->register( TopicCreationHandler::JOB_TYPE, array( $topic_creation_handler, 'handle_job' ) );
+
+		$conversation_outbound_dispatcher = new ConversationOutboundDispatcher( $this->dispatcher );
+		$conversation_outbound_handler    = new ConversationOutboundHandler(
+			$this->message_repository,
+			$this->conversation_repository,
+			$this->outbound_message_repository,
+			$this->dispatcher
+		);
+		$this->handler_registry->register( ConversationOutboundHandler::JOB_TYPE, array( $conversation_outbound_handler, 'handle_job' ) );
+
+		$this->conversations_controller = new ConversationsController(
+			$this->schema_health,
+			$this->conversation_repository,
+			$this->message_repository,
+			new VisitorTokenGenerator(),
+			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
+			$this->rate_limiter,
+			$this->topic_creation_dispatcher,
+			$conversation_outbound_dispatcher
+		);
+		add_action( 'rest_api_init', array( $this->conversations_controller, 'register_routes' ) );
 
 		$this->retention_cleanup_handler = new RetentionCleanupHandler(
 			$this->outbound_message_repository,

@@ -11,9 +11,11 @@ namespace UniversalTelegram\Conversations\Rest;
 
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\Conversation;
+use UniversalTelegram\Conversations\ConversationOutboundDispatcher;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\ConversationStatus;
 use UniversalTelegram\Conversations\MessageRepository;
+use UniversalTelegram\Conversations\TopicCreationDispatcher;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
@@ -69,8 +71,10 @@ final class ConversationsController {
 	 * @param ConversationRepository $conversations Conversation persistence.
 	 * @param MessageRepository      $messages      Message persistence and decryption.
 	 * @param VisitorTokenGenerator  $tokens        Generates the two-part visitor credential.
-	 * @param ChatProfileResolver    $chat_profiles Resolves the optional chat_profile to a bot.
-	 * @param RateLimiter            $rate_limiter  The two-tier abuse control, shared with the Telegram outbound boundary.
+	 * @param ChatProfileResolver            $chat_profiles     Resolves the optional chat_profile to a bot.
+	 * @param RateLimiter                    $rate_limiter      The two-tier abuse control, shared with the Telegram outbound boundary.
+	 * @param TopicCreationDispatcher        $topic_creation    Idempotent Telegram forum-topic creation dispatch.
+	 * @param ConversationOutboundDispatcher $outbound          Queue-before-topic visitor-to-Telegram routing dispatch.
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
@@ -78,7 +82,9 @@ final class ConversationsController {
 		private readonly MessageRepository $messages,
 		private readonly VisitorTokenGenerator $tokens,
 		private readonly ChatProfileResolver $chat_profiles,
-		private readonly RateLimiter $rate_limiter
+		private readonly RateLimiter $rate_limiter,
+		private readonly TopicCreationDispatcher $topic_creation,
+		private readonly ConversationOutboundDispatcher $outbound
 	) {}
 
 	/**
@@ -243,6 +249,12 @@ final class ConversationsController {
 		if ( ConversationStatus::OPEN === $conversation->status() ) {
 			$this->conversations->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::WAITING_FOR_OPERATOR );
 		}
+
+		// Safe and idempotent on every accepted visitor message, including
+		// the first: only the call that wins the underlying compare-and-set
+		// ever enqueues a topic-creation job (M05 plan §5).
+		$this->topic_creation->maybe_create( $conversation );
+		$this->outbound->route( $message->id(), $conversation->id() );
 
 		return $this->respond( array( 'ok' => true ), 200 );
 	}

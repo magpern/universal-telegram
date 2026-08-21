@@ -6,12 +6,15 @@
 namespace UniversalTelegram\Tests\Integration\Conversations\Rest;
 
 use UniversalTelegram\Conversations\ChatProfileResolver;
+use UniversalTelegram\Conversations\ConversationOutboundDispatcher;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\Rest\ConversationsController;
+use UniversalTelegram\Conversations\TopicCreationDispatcher;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
+use UniversalTelegram\Queue\Dispatcher;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
@@ -45,7 +48,9 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 			$this->messages,
 			$this->tokens,
 			new ChatProfileResolver( $this->bots, $this->destinations ),
-			new RateLimiter( $schema_health )
+			new RateLimiter( $schema_health ),
+			new TopicCreationDispatcher( $this->conversations, new Dispatcher( $schema_health ) ),
+			new ConversationOutboundDispatcher( new Dispatcher( $schema_health ) )
 		);
 	}
 
@@ -268,7 +273,9 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 			$this->messages,
 			$this->tokens,
 			new ChatProfileResolver( $this->bots, $this->destinations ),
-			$limiter
+			$limiter,
+			new TopicCreationDispatcher( $this->conversations, new Dispatcher( new SchemaHealth() ) ),
+			new ConversationOutboundDispatcher( new Dispatcher( new SchemaHealth() ) )
 		);
 
 		$last_status = 200;

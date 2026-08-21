@@ -108,6 +108,68 @@ class MessageRepository {
 	}
 
 	/**
+	 * Records that a visitor message was successfully handed off to the
+	 * existing outbound pipeline, correlating it to the resulting
+	 * universal_telegram_outbound_messages row (M05 plan §5).
+	 *
+	 * @param int    $id                    The conversation message's primary key.
+	 * @param string $outbound_message_uuid The created outbound message's own uuid.
+	 *
+	 * @return bool
+	 */
+	public function mark_routed( int $id, string $outbound_message_uuid ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'outbound_message_uuid' => $outbound_message_uuid,
+				'delivery_state'        => 'sent',
+			),
+			array( 'id' => $id ),
+			array( '%s', '%s' ),
+			array( '%d' )
+		);
+
+		return false !== $updated;
+	}
+
+	/**
+	 * Records that a visitor message's deferred routing wait exceeded its
+	 * bounded maximum — the message remains stored and visible, never
+	 * silently dropped (M05 plan §5).
+	 *
+	 * @param int $id The conversation message's primary key.
+	 *
+	 * @return bool
+	 */
+	public function mark_delivery_failed( int $id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array( 'delivery_state' => 'failed' ),
+			array( 'id' => $id ),
+			array( '%s' ),
+			array( '%d' )
+		);
+
+		return false !== $updated;
+	}
+
+	/**
 	 * Finds a message by primary key.
 	 *
 	 * @param int $id The message's primary key.
