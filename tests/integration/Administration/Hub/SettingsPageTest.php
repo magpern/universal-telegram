@@ -6,13 +6,33 @@
 namespace UniversalTelegram\Tests\Integration\Administration\Hub;
 
 use UniversalTelegram\Administration\Hub\SettingsPage;
+use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use WP_UnitTestCase;
 
 final class SettingsPageTest extends WP_UnitTestCase {
 
+	protected function setUp(): void {
+		parent::setUp();
+
+		// The test bootstrap loads the plugin as an MU-plugin, bypassing
+		// WordPress' real activation flow, so the capability Activator
+		// would normally grant is never actually granted here.
+		( new CapabilityRegistrar() )->grant_to_administrator();
+	}
+
 	private function page(): SettingsPage {
 		return new SettingsPage( new Settings() );
+	}
+
+	private function saving_page(): SettingsPage {
+		return new class( new Settings() ) extends SettingsPage {
+			public ?string $redirected_to = null;
+
+			protected function redirect_and_exit( string $url ): void {
+				$this->redirected_to = $url;
+			}
+		};
 	}
 
 	public function test_a_user_lacking_the_capability_is_denied_by_wordpress_itself(): void {
@@ -77,5 +97,25 @@ final class SettingsPageTest extends WP_UnitTestCase {
 		$this->assertSame( 180, $sanitized['event_retention_days'] );
 		$this->assertSame( 180, $sanitized['dispatch_log_retention_days'] );
 		$this->assertSame( 14, $sanitized['fatal_marker_retention_days'] );
+	}
+
+	public function test_unchecking_the_chat_widget_box_and_saving_actually_disables_it(): void {
+		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $admin_id );
+
+		update_option( Settings::OPTION_NAME, ( new Settings() )->sanitize( array( 'chat_widget_enabled' => true ) ) );
+
+		$_POST['universal_telegram_settings'] = array(
+			'event_retention_days' => '90',
+		);
+		$nonce                                = wp_create_nonce( SettingsPage::NONCE_ACTION );
+		$_POST['_wpnonce']                    = $nonce;
+		$_REQUEST['_wpnonce']                 = $nonce;
+
+		$this->saving_page()->handle_request();
+
+		$this->assertFalse( ( new Settings() )->get()['chat_widget_enabled'] );
+
+		unset( $_POST['universal_telegram_settings'], $_POST['_wpnonce'], $_REQUEST['_wpnonce'] );
 	}
 }
