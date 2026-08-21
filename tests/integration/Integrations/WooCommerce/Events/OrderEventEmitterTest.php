@@ -163,4 +163,121 @@ final class OrderEventEmitterTest extends WP_UnitTestCase {
 		$this->assertSame( (float) $reloaded->get_total(), $projected['payload']['order_total'] );
 		$this->assertSame( $reloaded->get_status(), $projected['context']['order_status'] );
 	}
+
+	public function test_payment_completed_is_emitted_with_has_transaction_id_boolean_only(): void {
+		$this->truncate_history();
+
+		$order = $this->create_order();
+		do_action( 'woocommerce_payment_complete', $order->get_id(), 'txn-12345' );
+
+		$rows = $this->rows_for_type( 'woocommerce.payment_completed' );
+		$this->assertCount( 1, $rows );
+
+		$projected = json_decode( $rows[0]['projected_fields_json'], true );
+		$this->assertTrue( $projected['context']['has_transaction_id'] );
+		$this->assertArrayNotHasKey( 'transaction_id', $projected['payload'] ?? array() );
+		$this->assertStringNotContainsString( 'txn-12345', $rows[0]['projected_fields_json'] );
+	}
+
+	public function test_payment_completed_without_a_transaction_id_reports_false(): void {
+		$this->truncate_history();
+
+		$order = $this->create_order();
+		do_action( 'woocommerce_payment_complete', $order->get_id(), '' );
+
+		$rows      = $this->rows_for_type( 'woocommerce.payment_completed' );
+		$projected = json_decode( $rows[0]['projected_fields_json'], true );
+		$this->assertFalse( $projected['context']['has_transaction_id'] );
+	}
+
+	public function test_order_failed_is_emitted_and_named_as_status_transition_not_payment_failure(): void {
+		$this->truncate_history();
+
+		$order = $this->create_order();
+		do_action( 'woocommerce_order_status_failed', $order->get_id(), $order, array( 'from' => 'pending' ) );
+
+		$rows = $this->rows_for_type( 'woocommerce.order_failed' );
+		$this->assertCount( 1, $rows );
+
+		$projected = json_decode( $rows[0]['projected_fields_json'], true );
+		$this->assertSame( 'pending', $projected['payload']['status_from'] );
+	}
+
+	public function test_order_failed_and_order_status_changed_both_fire_for_one_transition_with_distinct_event_ids(): void {
+		$this->truncate_history();
+
+		$order = $this->create_order();
+		do_action( 'woocommerce_order_status_changed', $order->get_id(), 'pending', 'failed', $order );
+		do_action( 'woocommerce_order_status_failed', $order->get_id(), $order, array( 'from' => 'pending' ) );
+
+		$changed_rows = $this->rows_for_type( 'woocommerce.order_status_changed' );
+		$failed_rows  = $this->rows_for_type( 'woocommerce.order_failed' );
+
+		$this->assertCount( 1, $changed_rows );
+		$this->assertCount( 1, $failed_rows );
+		$this->assertNotSame( $changed_rows[0]['event_id'], $failed_rows[0]['event_id'] );
+	}
+
+	public function test_order_cancelled_is_emitted(): void {
+		$this->truncate_history();
+
+		$order = $this->create_order();
+		do_action( 'woocommerce_order_status_cancelled', $order->get_id(), $order, array( 'from' => 'processing' ) );
+
+		$rows = $this->rows_for_type( 'woocommerce.order_cancelled' );
+		$this->assertCount( 1, $rows );
+
+		$projected = json_decode( $rows[0]['projected_fields_json'], true );
+		$this->assertSame( 'processing', $projected['payload']['status_from'] );
+	}
+
+	public function test_refund_created_is_emitted_without_reason_text(): void {
+		$this->truncate_history();
+
+		$order = $this->create_order();
+		$order->set_status( 'processing' );
+		$order->save();
+
+		$refund = wc_create_refund(
+			array(
+				'order_id'   => $order->get_id(),
+				'amount'     => '10.00',
+				'reason'     => 'a customer complaint containing incidental free text',
+				'line_items' => array(),
+			)
+		);
+		$this->assertNotInstanceOf( \WP_Error::class, $refund );
+
+		$rows = $this->rows_for_type( 'woocommerce.refund_created' );
+		$this->assertCount( 1, $rows );
+
+		$projected = json_decode( $rows[0]['projected_fields_json'], true );
+		$this->assertSame( $order->get_id(), $projected['subject']['order_id'] );
+		$this->assertSame( $refund->get_id(), $projected['subject']['refund_id'] );
+		$this->assertEqualsWithDelta( 10.00, $projected['payload']['refund_amount'], 0.001 );
+		$this->assertStringNotContainsString( 'customer complaint', $rows[0]['projected_fields_json'] );
+	}
+
+	public function test_refund_created_idempotency_key_is_the_refund_id_alone(): void {
+		$this->truncate_history();
+
+		$order = $this->create_order();
+		$order->set_status( 'processing' );
+		$order->save();
+
+		$refund = wc_create_refund(
+			array(
+				'order_id'   => $order->get_id(),
+				'amount'     => '5.00',
+				'line_items' => array(),
+			)
+		);
+		$this->assertNotInstanceOf( \WP_Error::class, $refund );
+
+		do_action( 'woocommerce_order_refunded', $order->get_id(), $refund->get_id() );
+		do_action( 'woocommerce_order_refunded', $order->get_id(), $refund->get_id() );
+
+		$rows = $this->rows_for_type( 'woocommerce.refund_created' );
+		$this->assertCount( 1, $rows, 'wc_create_refund() itself already fires the hook once; a second manual firing for the same refund id must dedupe.' );
+	}
 }

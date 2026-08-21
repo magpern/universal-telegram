@@ -26,6 +26,10 @@ final class OrderEventEmitter {
 
 	public const ORDER_CREATED        = 'woocommerce.order_created';
 	public const ORDER_STATUS_CHANGED = 'woocommerce.order_status_changed';
+	public const PAYMENT_COMPLETED    = 'woocommerce.payment_completed';
+	public const ORDER_FAILED         = 'woocommerce.order_failed';
+	public const ORDER_CANCELLED      = 'woocommerce.order_cancelled';
+	public const REFUND_CREATED       = 'woocommerce.refund_created';
 
 	/**
 	 * Registers this emitter's event types.
@@ -64,6 +68,62 @@ final class OrderEventEmitter {
 			array_keys( $order_status_changed_fields ),
 			array( 'subject.order_id', 'payload.status_from', 'payload.status_to', 'payload.order_total' )
 		);
+
+		$payment_completed_fields = array(
+			'subject.order_id'           => Classification::PUBLIC,
+			'payload.order_total'        => Classification::PUBLIC,
+			'payload.currency'           => Classification::PUBLIC,
+			'context.has_transaction_id' => Classification::PUBLIC,
+		);
+		$registry->register(
+			self::PAYMENT_COMPLETED,
+			1,
+			$payment_completed_fields,
+			array_keys( $payment_completed_fields ),
+			array_keys( $payment_completed_fields )
+		);
+
+		$order_failed_fields = array(
+			'subject.order_id'    => Classification::PUBLIC,
+			'payload.order_total' => Classification::PUBLIC,
+			'payload.currency'    => Classification::PUBLIC,
+			'payload.status_from' => Classification::PUBLIC,
+		);
+		$registry->register(
+			self::ORDER_FAILED,
+			1,
+			$order_failed_fields,
+			array_keys( $order_failed_fields ),
+			array_keys( $order_failed_fields )
+		);
+
+		$order_cancelled_fields = array(
+			'subject.order_id'    => Classification::PUBLIC,
+			'payload.order_total' => Classification::PUBLIC,
+			'payload.currency'    => Classification::PUBLIC,
+			'payload.status_from' => Classification::PUBLIC,
+		);
+		$registry->register(
+			self::ORDER_CANCELLED,
+			1,
+			$order_cancelled_fields,
+			array_keys( $order_cancelled_fields ),
+			array_keys( $order_cancelled_fields )
+		);
+
+		$refund_created_fields = array(
+			'subject.order_id'      => Classification::PUBLIC,
+			'subject.refund_id'     => Classification::PUBLIC,
+			'payload.refund_amount' => Classification::PUBLIC,
+			'payload.currency'      => Classification::PUBLIC,
+		);
+		$registry->register(
+			self::REFUND_CREATED,
+			1,
+			$refund_created_fields,
+			array_keys( $refund_created_fields ),
+			array_keys( $refund_created_fields )
+		);
 	}
 
 	/**
@@ -74,6 +134,10 @@ final class OrderEventEmitter {
 		add_action( 'woocommerce_checkout_order_processed', array( $this, 'on_classic_order_processed' ), 10, 3 );
 		add_action( 'woocommerce_store_api_checkout_order_processed', array( $this, 'on_block_order_processed' ), 10, 1 );
 		add_action( 'woocommerce_order_status_changed', array( $this, 'on_order_status_changed' ), 10, 4 );
+		add_action( 'woocommerce_payment_complete', array( $this, 'on_payment_complete' ), 10, 2 );
+		add_action( 'woocommerce_order_status_failed', array( $this, 'on_order_status_failed' ), 10, 3 );
+		add_action( 'woocommerce_order_status_cancelled', array( $this, 'on_order_status_cancelled' ), 10, 3 );
+		add_action( 'woocommerce_order_refunded', array( $this, 'on_order_refunded' ), 10, 2 );
 	}
 
 	/**
@@ -109,6 +173,8 @@ final class OrderEventEmitter {
 	 * @param WC_Order $order The order.
 	 */
 	private function emit_order_created( WC_Order $order ): void {
+		$fields = $this->extract_order_fields( $order );
+
 		$data = array(
 			'actor'   => array(
 				'user_id' => $order->get_customer_id(),
@@ -120,11 +186,7 @@ final class OrderEventEmitter {
 				'order_status'    => $order->get_status(),
 				'storage_backend' => $this->storage_backend(),
 			),
-			'payload' => array(
-				'order_total' => (float) $order->get_total(),
-				'currency'    => $order->get_currency(),
-				'item_count'  => $order->get_item_count(),
-			),
+			'payload' => $fields,
 		);
 
 		universal_telegram_emit_event( self::ORDER_CREATED, $data, 'order:' . $order->get_id() );
@@ -148,6 +210,8 @@ final class OrderEventEmitter {
 			return;
 		}
 
+		$fields = $this->extract_order_fields( $order );
+
 		$data = array(
 			'actor'   => array(
 				'user_id' => get_current_user_id(),
@@ -158,13 +222,167 @@ final class OrderEventEmitter {
 			'payload' => array(
 				'status_from' => $status_from,
 				'status_to'   => $status_to,
-				'order_total' => (float) $order->get_total(),
+				'order_total' => $fields['order_total'],
 			),
 		);
 
 		$key = 'order:' . $order_id . ':' . $status_from . '->' . $status_to . ':' . $order->get_date_modified()->getTimestamp();
 
 		universal_telegram_emit_event( self::ORDER_STATUS_CHANGED, $data, $key );
+	}
+
+	/**
+	 * The woocommerce_payment_complete callback. Fires only when a
+	 * gateway/extension explicitly calls WC_Order::payment_complete() and
+	 * the order's status is in the valid-for-completion list — a known,
+	 * accepted core limitation (M03 plan §5.5); order_status_changed
+	 * remains the broader net for admins who need it.
+	 *
+	 * @param int   $order_id       The order id.
+	 * @param mixed $transaction_id The transaction id. Never read into the
+	 *                               envelope; only its presence is recorded
+	 *                               (M03 plan §5.5, §5.14).
+	 */
+	public function on_payment_complete( int $order_id, $transaction_id = '' ): void {
+		$order = wc_get_order( $order_id );
+		if ( ! $order instanceof WC_Order ) {
+			return;
+		}
+
+		$fields = $this->extract_order_fields( $order );
+
+		$data = array(
+			'subject' => array(
+				'order_id' => $order_id,
+			),
+			'context' => array(
+				'has_transaction_id' => '' !== (string) $transaction_id,
+			),
+			'payload' => array(
+				'order_total' => $fields['order_total'],
+				'currency'    => $fields['currency'],
+			),
+		);
+
+		universal_telegram_emit_event( self::PAYMENT_COMPLETED, $data, 'order:' . $order_id . ':payment_complete' );
+	}
+
+	/**
+	 * The woocommerce_order_status_failed callback. Observes an order's
+	 * status transitioning to "failed" by any means (gateway-reported
+	 * failure, manual admin edit, or third-party extension) — not
+	 * exclusively a verified payment-gateway failure. Named and documented
+	 * as "order entered failed status," never "payment failed" (M03 plan
+	 * §5.6, ADR-0018 Decision §7).
+	 *
+	 * @param int                  $order_id          The order id.
+	 * @param WC_Order|null        $order             The order, if resolvable.
+	 * @param array<string, mixed> $status_transition The status transition detail.
+	 */
+	public function on_order_status_failed( int $order_id, ?WC_Order $order = null, array $status_transition = array() ): void {
+		$order = $order ?? wc_get_order( $order_id );
+		if ( ! $order instanceof WC_Order ) {
+			return;
+		}
+
+		$fields = $this->extract_order_fields( $order );
+
+		$data = array(
+			'subject' => array(
+				'order_id' => $order_id,
+			),
+			'payload' => array(
+				'order_total' => $fields['order_total'],
+				'currency'    => $fields['currency'],
+				'status_from' => $status_transition['from'] ?? '',
+			),
+		);
+
+		$key = 'order:' . $order_id . ':failed:' . $order->get_date_modified()->getTimestamp();
+
+		universal_telegram_emit_event( self::ORDER_FAILED, $data, $key );
+	}
+
+	/**
+	 * The woocommerce_order_status_cancelled callback. WooCommerce core
+	 * exposes no dedicated "woocommerce_cancelled_order" hook; this is the
+	 * hook WC's own internals use for coupon-usage decrement and stock
+	 * restoration (M03 plan §5.7).
+	 *
+	 * @param int                  $order_id          The order id.
+	 * @param WC_Order|null        $order             The order, if resolvable.
+	 * @param array<string, mixed> $status_transition The status transition detail.
+	 */
+	public function on_order_status_cancelled( int $order_id, ?WC_Order $order = null, array $status_transition = array() ): void {
+		$order = $order ?? wc_get_order( $order_id );
+		if ( ! $order instanceof WC_Order ) {
+			return;
+		}
+
+		$fields = $this->extract_order_fields( $order );
+
+		$data = array(
+			'subject' => array(
+				'order_id' => $order_id,
+			),
+			'payload' => array(
+				'order_total' => $fields['order_total'],
+				'currency'    => $fields['currency'],
+				'status_from' => $status_transition['from'] ?? '',
+			),
+		);
+
+		$key = 'order:' . $order_id . ':cancelled:' . $order->get_date_modified()->getTimestamp();
+
+		universal_telegram_emit_event( self::ORDER_CANCELLED, $data, $key );
+	}
+
+	/**
+	 * The woocommerce_order_refunded callback. Chosen over
+	 * woocommerce_refund_created because it gives both the order id and
+	 * refund id directly (M03 plan §5.8). A refund id is freshly created
+	 * per refund action via a single DB-write code path, so the refund id
+	 * alone is a sufficient idempotency key.
+	 *
+	 * @param int $order_id  The refunded order's id.
+	 * @param int $refund_id The refund's id.
+	 */
+	public function on_order_refunded( int $order_id, int $refund_id ): void {
+		$refund = wc_get_order( $refund_id );
+		if ( ! $refund instanceof \WC_Order_Refund ) {
+			return;
+		}
+
+		$data = array(
+			'subject' => array(
+				'order_id'  => $order_id,
+				'refund_id' => $refund_id,
+			),
+			'payload' => array(
+				'refund_amount' => (float) $refund->get_amount(),
+				'currency'      => $refund->get_currency(),
+			),
+		);
+
+		universal_telegram_emit_event( self::REFUND_CREATED, $data, 'refund:' . $refund_id );
+	}
+
+	/**
+	 * Shared scalar-field extraction, avoiding duplicating total/currency
+	 * extraction across the order-lifecycle methods above (M03 plan §8,
+	 * WP2). Never returns a WC_Order object or any payment-method/PII
+	 * field (M03 plan §5.14).
+	 *
+	 * @param WC_Order $order The order.
+	 *
+	 * @return array{order_total: float, currency: string, item_count: int}
+	 */
+	private function extract_order_fields( WC_Order $order ): array {
+		return array(
+			'order_total' => (float) $order->get_total(),
+			'currency'    => $order->get_currency(),
+			'item_count'  => $order->get_item_count(),
+		);
 	}
 
 	/**
