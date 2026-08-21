@@ -9,6 +9,10 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Telegram\Inbound;
 
+use UniversalTelegram\Conversations\ChatProfileResolver;
+use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\ConversationStatus;
+use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use WP_REST_Request;
@@ -23,6 +27,11 @@ use WP_REST_Response;
  * authenticity failure modes returns the identical generic 401, with no
  * distinguishing detail. The entire handler does only bounded, synchronous,
  * low-cost work: no Telegram API call, no queue dispatch.
+ *
+ * M05 (docs/adr/0021) narrowly extends this boundary: conversation-scoped
+ * content capture (route_to_conversation()) proceeds only when dedup,
+ * chat-identity, and known-topic-mapping all hold, exactly as ADR-0013's
+ * own metadata-only path otherwise remains byte-for-byte unchanged.
  */
 final class WebhookController {
 
@@ -39,17 +48,23 @@ final class WebhookController {
 	/**
 	 * Constructor.
 	 *
-	 * @param SchemaHealth          $schema_health Checked before any bot lookup or insert.
-	 * @param BotProfileRepository  $bots          Resolves bot_uuid to a bot profile.
-	 * @param WebhookSecretVerifier $verifier      Proves the request is authentic.
-	 * @param UpdateRepository      $updates       Metadata-only, deduplicated receipt.
-	 * @param int                   $max_body_bytes Request body size cap, enforced before JSON decoding.
+	 * @param SchemaHealth           $schema_health Checked before any bot lookup or insert.
+	 * @param BotProfileRepository   $bots          Resolves bot_uuid to a bot profile.
+	 * @param WebhookSecretVerifier  $verifier      Proves the request is authentic.
+	 * @param UpdateRepository       $updates       Metadata-only, deduplicated receipt.
+	 * @param ConversationRepository $conversations Resolves the known-topic-mapping gate (docs/adr/0021).
+	 * @param MessageRepository      $messages      Encrypts and persists a captured operator reply.
+	 * @param ChatProfileResolver    $chat_profiles Resolves a bot's conversation-support chat id.
+	 * @param int                    $max_body_bytes Request body size cap, enforced before JSON decoding.
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
 		private readonly BotProfileRepository $bots,
 		private readonly WebhookSecretVerifier $verifier,
 		private readonly UpdateRepository $updates,
+		private readonly ConversationRepository $conversations,
+		private readonly MessageRepository $messages,
+		private readonly ChatProfileResolver $chat_profiles,
 		private readonly int $max_body_bytes = 1048576
 	) {}
 
@@ -119,9 +134,82 @@ final class WebhookController {
 
 		list( $update_type, $chat_id, $message_thread_id ) = $this->extract_metadata( $decoded );
 
-		$this->updates->record( $bot->id(), $decoded['update_id'], $update_type, $chat_id, $message_thread_id );
+		$is_new_update = $this->updates->record( $bot->id(), $decoded['update_id'], $update_type, $chat_id, $message_thread_id );
+
+		if ( $is_new_update && UpdateType::MESSAGE === $update_type ) {
+			$this->maybe_route_to_conversation( $bot->id(), $chat_id, $message_thread_id, $decoded );
+		}
 
 		return new WP_REST_Response( array( 'ok' => true ), 200 );
+	}
+
+	/**
+	 * Conversation-scoped content capture (M05 plan §6, docs/adr/0021): a
+	 * narrow, additive extension of this boundary's otherwise-unchanged
+	 * metadata-only path. Proceeds only when the update's chat_id matches
+	 * this bot's own configured conversation-support chat, and
+	 * message_thread_id matches an existing conversation's own created
+	 * topic — the caller already confirmed genuine (bot_id, update_id)
+	 * dedup before calling this. If either gate fails, this method does
+	 * nothing further: no conversation row, no status transition, no
+	 * visitor-visible content — byte-for-byte identical to today's
+	 * metadata-only outcome.
+	 *
+	 * @param int                   $bot_id             The receiving bot's primary key.
+	 * @param string|null           $chat_id             The update's chat id, metadata already extracted.
+	 * @param int|null              $message_thread_id   The update's forum topic id, metadata already extracted.
+	 * @param array<string, mixed>  $decoded             The full decoded update body.
+	 */
+	private function maybe_route_to_conversation( int $bot_id, ?string $chat_id, ?int $message_thread_id, array $decoded ): void {
+		if ( null === $chat_id || null === $message_thread_id ) {
+			return;
+		}
+
+		$configured_chat_id = $this->chat_profiles->conversation_chat_id( $bot_id );
+
+		if ( null === $configured_chat_id || $configured_chat_id !== $chat_id ) {
+			return;
+		}
+
+		$conversation = $this->conversations->find_by_topic( $bot_id, $message_thread_id );
+
+		if ( null === $conversation ) {
+			return;
+		}
+
+		$text = $this->extract_text( $decoded );
+
+		if ( null === $text || '' === $text ) {
+			return;
+		}
+
+		$message = $this->messages->create( $conversation->id(), 'operator', $text );
+
+		if ( null === $message ) {
+			return;
+		}
+
+		if ( ConversationStatus::OPEN === $conversation->status() ) {
+			$this->conversations->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::WAITING_FOR_VISITOR );
+		}
+	}
+
+	/**
+	 * Reads the plaintext message text out of a decoded 'message' update.
+	 * Called only once every gate in maybe_route_to_conversation() has
+	 * already passed; the text is never read, logged, or inspected before
+	 * that point (M05 plan §6).
+	 *
+	 * @param array<string, mixed> $decoded The full decoded update body.
+	 *
+	 * @return string|null
+	 */
+	private function extract_text( array $decoded ): ?string {
+		if ( ! isset( $decoded['message']['text'] ) || ! is_string( $decoded['message']['text'] ) ) {
+			return null;
+		}
+
+		return $decoded['message']['text'];
 	}
 
 	/**

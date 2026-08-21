@@ -544,6 +544,9 @@ final class Plugin {
 		);
 		$this->handler_registry->register( MessageDispatcher::JOB_TYPE, array( $send_message_handler, 'handle_job' ) );
 
+		$this->conversation_repository = new ConversationRepository( $this->schema_health );
+		$this->message_repository      = new MessageRepository( $this->schema_health, $this->credential_vault );
+
 		$this->update_repository       = new UpdateRepository( $this->schema_health );
 		$this->webhook_secret_verifier = new WebhookSecretVerifier( $this->bot_profile_repository, $this->audit_logger );
 		$this->webhook_controller      = new WebhookController(
@@ -551,12 +554,12 @@ final class Plugin {
 			$this->bot_profile_repository,
 			$this->webhook_secret_verifier,
 			$this->update_repository,
+			$this->conversation_repository,
+			$this->message_repository,
+			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
 			(int) $settings_values['telegram_webhook_max_body_bytes']
 		);
 		add_action( 'rest_api_init', array( $this->webhook_controller, 'register_routes' ) );
-
-		$this->conversation_repository = new ConversationRepository( $this->schema_health );
-		$this->message_repository      = new MessageRepository( $this->schema_health, $this->credential_vault );
 
 		$this->topic_creation_dispatcher = new TopicCreationDispatcher( $this->conversation_repository, $this->dispatcher );
 		$topic_creation_handler          = new TopicCreationHandler(

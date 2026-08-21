@@ -6,10 +6,14 @@
 namespace UniversalTelegram\Tests\Integration\Telegram\Inbound;
 
 use UniversalTelegram\Audit\AuditLogger;
+use UniversalTelegram\Conversations\ChatProfileResolver;
+use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
+use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Inbound\UpdateRepository;
 use UniversalTelegram\Telegram\Inbound\WebhookController;
 use UniversalTelegram\Telegram\Inbound\WebhookSecretVerifier;
@@ -29,6 +33,16 @@ final class WebhookControllerTest extends WP_UnitTestCase {
 	private UpdateRepository $updates;
 
 	/**
+	 * @var ConversationRepository
+	 */
+	private ConversationRepository $conversations;
+
+	/**
+	 * @var DestinationRepository
+	 */
+	private DestinationRepository $destinations;
+
+	/**
 	 * @var WebhookController
 	 */
 	private WebhookController $controller;
@@ -40,10 +54,21 @@ final class WebhookControllerTest extends WP_UnitTestCase {
 		$vault         = new CredentialVault();
 		$audit_logger  = new AuditLogger( $schema_health, new Redactor() );
 
-		$this->bots       = new BotProfileRepository( $schema_health, $vault );
-		$this->updates    = new UpdateRepository( $schema_health );
-		$verifier         = new WebhookSecretVerifier( $this->bots, $audit_logger );
-		$this->controller = new WebhookController( $schema_health, $this->bots, $verifier, $this->updates );
+		$this->bots          = new BotProfileRepository( $schema_health, $vault );
+		$this->updates        = new UpdateRepository( $schema_health );
+		$this->conversations  = new ConversationRepository( $schema_health );
+		$this->destinations   = new DestinationRepository( $schema_health );
+		$messages             = new MessageRepository( $schema_health, $vault );
+		$verifier             = new WebhookSecretVerifier( $this->bots, $audit_logger );
+		$this->controller     = new WebhookController(
+			$schema_health,
+			$this->bots,
+			$verifier,
+			$this->updates,
+			$this->conversations,
+			$messages,
+			new ChatProfileResolver( $this->bots, $this->destinations )
+		);
 	}
 
 	private function request_for( string $bot_uuid, ?string $secret, string $body ): WP_REST_Request {
@@ -152,7 +177,16 @@ final class WebhookControllerTest extends WP_UnitTestCase {
 		$bot    = $this->bots->create( 'Bot', 'token' );
 		$secret = $this->active_secret_for( $bot );
 
-		$controller = new WebhookController( new SchemaHealth(), $this->bots, new WebhookSecretVerifier( $this->bots, new AuditLogger( new SchemaHealth(), new Redactor() ) ), $this->updates, 10 );
+		$controller = new WebhookController(
+			new SchemaHealth(),
+			$this->bots,
+			new WebhookSecretVerifier( $this->bots, new AuditLogger( new SchemaHealth(), new Redactor() ) ),
+			$this->updates,
+			$this->conversations,
+			new MessageRepository( new SchemaHealth(), new CredentialVault() ),
+			new ChatProfileResolver( $this->bots, $this->destinations ),
+			10
+		);
 
 		$response = $controller->handle_request( $this->request_for( $bot->bot_uuid(), $secret, str_repeat( 'a', 100 ) ) );
 
@@ -211,7 +245,15 @@ final class WebhookControllerTest extends WP_UnitTestCase {
 		$bots       = new BotProfileRepository( $degraded, new CredentialVault() );
 		$updates    = new UpdateRepository( $degraded );
 		$verifier   = new WebhookSecretVerifier( $bots, new AuditLogger( $degraded, new Redactor() ) );
-		$controller = new WebhookController( $degraded, $bots, $verifier, $updates );
+		$controller = new WebhookController(
+			$degraded,
+			$bots,
+			$verifier,
+			$updates,
+			new ConversationRepository( $degraded ),
+			new MessageRepository( $degraded, new CredentialVault() ),
+			new ChatProfileResolver( $bots, new DestinationRepository( $degraded ) )
+		);
 
 		$response = $controller->handle_request( $this->request_for( 'anything', 'anything', '{}' ) );
 

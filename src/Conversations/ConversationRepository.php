@@ -122,6 +122,38 @@ class ConversationRepository {
 	}
 
 	/**
+	 * Finds the conversation whose Telegram forum topic this is — the
+	 * "known-topic mapping" gate of the inbound webhook's conversation-scoped
+	 * routing (M05 plan §6). Only a conversation with a genuinely created
+	 * topic can ever match; a 'pending' or 'failed' topic_creation_state
+	 * never does, since no reply could legitimately reference it yet.
+	 *
+	 * @param int $bot_id            The receiving bot's primary key.
+	 * @param int $telegram_topic_id The Telegram forum topic id from the inbound update.
+	 *
+	 * @return Conversation|null
+	 */
+	public function find_by_topic( int $bot_id, int $telegram_topic_id ): ?Conversation {
+		if ( ! $this->schema_health->is_available() ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$row   = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT * FROM {$table} WHERE bot_id = %d AND telegram_topic_id = %d AND topic_creation_state = 'created'", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$bot_id,
+				$telegram_topic_id
+			),
+			ARRAY_A
+		);
+
+		return null === $row ? null : $this->hydrate( $row );
+	}
+
+	/**
 	 * Applies a status transition, gated on the frozen transition map
 	 * (ConversationStatus) and an atomic conditional update keyed on the
 	 * conversation's currently recorded status, so a stale caller can never
