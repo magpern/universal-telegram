@@ -1,0 +1,302 @@
+<?php
+/**
+ * Conversation persistence.
+ *
+ * @package UniversalTelegram
+ */
+
+declare( strict_types=1 );
+
+namespace UniversalTelegram\Conversations;
+
+use UniversalTelegram\Persistence\Migrator;
+use UniversalTelegram\Persistence\SchemaHealth;
+
+/**
+ * CRUD and status transitions for conversations. Checks
+ * SchemaHealth::is_available() at its own point of use (docs/adr/0007).
+ * find_by_uuid() is the only lookup path a REST request ever uses — there
+ * is no lookup-by-token step anywhere in this class (M05 plan §3).
+ *
+ * Not declared final: test doubles may need to extend this in later work
+ * packages, matching NotificationRuleRepository's own precedent.
+ */
+class ConversationRepository {
+
+	/**
+	 * Constructor.
+	 *
+	 * @param SchemaHealth $schema_health Checked before every operation.
+	 */
+	public function __construct(
+		private readonly SchemaHealth $schema_health
+	) {}
+
+	/**
+	 * Creates a new conversation in status `new`, topic_creation_state
+	 * `none`. The caller supplies the already-generated conversation_uuid
+	 * and secret_hash (VisitorTokenGenerator) — this method never generates
+	 * or sees the plaintext secret.
+	 *
+	 * @param string      $conversation_uuid Public, opaque identifier.
+	 * @param string      $secret_hash       password_hash() of the bearer secret.
+	 * @param int         $bot_id            The Telegram bot this conversation belongs to.
+	 * @param string|null $chat_profile      The configured profile requested at start, if any.
+	 *
+	 * @return Conversation|null Null if the schema is unavailable or the write failed.
+	 */
+	public function create( string $conversation_uuid, string $secret_hash, int $bot_id, ?string $chat_profile ): ?Conversation {
+		if ( ! $this->schema_health->is_available() ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$now   = current_time( 'mysql', true );
+
+		$inserted = $wpdb->insert(
+			$table,
+			array(
+				'conversation_uuid'      => $conversation_uuid,
+				'secret_hash'            => $secret_hash,
+				'bot_id'                 => $bot_id,
+				'chat_profile'           => $chat_profile,
+				'status'                 => ConversationStatus::NEW,
+				'topic_creation_state'   => 'none',
+				'ai_participation_state' => 'none',
+				'consent_state'          => 'unknown',
+				'created_at'             => $now,
+				'updated_at'             => $now,
+			),
+			array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
+		);
+
+		if ( false === $inserted ) {
+			return null;
+		}
+
+		return $this->find( (int) $wpdb->insert_id );
+	}
+
+	/**
+	 * Finds a conversation by primary key.
+	 *
+	 * @param int $id The conversation's primary key.
+	 *
+	 * @return Conversation|null
+	 */
+	public function find( int $id ): ?Conversation {
+		if ( ! $this->schema_health->is_available() ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$row   = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		return null === $row ? null : $this->hydrate( $row );
+	}
+
+	/**
+	 * Finds a conversation by its public conversation_uuid — the only
+	 * lookup key this boundary ever uses (M05 plan §3).
+	 *
+	 * @param string $conversation_uuid The public, opaque identifier.
+	 *
+	 * @return Conversation|null
+	 */
+	public function find_by_uuid( string $conversation_uuid ): ?Conversation {
+		if ( ! $this->schema_health->is_available() ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE conversation_uuid = %s", $conversation_uuid ), ARRAY_A );
+
+		return null === $row ? null : $this->hydrate( $row );
+	}
+
+	/**
+	 * Applies a status transition, gated on the frozen transition map
+	 * (ConversationStatus) and an atomic conditional update keyed on the
+	 * conversation's currently recorded status, so a stale caller can never
+	 * clobber a transition that already happened concurrently.
+	 *
+	 * @param int    $id   The conversation's primary key.
+	 * @param string $from The status the caller believes is current.
+	 * @param string $to   The proposed new status.
+	 *
+	 * @return bool True only if the map allows the transition and the
+	 *              conditional update actually matched a row.
+	 */
+	public function transition( int $id, string $from, string $to ): bool {
+		if ( ! ConversationStatus::is_valid_transition( $from, $to ) ) {
+			return false;
+		}
+
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$now   = current_time( 'mysql', true );
+
+		$data    = array(
+			'status'     => $to,
+			'updated_at' => $now,
+		);
+		$formats = array( '%s', '%s' );
+
+		if ( ConversationStatus::RESOLVED === $to ) {
+			$data['resolved_at'] = $now;
+			$formats[]            = '%s';
+		}
+
+		$updated = $wpdb->update(
+			$table,
+			$data,
+			array(
+				'id'     => $id,
+				'status' => $from,
+			),
+			$formats,
+			array( '%d', '%s' )
+		);
+
+		return false !== $updated && $updated > 0;
+	}
+
+	/**
+	 * Sets the conversation's own destination row id, once its Telegram
+	 * topic exists.
+	 *
+	 * @param int $id             The conversation's primary key.
+	 * @param int $destination_id The destination row id.
+	 *
+	 * @return bool
+	 */
+	public function set_destination( int $id, int $destination_id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'destination_id' => $destination_id,
+				'updated_at'     => current_time( 'mysql', true ),
+			),
+			array( 'id' => $id ),
+			array( '%d', '%s' ),
+			array( '%d' )
+		);
+
+		return false !== $updated;
+	}
+
+	/**
+	 * Revokes a conversation's bearer secret by nulling its hash — the only
+	 * revocation act this boundary performs; the row itself is never
+	 * deleted as the revocation act (M05 plan §3).
+	 *
+	 * @param int $id The conversation's primary key.
+	 *
+	 * @return bool
+	 */
+	public function revoke_secret( int $id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'secret_hash' => null,
+				'updated_at'  => current_time( 'mysql', true ),
+			),
+			array( 'id' => $id ),
+			array( '%s', '%s' ),
+			array( '%d' )
+		);
+
+		return false !== $updated;
+	}
+
+	/**
+	 * Assigns an operator to a conversation. Exists only as the domain
+	 * method the charter's "Status and assignment" deliverable requires;
+	 * no M05 code path ever calls it — reserved for M7's operator UI
+	 * (M05 plan §7).
+	 *
+	 * @param int $id          The conversation's primary key.
+	 * @param int $operator_id The WordPress user id of the assigned operator.
+	 *
+	 * @return bool
+	 */
+	public function assign( int $id, int $operator_id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'assigned_operator_id' => $operator_id,
+				'updated_at'           => current_time( 'mysql', true ),
+			),
+			array( 'id' => $id ),
+			array( '%d', '%s' ),
+			array( '%d' )
+		);
+
+		return false !== $updated;
+	}
+
+	/**
+	 * Hydrates one database row into a Conversation.
+	 *
+	 * @param array<string, mixed> $row The raw database row.
+	 *
+	 * @return Conversation
+	 */
+	private function hydrate( array $row ): Conversation {
+		return new Conversation(
+			(int) $row['id'],
+			(string) $row['conversation_uuid'],
+			null === $row['secret_hash'] ? null : (string) $row['secret_hash'],
+			(int) $row['bot_id'],
+			null === $row['destination_id'] ? null : (int) $row['destination_id'],
+			null === $row['chat_profile'] ? null : (string) $row['chat_profile'],
+			(string) $row['status'],
+			null === $row['assigned_operator_id'] ? null : (int) $row['assigned_operator_id'],
+			(string) $row['topic_creation_state'],
+			null === $row['telegram_topic_id'] ? null : (int) $row['telegram_topic_id'],
+			(string) $row['ai_participation_state'],
+			(string) $row['consent_state'],
+			null === $row['session_ref'] ? null : (string) $row['session_ref'],
+			(string) $row['created_at'],
+			(string) $row['updated_at'],
+			null === $row['resolved_at'] ? null : (string) $row['resolved_at'],
+			null === $row['expires_at'] ? null : (string) $row['expires_at']
+		);
+	}
+}
