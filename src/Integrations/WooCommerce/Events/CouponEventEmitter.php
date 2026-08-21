@@ -14,7 +14,7 @@ use UniversalTelegram\Privacy\Classification;
 use WC_Coupon;
 
 /**
- * woocommerce.coupon_applied and woocommerce.coupon_rejected, sourced from
+ * Emits woocommerce.coupon_applied and woocommerce.coupon_rejected, sourced from
  * woocommerce_applied_coupon (an action) and woocommerce_coupon_error (a
  * filter) respectively (M03 plan §5.12–§5.13). Both keys use coarse
  * 5-second time-bucket coalescing (M03 plan §5.2): no more precise, stable,
@@ -33,7 +33,7 @@ final class CouponEventEmitter {
 	 */
 	public function register_event_types( Registry $registry ): void {
 		$applied_fields = array(
-			'actor.user_id'      => Classification::INTERNAL,
+			'actor.user_id'       => Classification::INTERNAL,
 			'subject.coupon_code' => Classification::PUBLIC,
 			'payload.cart_total'  => Classification::PUBLIC,
 		);
@@ -102,11 +102,11 @@ final class CouponEventEmitter {
 	 * behaviorally no different from an action callback, and WC's own error
 	 * display is unaffected (M03 plan §5.13, ADR-0018).
 	 *
-	 * @param string            $message    The error message. Read only to
-	 *                                       return unmodified; never placed
-	 *                                       in the envelope.
-	 * @param int|string        $error_code WC's own stable coupon-error constant.
-	 * @param WC_Coupon|mixed   $coupon     The coupon, if resolvable.
+	 * @param string          $message    The error message. Read only to
+	 *                                     return unmodified; never placed
+	 *                                     in the envelope.
+	 * @param int|string      $error_code WC's own stable coupon-error constant.
+	 * @param WC_Coupon|mixed $coupon     The coupon, if resolvable.
 	 *
 	 * @return string $message, unmodified.
 	 */

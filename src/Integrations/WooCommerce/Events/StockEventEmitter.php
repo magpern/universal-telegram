@@ -14,7 +14,7 @@ use UniversalTelegram\Privacy\Classification;
 use WC_Product;
 
 /**
- * woocommerce.stock_threshold_crossed, sourced from WooCommerce's low/
+ * Emits woocommerce.stock_threshold_crossed, sourced from WooCommerce's low/
  * no-stock notification hooks (M03 plan §5.9). Products/stock are never
  * stored in the orders table, so HPOS enablement has zero effect on this
  * emitter's correctness — no storage-backend branching is needed here.
@@ -33,10 +33,10 @@ final class StockEventEmitter {
 	 */
 	public function register_event_types( Registry $registry ): void {
 		$fields = array(
-			'subject.product_id'    => Classification::PUBLIC,
-			'payload.status'        => Classification::PUBLIC,
+			'subject.product_id'     => Classification::PUBLIC,
+			'payload.status'         => Classification::PUBLIC,
 			'payload.stock_quantity' => Classification::PUBLIC,
-			'payload.product_sku'   => Classification::PUBLIC,
+			'payload.product_sku'    => Classification::PUBLIC,
 		);
 
 		$registry->register(

@@ -13,7 +13,7 @@ use UniversalTelegram\Events\Registry;
 use UniversalTelegram\Privacy\Classification;
 
 /**
- * woocommerce.cart_item_added, sourced from woocommerce_add_to_cart, shared
+ * Emits woocommerce.cart_item_added, sourced from woocommerce_add_to_cart, shared
  * identically between classic and Cart-block checkout (M03 plan §5.11).
  * Uses line-identity coalescing: the idempotency key contains no quantity
  * or time component, so every add-to-cart call for the same cart line

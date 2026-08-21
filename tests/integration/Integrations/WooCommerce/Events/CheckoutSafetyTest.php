@@ -40,10 +40,10 @@ final class CheckoutSafetyTest extends WP_UnitTestCase {
 	public function test_a_forced_event_history_persistence_failure_never_propagates_out_of_a_real_woocommerce_hook(): void {
 		global $wpdb;
 
-		$table         = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
-		$broken_table  = $table . '_m03_checkout_safety_test';
-		$order         = $this->create_order();
-		$exception     = null;
+		$table        = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
+		$broken_table = $table . '_m03_checkout_safety_test';
+		$order        = $this->create_order();
+		$exception    = null;
 
 		// Force a downstream persistence failure by renaming the event
 		// history table away, mid-request, before the hook fires.

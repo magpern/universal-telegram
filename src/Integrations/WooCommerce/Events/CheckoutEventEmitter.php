@@ -14,7 +14,7 @@ use UniversalTelegram\Privacy\Classification;
 use WP_Error;
 
 /**
- * woocommerce.checkout_validation_failed, classic (shortcode) checkout
+ * Emits woocommerce.checkout_validation_failed, classic (shortcode) checkout
  * only, bound to woocommerce_after_checkout_validation. No block/Store API
  * equivalent hook exists in WooCommerce core as of 11.0.1 — this is a
  * documented, known gap, not an unofficial Store API workaround (M03 plan
@@ -62,8 +62,8 @@ final class CheckoutEventEmitter {
 	 * @param array<string, mixed> $data   The posted checkout data. Never
 	 *                                      read (no checkout body in the
 	 *                                      envelope, per M03 plan §5.14).
-	 * @param WP_Error              $errors The validation errors. Read only,
-	 *                                      never mutated.
+	 * @param WP_Error             $errors The validation errors. Read only,
+	 *                                     never mutated.
 	 */
 	public function on_checkout_validation( array $data, WP_Error $errors ): void {
 		$error_codes = $errors->get_error_codes();
