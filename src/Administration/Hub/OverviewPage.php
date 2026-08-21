@@ -22,7 +22,9 @@ final class OverviewPage {
 	public const TAB_ID = 'overview';
 
 	/**
-	 * @var array<int, array{0: string, 1: string}> Ordered (tab id, label) pairs.
+	 * Ordered (tab id, label) pairs.
+	 *
+	 * @var array<int, array{0: string, 1: string}>
 	 */
 	private const OTHER_TABS = array(
 		array( 'bots', 'Bots' ),

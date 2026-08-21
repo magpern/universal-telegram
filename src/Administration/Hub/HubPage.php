@@ -28,6 +28,11 @@ final class HubPage {
 
 	public const SLUG = 'universal-telegram';
 
+	/**
+	 * Constructor.
+	 *
+	 * @param TabRegistry $tabs Every registered Hub tab.
+	 */
 	public function __construct( private readonly TabRegistry $tabs ) {}
 
 	/**
@@ -84,6 +89,8 @@ final class HubPage {
 	 * Renders the horizontal tab navigation: standard WordPress-admin
 	 * nav-tab-wrapper markup, one real <a href> per tab (native keyboard
 	 * reachability, no JS tab switching), aria-current on the active tab.
+	 *
+	 * @param string $active_tab_id The currently resolved tab id.
 	 */
 	private function render_tab_nav( string $active_tab_id ): void {
 		echo '<h2 class="nav-tab-wrapper" aria-label="' . esc_attr__( 'Telegram Hub sections', 'universal-telegram' ) . '">';

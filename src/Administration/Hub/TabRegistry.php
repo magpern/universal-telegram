@@ -17,20 +17,36 @@ namespace UniversalTelegram\Administration\Hub;
  */
 final class TabRegistry {
 
-	/** @var array<string, Tab> */
+	/**
+	 * Every registered tab, keyed by id, in registration order.
+	 *
+	 * @var array<string, Tab>
+	 */
 	private array $tabs = array();
 
+	/**
+	 * Registers one tab. Insertion order is display order.
+	 *
+	 * @param Tab $tab The tab to register.
+	 */
 	public function register( Tab $tab ): void {
 		$this->tabs[ $tab->id() ] = $tab;
 	}
 
 	/**
+	 * Every registered tab, in registration order.
+	 *
 	 * @return array<int, Tab>
 	 */
 	public function all(): array {
 		return array_values( $this->tabs );
 	}
 
+	/**
+	 * The tab registered under this id, or null if none is.
+	 *
+	 * @param string $id The tab id to look up.
+	 */
 	public function get( string $id ): ?Tab {
 		return $this->tabs[ $id ] ?? null;
 	}

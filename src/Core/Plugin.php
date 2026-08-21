@@ -567,7 +567,6 @@ final class Plugin {
 			$this->update_repository,
 			$this->outbound_message_repository
 		);
-		add_action( 'admin_menu', array( $this->bot_management_page, 'register_menu' ) );
 
 		// Events/Automations (M02) repositories: constructed here, ahead of
 		// DiagnosticsReport below (which reads their aggregate counts),

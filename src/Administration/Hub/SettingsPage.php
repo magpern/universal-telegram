@@ -35,7 +35,9 @@ class SettingsPage {
 	public const NONCE_ACTION      = 'universal_telegram_settings_save';
 
 	/**
-	 * @var array<int, string> Positive-integer retention/timing fields, in display order.
+	 * Positive-integer retention/timing fields, in display order.
+	 *
+	 * @var array<int, string>
 	 */
 	private const INTEGER_FIELDS = array(
 		'telegram_message_retention_days',
@@ -51,22 +53,26 @@ class SettingsPage {
 	);
 
 	/**
-	 * @var array<string, string> Field name => visible label.
+	 * Field name => visible label.
+	 *
+	 * @var array<string, string>
 	 */
 	private const INTEGER_FIELD_LABELS = array(
 		'telegram_message_retention_days'             => 'Telegram message retention (days)',
 		'telegram_delivery_log_retention_days'        => 'Telegram delivery log retention (days)',
 		'telegram_max_pending_seconds'                => 'Telegram max pending time (seconds)',
-		'telegram_webhook_max_body_bytes'              => 'Telegram webhook max body size (bytes)',
-		'telegram_stale_pending_alert_seconds'         => 'Telegram stale-pending alert threshold (seconds)',
-		'telegram_rate_limit_fallback_wait_seconds'    => 'Telegram rate-limit fallback wait (seconds)',
-		'telegram_webhook_rotation_max_pending_hours'  => 'Telegram webhook rotation max pending (hours)',
-		'event_retention_days'                         => 'Event retention (days)',
-		'dispatch_log_retention_days'                  => 'Dispatch log retention (days)',
-		'fatal_marker_retention_days'                  => 'Fatal-error marker retention (days)',
+		'telegram_webhook_max_body_bytes'             => 'Telegram webhook max body size (bytes)',
+		'telegram_stale_pending_alert_seconds'        => 'Telegram stale-pending alert threshold (seconds)',
+		'telegram_rate_limit_fallback_wait_seconds'   => 'Telegram rate-limit fallback wait (seconds)',
+		'telegram_webhook_rotation_max_pending_hours' => 'Telegram webhook rotation max pending (hours)',
+		'event_retention_days'                        => 'Event retention (days)',
+		'dispatch_log_retention_days'                 => 'Dispatch log retention (days)',
+		'fatal_marker_retention_days'                 => 'Fatal-error marker retention (days)',
 	);
 
 	/**
+	 * Constructor.
+	 *
 	 * @param Settings $settings Reads/writes the current plugin-wide configuration.
 	 */
 	public function __construct( private readonly Settings $settings ) {}

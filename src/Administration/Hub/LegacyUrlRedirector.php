@@ -40,7 +40,7 @@ use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 class LegacyUrlRedirector {
 
 	/**
-	 * old slug => [tab id, capability]. A method, not a class constant,
+	 * Old slug => [tab id, capability]. A method, not a class constant,
 	 * so this never depends on cross-class constant expressions being
 	 * resolvable at compile time.
 	 *
@@ -63,8 +63,13 @@ class LegacyUrlRedirector {
 	 */
 	public function register(): void {
 		foreach ( self::map() as $old_slug => [ , $capability ] ) {
+			// An empty parent_slug is WordPress core's own documented
+			// mechanism for a page that is reachable by URL but never
+			// added to any visible menu (WP_Admin_Bar/admin_menu's own
+			// "orphaned" page support), which is exactly what a hidden
+			// compatibility redirect target needs.
 			add_submenu_page(
-				null,
+				'',
 				'',
 				'',
 				$capability,
@@ -90,8 +95,9 @@ class LegacyUrlRedirector {
 
 		$target = admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . $tab_id );
 
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only method check, no state changed.
-		if ( 'GET' !== ( $_SERVER['REQUEST_METHOD'] ?? '' ) ) {
+		$request_method = isset( $_SERVER['REQUEST_METHOD'] ) ? (string) wp_unslash( $_SERVER['REQUEST_METHOD'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.NonceVerification.Recommended -- read-only method check, no state changed.
+
+		if ( 'GET' !== $request_method ) {
 			// A redirect must never be issued for a non-GET request: some
 			// clients silently re-issue the original method against the
 			// Location header, which would be unacceptable for any future
