@@ -21,17 +21,18 @@ if ( ! function_exists( 'universal_telegram_emit_event' ) ) {
 	 * without any additional public surface, to the composition root's
 	 * singleton Events\EventEmitter::emit(). Never throws.
 	 *
-	 * @param string               $event_type      A registered event type, e.g. "wordpress.user_registered".
-	 * @param array<string, mixed> $data            actor/subject/context/payload sub-arrays; a missing key defaults to [].
-	 * @param string               $idempotency_key A source-supplied idempotency key representing this exact logical occurrence.
+	 * @param string                            $event_type      A registered event type, e.g. "wordpress.user_registered".
+	 * @param array<string, mixed>              $data            actor/subject/context/payload sub-arrays; a missing key defaults to [].
+	 * @param string                            $idempotency_key A source-supplied idempotency key representing this exact logical occurrence.
+	 * @param \UniversalTelegram\Events\EventSource $source      The emitting subsystem. Defaults to WORDPRESS_CORE, preserving prior call sites' behavior.
 	 */
-	function universal_telegram_emit_event( string $event_type, array $data, string $idempotency_key ): void {
+	function universal_telegram_emit_event( string $event_type, array $data, string $idempotency_key, \UniversalTelegram\Events\EventSource $source = \UniversalTelegram\Events\EventSource::WORDPRESS_CORE ): void {
 		$emitter = \UniversalTelegram\Core\Plugin::instance()->event_emitter();
 
 		if ( null === $emitter ) {
 			return;
 		}
 
-		$emitter->emit( $event_type, $data, $idempotency_key );
+		$emitter->emit( $event_type, $data, $idempotency_key, $source );
 	}
 }

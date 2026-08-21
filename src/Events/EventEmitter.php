@@ -45,10 +45,11 @@ final class EventEmitter {
 	 * @param string               $event_type      The registered event type.
 	 * @param array<string, mixed> $data            actor/subject/context/payload sub-arrays; a missing key defaults to [].
 	 * @param string               $idempotency_key Source-supplied, mandatory, never generated internally.
+	 * @param EventSource          $source          The emitting subsystem. Defaults to WORDPRESS_CORE.
 	 */
-	public function emit( string $event_type, array $data, string $idempotency_key ): void {
+	public function emit( string $event_type, array $data, string $idempotency_key, EventSource $source = EventSource::WORDPRESS_CORE ): void {
 		try {
-			$envelope = $this->build_envelope( $event_type, $data, $idempotency_key );
+			$envelope = $this->build_envelope( $event_type, $data, $idempotency_key, $source );
 			$this->dispatcher->handle( $envelope );
 		} catch ( Throwable $e ) {
 			$this->audit->record( self::EMISSION_FAILED_CODE, 'system', null, array(), array(), Classification::INTERNAL );
@@ -61,6 +62,7 @@ final class EventEmitter {
 	 * @param string               $event_type      The registered event type.
 	 * @param array<string, mixed> $data            actor/subject/context/payload sub-arrays.
 	 * @param string               $idempotency_key Source-supplied idempotency key.
+	 * @param EventSource          $source          The emitting subsystem.
 	 *
 	 * @return EventEnvelope
 	 *
@@ -68,12 +70,12 @@ final class EventEmitter {
 	 * @throws InvalidIdempotencyKeyException If $idempotency_key is not 1-255 bytes.
 	 * @throws UnclassifiedFieldException     If any field has no classification-map entry.
 	 */
-	private function build_envelope( string $event_type, array $data, string $idempotency_key ): EventEnvelope {
+	private function build_envelope( string $event_type, array $data, string $idempotency_key, EventSource $source ): EventEnvelope {
 		$actor   = isset( $data['actor'] ) && is_array( $data['actor'] ) ? $data['actor'] : array();
 		$subject = isset( $data['subject'] ) && is_array( $data['subject'] ) ? $data['subject'] : array();
 		$context = isset( $data['context'] ) && is_array( $data['context'] ) ? $data['context'] : array();
 		$payload = isset( $data['payload'] ) && is_array( $data['payload'] ) ? $data['payload'] : array();
 
-		return new EventEnvelope( $this->registry, $event_type, $idempotency_key, EventSource::WORDPRESS_CORE, $actor, $subject, $context, $payload );
+		return new EventEnvelope( $this->registry, $event_type, $idempotency_key, $source, $actor, $subject, $context, $payload );
 	}
 }
