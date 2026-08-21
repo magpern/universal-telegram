@@ -324,21 +324,21 @@ wp eval '
 	echo "OK: fail_count=5 failed all five permitted attempts, never succeeded.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
-echo "== Verifying the plugin-row Settings action link is present and points at the Diagnostics page =="
+echo "== Verifying the plugin-row Settings action link is present and points at the Settings tab =="
 wp eval '
 	$links = apply_filters( "plugin_action_links_universal-telegram/universal-telegram.php", array() );
 	$found = false;
 	foreach ( $links as $link ) {
-		if ( false !== strpos( $link, "page=universal-telegram-diagnostics" ) && false !== strpos( $link, "Settings" ) ) {
+		if ( false !== strpos( $link, "page=universal-telegram" ) && false !== strpos( $link, "tab=settings" ) && false !== strpos( $link, "Settings" ) ) {
 			$found = true;
 			break;
 		}
 	}
 	if ( ! $found ) {
-		fwrite( STDERR, "FAIL: no Settings action link pointing at the Diagnostics page was found\n" );
+		fwrite( STDERR, "FAIL: no Settings action link pointing at the Settings tab was found\n" );
 		exit( 1 );
 	}
-	echo "OK: the Settings action link is present and points at the Diagnostics page.\n";
+	echo "OK: the Settings action link is present and points at the Settings tab.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
 echo "== Verifying no plaintext token appears in the bot management page's rendered output =="

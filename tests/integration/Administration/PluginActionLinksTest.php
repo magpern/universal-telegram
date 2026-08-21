@@ -5,14 +5,15 @@
 
 namespace UniversalTelegram\Tests\Integration\Administration;
 
-use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
+use UniversalTelegram\Administration\Hub\HubPage;
+use UniversalTelegram\Administration\Hub\SettingsPage;
 use UniversalTelegram\Administration\PluginActionLinks;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use WP_UnitTestCase;
 
 final class PluginActionLinksTest extends WP_UnitTestCase {
 
-	public function test_a_capable_user_sees_the_settings_link_pointing_at_the_diagnostics_page(): void {
+	public function test_a_capable_user_sees_the_settings_link_pointing_at_the_settings_tab(): void {
 		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
 		( new CapabilityRegistrar() )->grant_to_administrator();
 		wp_set_current_user( $admin );
@@ -20,7 +21,8 @@ final class PluginActionLinksTest extends WP_UnitTestCase {
 		$links = ( new PluginActionLinks( 'universal-telegram/universal-telegram.php' ) )->add_settings_link( array() );
 
 		$this->assertCount( 1, $links );
-		$this->assertStringContainsString( admin_url( 'admin.php?page=' . DiagnosticsPage::SLUG ), $links[0] );
+		$this->assertStringContainsString( 'page=' . HubPage::SLUG, $links[0] );
+		$this->assertStringContainsString( 'tab=' . SettingsPage::TAB_ID, $links[0] );
 		$this->assertStringContainsString( 'Settings', $links[0] );
 	}
 

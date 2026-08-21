@@ -9,16 +9,17 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration;
 
-use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
+use UniversalTelegram\Administration\Hub\HubPage;
+use UniversalTelegram\Administration\Hub\SettingsPage;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 
 /**
  * Adds the standard WordPress plugin-row "Settings" action link on the
- * Plugins screen, pointing to the plugin's existing canonical
- * administration landing page (Diagnostics — the single top-level menu
- * entry every other admin screen, including the M02 Automations pages, is
- * already a submenu of). No duplicate settings page is created. Visible
- * only to a user holding the plugin's general management capability.
+ * Plugins screen, pointing directly at the administration hub's Settings
+ * tab (ADR-0020, M04.1 plan) — the single top-level menu entry every
+ * other admin screen is a tab of. No duplicate settings page is created.
+ * Visible only to a user holding the plugin's general management
+ * capability.
  */
 final class PluginActionLinks {
 
@@ -48,7 +49,7 @@ final class PluginActionLinks {
 			return $links;
 		}
 
-		$url = admin_url( 'admin.php?page=' . DiagnosticsPage::SLUG );
+		$url = admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . SettingsPage::TAB_ID );
 
 		array_unshift(
 			$links,

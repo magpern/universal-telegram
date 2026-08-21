@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Diagnostics;
 
+use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Telegram\Reliability\QueueHealthAlert;
@@ -70,7 +71,7 @@ final class DiagnosticsPage {
 		printf(
 			'<div class="notice notice-error"><p>%s <a href="%s">%s</a></p></div>',
 			esc_html__( 'Telegram Operations Hub: a delivery problem needs attention (dead-lettered messages, an open circuit breaker, a stalled send, or an unresolved webhook rotation).', 'universal-telegram' ),
-			esc_url( admin_url( 'admin.php?page=' . self::SLUG ) ),
+			esc_url( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=diagnostics' ) ),
 			esc_html__( 'View diagnostics', 'universal-telegram' )
 		);
 	}

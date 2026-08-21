@@ -17,6 +17,7 @@ use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
 use UniversalTelegram\Administration\Diagnostics\SelfTest;
 use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Administration\Hub\OverviewPage;
+use UniversalTelegram\Administration\Hub\SettingsPage;
 use UniversalTelegram\Administration\Hub\Tab;
 use UniversalTelegram\Administration\Hub\TabRegistry;
 use UniversalTelegram\Administration\PluginActionLinks;
@@ -203,6 +204,13 @@ final class Plugin {
 	 * @var HubPage|null
 	 */
 	private ?HubPage $hub_page = null;
+
+	/**
+	 * The Settings tab page, constructed by init().
+	 *
+	 * @var SettingsPage|null
+	 */
+	private ?SettingsPage $settings_page = null;
 
 	/**
 	 * The bounded diagnostic self-test, constructed by init().
@@ -609,11 +617,10 @@ final class Plugin {
 		$this->hub_tab_registry->register(
 			new Tab( 'bots', __( 'Bots', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->bot_management_page, 'render_tab_content' ) )
 		);
-		// 'diagnostics' is registered last (Core\Plugin::init()'s final Hub
-		// tab registration, alongside the Settings tab), so display order
-		// matches the plan's mapping (M04.1 plan §3): Overview, Bots,
-		// Events, Rules, Simulator, Event History, Visitor Tracking,
-		// Settings, Diagnostics.
+		// 'diagnostics' is registered last of all (see below), so display
+		// order matches the plan's mapping (M04.1 plan §3): Overview,
+		// Bots, Events, Rules, Simulator, Event History, Visitor
+		// Tracking, Settings, Diagnostics.
 		$this->hub_page = new HubPage( $this->hub_tab_registry );
 		add_action( 'admin_menu', array( $this->hub_page, 'register_menu' ) );
 
@@ -814,6 +821,20 @@ final class Plugin {
 			new Tab( VisitorTrackingPage::TAB_ID, __( 'Visitor Tracking', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->visitor_tracking_page, 'render_tab_content' ) )
 		);
 		add_action( 'admin_post_' . VisitorTrackingPage::ADMIN_POST_ACTION, array( $this->visitor_tracking_page, 'handle_request' ) );
+
+		// Settings (M04.1 plan §6): plugin-wide configuration that
+		// previously had no admin UI at all. Registered second-to-last;
+		// 'diagnostics' is registered last of all, so display order
+		// matches the plan's mapping (M04.1 plan §3).
+		$this->settings_page = new SettingsPage( $settings );
+		$this->hub_tab_registry->register(
+			new Tab( SettingsPage::TAB_ID, __( 'Settings', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->settings_page, 'render_tab_content' ) )
+		);
+		add_action( 'admin_post_' . SettingsPage::ADMIN_POST_ACTION, array( $this->settings_page, 'handle_request' ) );
+
+		$this->hub_tab_registry->register(
+			new Tab( 'diagnostics', __( 'Diagnostics', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->diagnostics_page, 'render_tab_content' ) )
+		);
 
 		$retention_cleanup = new RetentionCleanup(
 			$this->schema_health,
