@@ -94,6 +94,10 @@ m02_table_exists() {
 	wp db query "SHOW TABLES LIKE '${TABLE_PREFIX}universal_telegram_${1}'" --path="$WP_DIR" --allow-root --skip-column-names
 }
 
+m06_column_exists() {
+	wp db query "SHOW COLUMNS FROM ${TABLE_PREFIX}universal_telegram_${1} LIKE '${2}'" --path="$WP_DIR" --allow-root --skip-column-names
+}
+
 echo "== Verifying activation created the plugin's own tables =="
 if [ -z "$(audit_table_exists)" ]; then
 	echo "FAIL: audit log table was not created on activation" >&2
@@ -125,13 +129,26 @@ for m05_table in conversations conversation_messages; do
 	echo "OK: universal_telegram_${m05_table} table exists."
 done
 
-echo "== Verifying db_version reached 12 =="
-DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "12" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=12, got ${DB_VERSION}" >&2
+echo "== Verifying M06's idempotency columns exist on the conversation tables =="
+if [ -z "$(m06_column_exists "conversations" "start_idempotency_key")" ]; then
+	echo "FAIL: universal_telegram_conversations.start_idempotency_key column was not created on activation" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 12."
+echo "OK: universal_telegram_conversations.start_idempotency_key column exists."
+
+if [ -z "$(m06_column_exists "conversation_messages" "idempotency_key")" ]; then
+	echo "FAIL: universal_telegram_conversation_messages.idempotency_key column was not created on activation" >&2
+	exit 1
+fi
+echo "OK: universal_telegram_conversation_messages.idempotency_key column exists."
+
+echo "== Verifying db_version reached 13 =="
+DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
+if [ "13" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=13, got ${DB_VERSION}" >&2
+	exit 1
+fi
+echo "OK: universal_telegram_db_version is 13."
 
 echo "== Verifying M02 event emission projects only PUBLIC fields into event_history =="
 wp eval '
