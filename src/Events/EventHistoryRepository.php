@@ -106,6 +106,30 @@ final class EventHistoryRepository {
 	}
 
 	/**
+	 * Counts event_history rows recorded within the last 24 hours for one
+	 * EventSource value. Used only for diagnostics aggregation
+	 * (M04 plan §6).
+	 *
+	 * @param string $source An EventSource enum value, e.g. "visitor".
+	 *
+	 * @return int
+	 */
+	public function count_24h_by_source( string $source ): int {
+		if ( ! $this->schema_health->is_available() ) {
+			return 0;
+		}
+
+		global $wpdb;
+
+		$table     = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
+		$threshold = gmdate( 'Y-m-d H:i:s', time() - DAY_IN_SECONDS );
+
+		return (int) $wpdb->get_var(
+			$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE source = %s AND occurred_at >= %s", $source, $threshold ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		);
+	}
+
+	/**
 	 * Sets a value at a dot-notation path inside a nested array, creating
 	 * intermediate arrays as needed.
 	 *

@@ -9,11 +9,13 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Events\Visitor;
 
+use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Events\EventSource;
 use UniversalTelegram\Events\Registry;
 use UniversalTelegram\Persistence\SchemaHealth;
+use UniversalTelegram\Privacy\Classification;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -42,6 +44,10 @@ final class IngestController {
 	private const CLIENT_BUCKET_CAPACITY = 30.0;
 	private const CLIENT_BUCKET_REFILL   = 0.5;
 
+	private const REJECTED_CODE     = 'visitor_events.rejected';
+	private const RATE_LIMITED_CODE = 'visitor_events.rate_limited';
+	private const BOT_FILTERED_CODE = 'visitor_events.bot_filtered';
+
 	/**
 	 * Event type to the settings family toggle that gates it.
 	 *
@@ -69,6 +75,7 @@ final class IngestController {
 	 * @param IngestRequestValidator $validator     Strict allow-listed body validation.
 	 * @param BotFilter              $bot_filter    Crawler/headless User-Agent detection.
 	 * @param Sampler                $sampler       Deterministic per-event sampling.
+	 * @param AuditLogger            $audit         Records fixed diagnostic codes for rejected/rate-limited/bot-filtered requests.
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
@@ -77,7 +84,8 @@ final class IngestController {
 		private readonly RateLimiter $rate_limiter,
 		private readonly IngestRequestValidator $validator,
 		private readonly BotFilter $bot_filter,
-		private readonly Sampler $sampler
+		private readonly Sampler $sampler,
+		private readonly AuditLogger $audit
 	) {}
 
 	/**
@@ -117,16 +125,19 @@ final class IngestController {
 		$raw_body = $request->get_body();
 
 		if ( strlen( $raw_body ) > IngestRequestValidator::MAX_BODY_BYTES ) {
+			$this->record( self::REJECTED_CODE );
 			return new WP_REST_Response( null, 413 );
 		}
 
 		if ( ! $this->rate_limiter->try_consume( self::SITE_BUCKET_SCOPE, self::SITE_BUCKET_ID, self::SITE_BUCKET_CAPACITY, self::SITE_BUCKET_REFILL ) ) {
+			$this->record( self::RATE_LIMITED_CODE );
 			return new WP_REST_Response( null, 429 );
 		}
 
 		$client_scope_id = $this->client_bucket_scope_id( $request );
 
 		if ( ! $this->rate_limiter->try_consume( self::CLIENT_BUCKET_SCOPE, $client_scope_id, self::CLIENT_BUCKET_CAPACITY, self::CLIENT_BUCKET_REFILL ) ) {
+			$this->record( self::RATE_LIMITED_CODE );
 			return new WP_REST_Response( null, 429 );
 		}
 
@@ -135,10 +146,12 @@ final class IngestController {
 		$validated = $this->validator->validate( $decoded );
 
 		if ( null === $validated ) {
+			$this->record( self::REJECTED_CODE );
 			return new WP_REST_Response( null, 400 );
 		}
 
 		if ( ! $this->every_product_id_is_real( $validated['events'] ) ) {
+			$this->record( self::REJECTED_CODE );
 			return new WP_REST_Response( null, 400 );
 		}
 
@@ -153,6 +166,7 @@ final class IngestController {
 		}
 
 		if ( $this->bot_filter->is_bot( $this->raw_user_agent( $request ) ) ) {
+			$this->record( self::BOT_FILTERED_CODE );
 			return new WP_REST_Response( null, 202 );
 		}
 
@@ -161,6 +175,17 @@ final class IngestController {
 		}
 
 		return new WP_REST_Response( null, 202 );
+	}
+
+	/**
+	 * Records one fixed, non-message-carrying diagnostic code — used only
+	 * for DiagnosticsReport aggregation (M04 plan §6), never for
+	 * per-visitor tracking.
+	 *
+	 * @param string $code One of the fixed action codes above.
+	 */
+	private function record( string $code ): void {
+		$this->audit->record( $code, 'system', null, array(), array(), Classification::INTERNAL );
 	}
 
 	/**

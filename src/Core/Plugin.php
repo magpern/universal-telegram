@@ -18,6 +18,7 @@ use UniversalTelegram\Administration\Diagnostics\SelfTest;
 use UniversalTelegram\Administration\PluginActionLinks;
 use UniversalTelegram\Administration\Telegram\BotManagementController;
 use UniversalTelegram\Administration\Telegram\BotManagementPage;
+use UniversalTelegram\Administration\Visitor\VisitorTrackingPage;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Automations\DispatchLogRepository;
@@ -375,6 +376,13 @@ final class Plugin {
 	private ?EventHistoryPage $event_history_page = null;
 
 	/**
+	 * The visitor tracking settings admin page, constructed by init().
+	 *
+	 * @var VisitorTrackingPage|null
+	 */
+	private ?VisitorTrackingPage $visitor_tracking_page = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -549,6 +557,7 @@ final class Plugin {
 			$this->event_history_repository,
 			$this->notification_rule_repository,
 			$this->dispatch_log_repository,
+			$settings,
 			(int) $settings_values['telegram_stale_pending_alert_seconds'],
 			(int) $settings_values['telegram_webhook_rotation_max_pending_hours']
 		);
@@ -619,7 +628,8 @@ final class Plugin {
 			$this->rate_limiter,
 			new IngestRequestValidator(),
 			new BotFilter(),
-			new Sampler()
+			new Sampler(),
+			$this->audit_logger
 		);
 		add_action( 'rest_api_init', array( $ingest_controller, 'register_routes' ) );
 
@@ -745,6 +755,10 @@ final class Plugin {
 
 		$this->event_history_page = new EventHistoryPage( $this->schema_health );
 		add_action( 'admin_menu', array( $this->event_history_page, 'register_menu' ) );
+
+		$this->visitor_tracking_page = new VisitorTrackingPage( $settings );
+		add_action( 'admin_menu', array( $this->visitor_tracking_page, 'register_menu' ) );
+		add_action( 'admin_post_' . VisitorTrackingPage::ADMIN_POST_ACTION, array( $this->visitor_tracking_page, 'handle_request' ) );
 
 		$retention_cleanup = new RetentionCleanup(
 			$this->schema_health,
@@ -1033,5 +1047,13 @@ final class Plugin {
 	 */
 	public function event_history_page(): ?EventHistoryPage {
 		return $this->event_history_page;
+	}
+
+	/**
+	 * The visitor tracking settings admin page. Available only after
+	 * init() has run.
+	 */
+	public function visitor_tracking_page(): ?VisitorTrackingPage {
+		return $this->visitor_tracking_page;
 	}
 }

@@ -5,6 +5,7 @@
 
 namespace UniversalTelegram\Tests\Integration\Integrations\WooCommerce\Visitor;
 
+use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Plugin;
 use UniversalTelegram\Events\Visitor\IngestController;
@@ -14,6 +15,7 @@ use UniversalTelegram\Events\Visitor\Sampler;
 use UniversalTelegram\Integrations\WooCommerce\Visitor\VisitorCommerceEventCatalog;
 use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
+use UniversalTelegram\Privacy\Redactor;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
 use WP_REST_Request;
 use WP_UnitTestCase;
@@ -63,7 +65,8 @@ final class VisitorCommerceEventCatalogTest extends WP_UnitTestCase {
 			new RateLimiter( $schema_health ),
 			new IngestRequestValidator(),
 			new BotFilter(),
-			new Sampler()
+			new Sampler(),
+			new AuditLogger( $schema_health, new Redactor() )
 		);
 
 		$body = wp_json_encode(

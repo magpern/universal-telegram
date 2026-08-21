@@ -13,7 +13,9 @@ use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Automations\DispatchLogRepository;
 use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Automations\RuleEvaluator;
+use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Events\EventHistoryRepository;
+use UniversalTelegram\Events\EventSource;
 use UniversalTelegram\Events\RetentionCleanup;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Persistence\SchemaHealth;
@@ -44,6 +46,7 @@ final class DiagnosticsReport {
 	 * @param EventHistoryRepository     $event_history       Event-history counts.
 	 * @param NotificationRuleRepository $notification_rules  Rule counts.
 	 * @param DispatchLogRepository      $dispatch_log        Dispatch-log failure/stuck-claim counts.
+	 * @param Settings                   $settings            Reads the current visitor tracking configuration.
 	 * @param int                        $stale_pending_threshold_seconds The message-staleness threshold, in seconds.
 	 * @param int                        $stale_registration_threshold_hours The registration-staleness threshold, in hours.
 	 */
@@ -58,6 +61,7 @@ final class DiagnosticsReport {
 		private readonly EventHistoryRepository $event_history,
 		private readonly NotificationRuleRepository $notification_rules,
 		private readonly DispatchLogRepository $dispatch_log,
+		private readonly Settings $settings,
 		private readonly int $stale_pending_threshold_seconds = 1800,
 		private readonly int $stale_registration_threshold_hours = 24
 	) {}
@@ -88,6 +92,12 @@ final class DiagnosticsReport {
 	 *     automations_stuck_claim_count: int,
 	 *     automations_stale_fatal_markers_dropped_count: int,
 	 *     automations_last_evaluation_error_code: string,
+	 *     visitor_tracking_enabled: bool,
+	 *     visitor_tracker_asset_available: bool,
+	 *     visitor_events_recorded_24h: int,
+	 *     visitor_events_rejected_24h: int,
+	 *     visitor_events_rate_limited_24h: int,
+	 *     visitor_events_bot_filtered_24h: int,
 	 *     recent_audit_entries: array<int, array<string, mixed>>
 	 * }
 	 */
@@ -137,6 +147,12 @@ final class DiagnosticsReport {
 			'automations_stuck_claim_count'          => $this->schema_health->is_available() ? $this->dispatch_log->stuck_claim_count() : 0,
 			'automations_stale_fatal_markers_dropped_count' => (int) get_option( RetentionCleanup::STALE_FATAL_MARKERS_DROPPED_OPTION, 0 ),
 			'automations_last_evaluation_error_code' => (string) get_option( RuleEvaluator::LAST_EVALUATION_ERROR_CODE_OPTION, 'none' ),
+			'visitor_tracking_enabled'               => (bool) $this->settings->get()['visitor_tracking_enabled'],
+			'visitor_tracker_asset_available'        => defined( 'UNIVERSAL_TELEGRAM_PLUGIN_FILE' ) && file_exists( dirname( UNIVERSAL_TELEGRAM_PLUGIN_FILE ) . '/assets/js/visitor-tracker.js' ),
+			'visitor_events_recorded_24h'            => $this->schema_health->is_available() ? $this->event_history->count_24h_by_source( EventSource::VISITOR->value ) : 0,
+			'visitor_events_rejected_24h'            => $this->audit_log_repository->count_by_action_24h( 'visitor_events.rejected' ),
+			'visitor_events_rate_limited_24h'        => $this->audit_log_repository->count_by_action_24h( 'visitor_events.rate_limited' ),
+			'visitor_events_bot_filtered_24h'        => $this->audit_log_repository->count_by_action_24h( 'visitor_events.bot_filtered' ),
 			'recent_audit_entries'                   => $this->audit_log_repository->recent( 20 ),
 		);
 	}

@@ -61,4 +61,31 @@ final class AuditLogRepository {
 
 		return is_array( $rows ) ? $rows : array();
 	}
+
+	/**
+	 * Counts entries with the given action recorded within the last 24
+	 * hours. Used only for diagnostics aggregation (M04 plan §6).
+	 *
+	 * @param string $action The fixed action code.
+	 *
+	 * @return int
+	 */
+	public function count_by_action_24h( string $action ): int {
+		if ( ! $this->schema_health->is_available() ) {
+			return 0;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::AUDIT_LOG_TABLE;
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$table} WHERE action = %s AND occurred_at >= %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$action,
+				gmdate( 'Y-m-d H:i:s', time() - DAY_IN_SECONDS )
+			)
+		);
+	}
 }

@@ -46,7 +46,8 @@ final class DiagnosticsReportAutomationsTest extends WP_UnitTestCase {
 			$alert,
 			new EventHistoryRepository( $schema_health, $registry, new Redactor() ),
 			new NotificationRuleRepository( $schema_health, $registry ),
-			new DispatchLogRepository( $schema_health )
+			new DispatchLogRepository( $schema_health ),
+			new \UniversalTelegram\Core\Configuration\Settings()
 		);
 	}
 

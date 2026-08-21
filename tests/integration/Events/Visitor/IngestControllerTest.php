@@ -5,6 +5,7 @@
 
 namespace UniversalTelegram\Tests\Integration\Events\Visitor;
 
+use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Plugin;
 use UniversalTelegram\Events\Visitor\BotFilter;
@@ -14,6 +15,7 @@ use UniversalTelegram\Events\Visitor\Sampler;
 use UniversalTelegram\Events\Visitor\VisitorEventCatalog;
 use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
+use UniversalTelegram\Privacy\Redactor;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
 use WP_REST_Request;
 use WP_UnitTestCase;
@@ -51,7 +53,8 @@ final class IngestControllerTest extends WP_UnitTestCase {
 			new RateLimiter( $schema_health ),
 			new IngestRequestValidator(),
 			new BotFilter(),
-			new Sampler()
+			new Sampler(),
+			new AuditLogger( $schema_health, new Redactor() )
 		);
 	}
 
