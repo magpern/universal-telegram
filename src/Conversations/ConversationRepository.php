@@ -541,7 +541,7 @@ class ConversationRepository {
 			(string) $row['updated_at'],
 			null === $row['resolved_at'] ? null : (string) $row['resolved_at'],
 			null === $row['expires_at'] ? null : (string) $row['expires_at'],
-			null === ( $row['start_idempotency_key'] ?? null ) ? null : (string) $row['start_idempotency_key']
+			null === $row['start_idempotency_key'] ? null : (string) $row['start_idempotency_key']
 		);
 	}
 }

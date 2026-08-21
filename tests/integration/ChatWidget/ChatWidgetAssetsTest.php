@@ -97,7 +97,9 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 
 		$this->assertStringContainsString( 'type="application/json"', $output );
 		$this->assertStringContainsString( 'id="ut-chat-widget-config"', $output );
-		$this->assertStringContainsString( 'universal-telegram/v1', $output );
+		// wp_json_encode() escapes forward slashes by default, so the
+		// namespace/URL appear as universal-telegram\/v1 in the raw output.
+		$this->assertStringContainsString( 'universal-telegram\\/v1', $output );
 		$this->assertStringNotContainsString( 'conversation_uuid', $output );
 		$this->assertStringNotContainsString( 'secret', $output );
 		$this->assertSame( 1, substr_count( $output, '</script>' ) );
@@ -122,19 +124,12 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 		$this->assertSame( $first, $second );
 	}
 
-	public function test_z_nothing_is_enqueued_during_a_rest_request(): void {
-		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
-		$this->make_eligible_destination();
-
-		$this->go_to( home_url( '/' ) );
-
-		if ( ! defined( 'REST_REQUEST' ) ) {
-			define( 'REST_REQUEST', true ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedConstantFound
-		}
-
-		$assets = $this->assets();
-		$assets->enqueue();
-
-		$this->assertFalse( wp_script_is( 'universal-telegram-chat-widget', 'enqueued' ) );
-	}
+	// A REST_REQUEST-exclusion test is deliberately not repeated here:
+	// REST_REQUEST is a real PHP constant that cannot be undefined once
+	// set, and TrackerAssetsTest already defines it in its own last-run
+	// test (tests/integration/Events/Visitor/TrackerAssetsTest.php) to
+	// exercise the identical nine-condition should_enqueue() gate this
+	// class shares. Defining it again here would leak across test files
+	// within the same PHPUnit process, since "ChatWidget" sorts before
+	// "Events" and would poison every test that runs after it.
 }

@@ -830,6 +830,14 @@ class Migrator {
 	 * unique indexes permit any number of NULLs, so an upgrade from
 	 * db_version 12 is safe with no data loss or blocking rewrite. No new
 	 * table; both existing M05 tables are altered in place.
+	 *
+	 * Unlike every other step's `CREATE TABLE IF NOT EXISTS`, a bare
+	 * `ALTER TABLE ... ADD COLUMN` is not itself safely re-runnable — a
+	 * second attempt against an already-altered table raises a duplicate-
+	 * column error instead of a no-op. This step therefore checks each
+	 * table's own information schema first and skips a table already
+	 * carrying its column, preserving the same "safely re-runnable"
+	 * guarantee every other step provides.
 	 */
 	private function step_13_add_conversation_idempotency_columns(): void {
 		global $wpdb;
@@ -838,17 +846,21 @@ class Migrator {
 		$messages_table      = $wpdb->prefix . self::CONVERSATION_MESSAGES_TABLE;
 
 		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$wpdb->query(
-			"ALTER TABLE {$conversations_table}
-				ADD COLUMN start_idempotency_key CHAR(36) NULL,
-				ADD UNIQUE KEY start_idempotency_key (start_idempotency_key)"
-		);
+		if ( ! $this->table_has_columns( $conversations_table, array( 'start_idempotency_key' ) ) ) {
+			$wpdb->query(
+				"ALTER TABLE {$conversations_table}
+					ADD COLUMN start_idempotency_key CHAR(36) NULL,
+					ADD UNIQUE KEY start_idempotency_key (start_idempotency_key)"
+			);
+		}
 
-		$wpdb->query(
-			"ALTER TABLE {$messages_table}
-				ADD COLUMN idempotency_key CHAR(36) NULL,
-				ADD UNIQUE KEY conversation_idempotency (conversation_id, idempotency_key)"
-		);
+		if ( ! $this->table_has_columns( $messages_table, array( 'idempotency_key' ) ) ) {
+			$wpdb->query(
+				"ALTER TABLE {$messages_table}
+					ADD COLUMN idempotency_key CHAR(36) NULL,
+					ADD UNIQUE KEY conversation_idempotency (conversation_id, idempotency_key)"
+			);
+		}
 		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	}
 

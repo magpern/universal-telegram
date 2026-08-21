@@ -299,8 +299,6 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$this->assertSame( 429, $second->get_status() );
 	}
 
-	// -- WP0: start idempotency protocol (M06 plan §0, ADR-0021 amendment) --
-
 	public function test_start_missing_idempotency_key_returns_400(): void {
 		$this->bots->create( 'Support Bot', 'token' );
 
@@ -358,8 +356,6 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$this->assertSame( 400, $second->get_status() );
 		$this->assertSame( array( 'ok' => false ), $second->get_data() );
 	}
-
-	// -- WP0: per-message idempotency (M06 plan §0, ADR-0021 amendment) --
 
 	public function test_post_message_replay_with_same_key_returns_original_response_without_a_duplicate_row(): void {
 		$started = $this->started_conversation();

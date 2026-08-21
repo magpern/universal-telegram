@@ -26,8 +26,8 @@ final class ChatWidgetAvailability {
 	/**
 	 * Constructor.
 	 *
-	 * @param Settings             $settings      Reads the current plugin-wide configuration.
-	 * @param ChatProfileResolver  $chat_profiles Resolves the default bot and its destination.
+	 * @param Settings            $settings      Reads the current plugin-wide configuration.
+	 * @param ChatProfileResolver $chat_profiles Resolves the default bot and its destination.
 	 */
 	public function __construct(
 		private readonly Settings $settings,

@@ -54,9 +54,9 @@ class MessageRepository {
 	 * Creates a message row, encrypting the plaintext body immediately. The
 	 * plaintext is never retained by this method beyond the encrypt() call.
 	 *
-	 * @param int      $conversation_id The owning conversation.
-	 * @param string   $direction       'visitor' or 'operator'.
-	 * @param string   $plaintext_body  The message text.
+	 * @param int         $conversation_id The owning conversation.
+	 * @param string      $direction       'visitor' or 'operator'.
+	 * @param string      $plaintext_body  The message text.
 	 * @param string      $delivery_state  stored|sent|failed.
 	 * @param int|null    $telegram_message_id The Telegram message id, if already known.
 	 * @param string|null $idempotency_key     Client-supplied per-message idempotency key, if any (M06 plan §0).
@@ -341,7 +341,7 @@ class MessageRepository {
 			null === $row['telegram_message_id'] ? null : (int) $row['telegram_message_id'],
 			(string) $row['delivery_state'],
 			(string) $row['created_at'],
-			null === ( $row['idempotency_key'] ?? null ) ? null : (string) $row['idempotency_key']
+			null === $row['idempotency_key'] ? null : (string) $row['idempotency_key']
 		);
 	}
 }

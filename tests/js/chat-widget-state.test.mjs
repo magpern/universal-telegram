@@ -56,7 +56,13 @@ test( 'setPendingStart persists the idempotency key and secret exactly', () => {
 
 	state.setPendingStart( 'key-1', 'a'.repeat( 64 ) );
 
-	assert.deepEqual( state.getPendingStart(), { idempotencyKey: 'key-1', secret: 'a'.repeat( 64 ) } );
+	// Field-by-field, not assert.deepEqual: an object literal built inside
+	// the vm-executed source has a different realm's Object.prototype
+	// than one built in this outer test file, so a strict deep-equality
+	// check would fail on prototype identity alone despite identical data.
+	const pending = state.getPendingStart();
+	assert.equal( pending.idempotencyKey, 'key-1' );
+	assert.equal( pending.secret, 'a'.repeat( 64 ) );
 } );
 
 test( 'clearPendingStart removes the pending-start entry', () => {
