@@ -71,7 +71,7 @@ final class DiagnosticsPageTest extends WP_UnitTestCase {
 		wp_set_current_user( $subscriber_id );
 
 		$this->expectException( \WPDieException::class );
-		$this->make_page( new SchemaHealth() )->render();
+		$this->make_page( new SchemaHealth() )->render_tab_content();
 	}
 
 	public function test_an_html_injection_shaped_audit_value_is_escaped_never_raw(): void {
@@ -83,7 +83,7 @@ final class DiagnosticsPageTest extends WP_UnitTestCase {
 		$audit_logger->record( '<script>alert(1)</script>', 'system', null, array(), array(), Classification::PUBLIC );
 
 		ob_start();
-		$this->make_page( $schema_health )->render();
+		$this->make_page( $schema_health )->render_tab_content();
 		$output = ob_get_clean();
 
 		$this->assertStringNotContainsString( '<script>alert(1)</script>', $output );
@@ -98,7 +98,7 @@ final class DiagnosticsPageTest extends WP_UnitTestCase {
 		$schema_health->mark_unavailable( MigrationFailureCode::STEP_FAILED );
 
 		ob_start();
-		$this->make_page( $schema_health )->render();
+		$this->make_page( $schema_health )->render_tab_content();
 		$output = ob_get_clean();
 
 		$this->assertStringContainsString( 'step_failed', $output );

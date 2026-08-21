@@ -199,7 +199,7 @@ wp eval '
 	$page   = $plugin->diagnostics_page();
 
 	ob_start();
-	$page->render();
+	$page->render_tab_content();
 	$html = ob_get_clean();
 
 	if ( false === strpos( $html, "Automations (M02)" ) ) {
@@ -252,13 +252,9 @@ wp eval '
 	$page   = $plugin->diagnostics_page();
 
 	ob_start();
-	$page->render();
+	$page->render_tab_content();
 	$html = ob_get_clean();
 
-	if ( false === strpos( $html, "Telegram Operations Hub" ) ) {
-		fwrite( STDERR, "FAIL: diagnostics page did not render the expected heading\n" );
-		exit( 1 );
-	}
 	if ( false === strpos( $html, "Diagnostic self-test" ) ) {
 		fwrite( STDERR, "FAIL: self-test control was not rendered despite WP_DEBUG=true\n" );
 		exit( 1 );

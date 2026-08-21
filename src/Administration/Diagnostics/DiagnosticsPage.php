@@ -14,16 +14,19 @@ use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Telegram\Reliability\QueueHealthAlert;
 
 /**
- * The plugin's primary administration screen, gated on the
- * universal_telegram_manage capability through add_menu_page()'s own
- * capability parameter. Remains fully reachable while the schema is
+ * The Diagnostics tab of the administration hub (ADR-0020), gated on the
+ * universal_telegram_manage capability, re-verified inside
+ * render_tab_content() as defense in depth alongside the Hub shell's own
+ * capability check. Remains fully reachable while the schema is
  * degraded, rendering a notice using only the stable failure code. Extended
  * by M01, WP11, with a Telegram health section (via the already-extended
  * DiagnosticsReport) and a capability-gated, site-wide admin_notices
  * queue-health alert banner — never a Telegram message (docs/adr/0014), the
  * transport itself may be the thing that is failing. The banner's
  * underlying computation is cached in a 60-second transient so it does not
- * run its queries on every admin page load.
+ * run its queries on every admin page load. SLUG is retained as this
+ * screen's legacy compatibility-redirect slug (M04.1 plan §5), not as a
+ * registered menu page of its own.
  */
 final class DiagnosticsPage {
 
@@ -49,19 +52,6 @@ final class DiagnosticsPage {
 		private readonly int $stale_pending_threshold_seconds = 1800,
 		private readonly int $stale_registration_threshold_hours = 24
 	) {}
-
-	/**
-	 * Registers the admin menu entry.
-	 */
-	public function register_menu(): void {
-		add_menu_page(
-			__( 'Telegram Operations Hub', 'universal-telegram' ),
-			__( 'Telegram Hub', 'universal-telegram' ),
-			CapabilityRegistrar::MANAGE,
-			self::SLUG,
-			array( $this, 'render' )
-		);
-	}
 
 	/**
 	 * The admin_notices callback: a site-wide, capability-gated banner,
@@ -109,17 +99,16 @@ final class DiagnosticsPage {
 	}
 
 	/**
-	 * Renders the page. WordPress core's own add_menu_page() capability
-	 * parameter already denies an unauthorized user before this ever
-	 * runs; the explicit check here is defense in depth.
+	 * Renders this tab's content only (no outer .wrap/<h1> — owned by
+	 * HubPage). The Hub's own capability check (HubPage::render()) already
+	 * denies an unauthorized user before this ever runs; the explicit
+	 * check here is defense in depth, unchanged from before the M04.1
+	 * migration into the Hub shell.
 	 */
-	public function render(): void {
+	public function render_tab_content(): void {
 		if ( ! current_user_can( CapabilityRegistrar::MANAGE ) ) {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'universal-telegram' ) );
 		}
-
-		echo '<div class="wrap">';
-		echo '<h1>' . esc_html__( 'Telegram Operations Hub — Diagnostics', 'universal-telegram' ) . '</h1>';
 
 		if ( ! $this->schema_health->is_available() ) {
 			$failure_code = $this->schema_health->failure_code();
@@ -137,8 +126,6 @@ final class DiagnosticsPage {
 
 		$this->render_report();
 		$this->self_test->render_control();
-
-		echo '</div>';
 	}
 
 	/**

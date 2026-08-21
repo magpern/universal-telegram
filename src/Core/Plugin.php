@@ -15,6 +15,10 @@ use UniversalTelegram\Administration\Automations\RuleSimulatorPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
 use UniversalTelegram\Administration\Diagnostics\SelfTest;
+use UniversalTelegram\Administration\Hub\HubPage;
+use UniversalTelegram\Administration\Hub\OverviewPage;
+use UniversalTelegram\Administration\Hub\Tab;
+use UniversalTelegram\Administration\Hub\TabRegistry;
 use UniversalTelegram\Administration\PluginActionLinks;
 use UniversalTelegram\Administration\Telegram\BotManagementController;
 use UniversalTelegram\Administration\Telegram\BotManagementPage;
@@ -185,6 +189,20 @@ final class Plugin {
 	 * @var DiagnosticsPage|null
 	 */
 	private ?DiagnosticsPage $diagnostics_page = null;
+
+	/**
+	 * The administration hub's tab registry, constructed by init().
+	 *
+	 * @var TabRegistry|null
+	 */
+	private ?TabRegistry $hub_tab_registry = null;
+
+	/**
+	 * The administration hub shell page, constructed by init().
+	 *
+	 * @var HubPage|null
+	 */
+	private ?HubPage $hub_page = null;
 
 	/**
 	 * The bounded diagnostic self-test, constructed by init().
@@ -575,8 +593,24 @@ final class Plugin {
 			(int) $settings_values['telegram_stale_pending_alert_seconds'],
 			(int) $settings_values['telegram_webhook_rotation_max_pending_hours']
 		);
-		add_action( 'admin_menu', array( $this->diagnostics_page, 'register_menu' ) );
 		add_action( 'admin_notices', array( $this->diagnostics_page, 'render_admin_notice' ) );
+
+		// Administration hub (M04.1, ADR-0020): a single top-level menu
+		// entry with URL-driven tabs, superseding the per-screen
+		// add_submenu_page()/add_menu_page() pattern every screen below
+		// used through M04. Tabs are registered here and at each
+		// migrated screen's own former wiring point, in the plan's
+		// work-package order; register_menu() itself is wired once.
+		$overview_page          = new OverviewPage();
+		$this->hub_tab_registry = new TabRegistry();
+		$this->hub_tab_registry->register(
+			new Tab( OverviewPage::TAB_ID, __( 'Overview', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $overview_page, 'render_tab_content' ) )
+		);
+		$this->hub_tab_registry->register(
+			new Tab( 'diagnostics', __( 'Diagnostics', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->diagnostics_page, 'render_tab_content' ) )
+		);
+		$this->hub_page = new HubPage( $this->hub_tab_registry );
+		add_action( 'admin_menu', array( $this->hub_page, 'register_menu' ) );
 
 		// Events/Automations (M02) continued: the repositories above are
 		// already constructed; wire the remaining dispatch/evaluation/
