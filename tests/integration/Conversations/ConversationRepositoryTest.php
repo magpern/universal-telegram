@@ -117,4 +117,36 @@ final class ConversationRepositoryTest extends WP_UnitTestCase {
 		$found = $repo->find( $created->id() );
 		$this->assertSame( 99, $found->assigned_operator_id() );
 	}
+
+	public function test_create_persists_and_finds_by_start_idempotency_key(): void {
+		$repo = $this->repository();
+
+		$created = $repo->create( 'uuid-idem', 'hashed-secret', 1, null, 'idem-key-1' );
+
+		$this->assertSame( 'idem-key-1', $created->start_idempotency_key() );
+
+		$found = $repo->find_by_start_idempotency_key( 'idem-key-1' );
+		$this->assertNotNull( $found );
+		$this->assertSame( $created->id(), $found->id() );
+
+		$this->assertNull( $repo->find_by_start_idempotency_key( 'nonexistent-key' ) );
+	}
+
+	public function test_create_without_a_start_idempotency_key_leaves_it_null(): void {
+		$repo = $this->repository();
+
+		$created = $repo->create( 'uuid-no-idem', 'hashed-secret', 1, null );
+
+		$this->assertNull( $created->start_idempotency_key() );
+	}
+
+	public function test_create_rejects_a_duplicate_start_idempotency_key(): void {
+		$repo = $this->repository();
+
+		$first  = $repo->create( 'uuid-dup-a', 'hashed-secret-a', 1, null, 'dup-key' );
+		$second = $repo->create( 'uuid-dup-b', 'hashed-secret-b', 1, null, 'dup-key' );
+
+		$this->assertNotNull( $first );
+		$this->assertNull( $second );
+	}
 }

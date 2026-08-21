@@ -165,6 +165,19 @@ final class ConversationsController {
 			}
 		}
 
+		// Client-generated-secret start protocol (M06 plan §0, ADR-0021
+		// amendment): the caller supplies both the idempotency key and the
+		// bearer secret itself as headers, never in the body or a URL. A
+		// malformed/missing value here is indistinguishable from any other
+		// malformed start request — the same generic 400, no distinguishing
+		// detail — so probing this endpoint never reveals anything.
+		$idempotency_key  = (string) $request->get_header( 'Idempotency-Key' );
+		$presented_secret = (string) $request->get_header( 'X-Universal-Telegram-Conversation-Secret' );
+
+		if ( '' === $idempotency_key || ! $this->tokens->is_valid_secret_format( $presented_secret ) ) {
+			return $this->respond( array( 'ok' => false ), 400 );
+		}
+
 		if ( ! $this->rate_limiter->try_consume( self::START_SITE_SCOPE, 0, self::START_SITE_CAPACITY, self::START_SITE_REFILL ) ) {
 			return $this->rate_limited();
 		}
@@ -173,19 +186,40 @@ final class ConversationsController {
 			return $this->rate_limited();
 		}
 
+		// Replay: locate by idempotency key alone, then verify the
+		// presented secret against the stored hash. A known key with a
+		// wrong/missing secret gets the identical generic 400 as any other
+		// malformed request — no information about the key's existence or
+		// the correct secret ever leaks (M06 plan §0 step 5).
+		$existing = $this->conversations->find_by_start_idempotency_key( $idempotency_key );
+
+		if ( null !== $existing ) {
+			if ( null === $existing->secret_hash() || ! $this->tokens->verify( $presented_secret, $existing->secret_hash() ) ) {
+				return $this->respond( array( 'ok' => false ), 400 );
+			}
+
+			return $this->respond(
+				array(
+					'ok'                => true,
+					'conversation_uuid' => $existing->conversation_uuid(),
+					'secret'            => $presented_secret,
+				),
+				200
+			);
+		}
+
 		$bot = null === $chat_profile ? $this->chat_profiles->default_bot() : $this->chat_profiles->find_by_profile( $chat_profile );
 
 		if ( null === $bot ) {
 			return $this->respond( array( 'ok' => false ), null === $chat_profile ? 503 : 400 );
 		}
 
-		$credential = $this->tokens->generate();
-
 		$conversation = $this->conversations->create(
-			$credential['conversation_uuid'],
-			$credential['secret_hash'],
+			$this->tokens->generate_uuid(),
+			$this->tokens->hash( $presented_secret ),
 			$bot->id(),
-			$chat_profile
+			$chat_profile,
+			$idempotency_key
 		);
 
 		if ( null === $conversation ) {
@@ -196,7 +230,7 @@ final class ConversationsController {
 			array(
 				'ok'                => true,
 				'conversation_uuid' => $conversation->conversation_uuid(),
-				'secret'            => $credential['secret'],
+				'secret'            => $presented_secret,
 			),
 			200
 		);
@@ -246,7 +280,22 @@ final class ConversationsController {
 			return $this->respond( array( 'ok' => false ), 400 );
 		}
 
-		$message = $this->messages->create( $conversation->id(), 'visitor', $text );
+		// Per-message idempotency (M06 plan §0, ADR-0021 amendment): a
+		// replay of the same (conversation, idempotency key) pair returns
+		// the original success response without re-running message
+		// creation or any of its side effects (status transition, topic
+		// creation, outbound routing) a second time.
+		$idempotency_key = (string) $request->get_header( 'Idempotency-Key' );
+
+		if ( '' !== $idempotency_key ) {
+			$existing_message = $this->messages->find_by_idempotency_key( $conversation->id(), $idempotency_key );
+
+			if ( null !== $existing_message ) {
+				return $this->respond( array( 'ok' => true ), 200 );
+			}
+		}
+
+		$message = $this->messages->create( $conversation->id(), 'visitor', $text, 'stored', null, '' === $idempotency_key ? null : $idempotency_key );
 
 		if ( null === $message ) {
 			return $this->respond( array( 'ok' => false ), 503 );

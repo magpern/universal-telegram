@@ -61,7 +61,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 12;
+		return 13;
 	}
 
 	/**
@@ -142,6 +142,7 @@ class Migrator {
 			10 => array( array( $this, 'step_10_create_notification_dispatch_log_table' ), array( $this, 'verify_step_10' ) ),
 			11 => array( array( $this, 'step_11_create_conversations_table' ), array( $this, 'verify_step_11' ) ),
 			12 => array( array( $this, 'step_12_create_conversation_messages_table' ), array( $this, 'verify_step_12' ) ),
+			13 => array( array( $this, 'step_13_add_conversation_idempotency_columns' ), array( $this, 'verify_step_13' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -816,6 +817,55 @@ class Migrator {
 				'delivery_state',
 				'created_at',
 			)
+		);
+	}
+
+	/**
+	 * Adds the two idempotency-key columns the M06 chat widget's safe
+	 * start/message retry protocol requires (M06 plan §0, ADR-0021
+	 * amendment): a nullable, unique `start_idempotency_key` on the
+	 * conversations table, and a nullable per-conversation-unique
+	 * `idempotency_key` on the conversation messages table. Both columns
+	 * are nullable specifically so pre-migration rows need no backfill —
+	 * unique indexes permit any number of NULLs, so an upgrade from
+	 * db_version 12 is safe with no data loss or blocking rewrite. No new
+	 * table; both existing M05 tables are altered in place.
+	 */
+	private function step_13_add_conversation_idempotency_columns(): void {
+		global $wpdb;
+
+		$conversations_table = $wpdb->prefix . self::CONVERSATIONS_TABLE;
+		$messages_table      = $wpdb->prefix . self::CONVERSATION_MESSAGES_TABLE;
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"ALTER TABLE {$conversations_table}
+				ADD COLUMN start_idempotency_key CHAR(36) NULL,
+				ADD UNIQUE KEY start_idempotency_key (start_idempotency_key)"
+		);
+
+		$wpdb->query(
+			"ALTER TABLE {$messages_table}
+				ADD COLUMN idempotency_key CHAR(36) NULL,
+				ADD UNIQUE KEY conversation_idempotency (conversation_id, idempotency_key)"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_13(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::CONVERSATIONS_TABLE,
+			array( 'start_idempotency_key' )
+		) && $this->table_has_columns(
+			$wpdb->prefix . self::CONVERSATION_MESSAGES_TABLE,
+			array( 'idempotency_key' )
 		);
 	}
 

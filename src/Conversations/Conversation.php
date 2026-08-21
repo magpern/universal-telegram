@@ -38,6 +38,7 @@ final class Conversation {
 	 * @param string      $updated_at             Last-update timestamp.
 	 * @param string|null $resolved_at            Timestamp of the last `* -> resolved` transition.
 	 * @param string|null $expires_at             Reserved retention timestamp.
+	 * @param string|null $start_idempotency_key  Client-supplied idempotency key from the start request that created this row, or null (M06 plan §0, ADR-0021 amendment).
 	 */
 	public function __construct(
 		private readonly int $id,
@@ -56,7 +57,8 @@ final class Conversation {
 		private readonly string $created_at,
 		private readonly string $updated_at,
 		private readonly ?string $resolved_at,
-		private readonly ?string $expires_at
+		private readonly ?string $expires_at,
+		private readonly ?string $start_idempotency_key = null
 	) {}
 
 	/**
@@ -211,5 +213,16 @@ final class Conversation {
 	 */
 	public function expires_at(): ?string {
 		return $this->expires_at;
+	}
+
+	/**
+	 * The client-supplied idempotency key from the start request that
+	 * created this row, or null. The sole lookup key for a safe start
+	 * replay (M06 plan §0, ADR-0021 amendment).
+	 *
+	 * @return string|null
+	 */
+	public function start_idempotency_key(): ?string {
+		return $this->start_idempotency_key;
 	}
 }

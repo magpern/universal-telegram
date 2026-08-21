@@ -90,4 +90,51 @@ final class MessageRepositoryTest extends WP_UnitTestCase {
 		$nulled = $repo->find( $message->id() );
 		$this->assertNull( $repo->decrypt( $nulled ) );
 	}
+
+	public function test_create_persists_and_finds_by_idempotency_key(): void {
+		$repo            = $this->repository();
+		$conversation_id = $this->conversation_id();
+
+		$created = $repo->create( $conversation_id, 'visitor', 'Hello', 'stored', null, 'idem-key-1' );
+
+		$this->assertSame( 'idem-key-1', $created->idempotency_key() );
+
+		$found = $repo->find_by_idempotency_key( $conversation_id, 'idem-key-1' );
+		$this->assertNotNull( $found );
+		$this->assertSame( $created->id(), $found->id() );
+
+		$this->assertNull( $repo->find_by_idempotency_key( $conversation_id, 'nonexistent-key' ) );
+	}
+
+	public function test_create_without_an_idempotency_key_leaves_it_null(): void {
+		$repo            = $this->repository();
+		$conversation_id = $this->conversation_id();
+
+		$created = $repo->create( $conversation_id, 'visitor', 'Hello' );
+
+		$this->assertNull( $created->idempotency_key() );
+	}
+
+	public function test_create_rejects_a_duplicate_idempotency_key_within_the_same_conversation(): void {
+		$repo            = $this->repository();
+		$conversation_id = $this->conversation_id();
+
+		$first  = $repo->create( $conversation_id, 'visitor', 'first', 'stored', null, 'dup-key' );
+		$second = $repo->create( $conversation_id, 'visitor', 'second', 'stored', null, 'dup-key' );
+
+		$this->assertNotNull( $first );
+		$this->assertNull( $second );
+	}
+
+	public function test_the_same_idempotency_key_is_allowed_across_different_conversations(): void {
+		$repo                = $this->repository();
+		$conversation_id_one = $this->conversation_id();
+		$conversation_id_two = $this->conversation_id();
+
+		$first  = $repo->create( $conversation_id_one, 'visitor', 'first', 'stored', null, 'shared-key' );
+		$second = $repo->create( $conversation_id_two, 'visitor', 'second', 'stored', null, 'shared-key' );
+
+		$this->assertNotNull( $first );
+		$this->assertNotNull( $second );
+	}
 }

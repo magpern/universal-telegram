@@ -54,9 +54,11 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		);
 	}
 
-	private function start_request( ?string $body = null ): WP_REST_Request {
+	private function start_request( ?string $body = null, ?string $idempotency_key = null, ?string $secret = null ): WP_REST_Request {
 		$request = new WP_REST_Request( 'POST', '/universal-telegram/v1/conversations' );
 		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_header( 'Idempotency-Key', $idempotency_key ?? wp_generate_uuid4() );
+		$request->set_header( 'X-Universal-Telegram-Conversation-Secret', $secret ?? bin2hex( random_bytes( 32 ) ) );
 		$request->set_body( $body ?? '' );
 
 		return $request;
@@ -295,5 +297,86 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 
 		$this->assertSame( 200, $first->get_status() );
 		$this->assertSame( 429, $second->get_status() );
+	}
+
+	// -- WP0: start idempotency protocol (M06 plan §0, ADR-0021 amendment) --
+
+	public function test_start_missing_idempotency_key_returns_400(): void {
+		$this->bots->create( 'Support Bot', 'token' );
+
+		$request = $this->start_request();
+		$request->remove_header( 'Idempotency-Key' );
+
+		$response = $this->controller->handle_start( $request );
+
+		$this->assertSame( 400, $response->get_status() );
+	}
+
+	public function test_start_malformed_secret_format_returns_400(): void {
+		$this->bots->create( 'Support Bot', 'token' );
+
+		$response = $this->controller->handle_start( $this->start_request( null, null, 'not-64-hex-chars' ) );
+
+		$this->assertSame( 400, $response->get_status() );
+	}
+
+	public function test_start_replay_with_same_key_and_secret_returns_the_same_conversation_without_a_new_row(): void {
+		$this->bots->create( 'Support Bot', 'token' );
+
+		$key    = wp_generate_uuid4();
+		$secret = bin2hex( random_bytes( 32 ) );
+
+		$first  = $this->controller->handle_start( $this->start_request( null, $key, $secret ) );
+		$second = $this->controller->handle_start( $this->start_request( null, $key, $secret ) );
+
+		$first_data  = $first->get_data();
+		$second_data = $second->get_data();
+
+		$this->assertSame( 200, $first->get_status() );
+		$this->assertSame( 200, $second->get_status() );
+		$this->assertSame( $first_data['conversation_uuid'], $second_data['conversation_uuid'] );
+		$this->assertSame( $secret, $second_data['secret'] );
+
+		$found = $this->conversations->find_by_uuid( $first_data['conversation_uuid'] );
+		$this->assertNotNull( $found );
+
+		// No second row: the conversation found by the public uuid is the
+		// same primary-key row the replay resolved via the idempotency key.
+		$by_key = $this->conversations->find_by_start_idempotency_key( $key );
+		$this->assertSame( $found->id(), $by_key->id() );
+	}
+
+	public function test_start_replay_with_wrong_secret_returns_the_same_generic_400_and_leaks_nothing(): void {
+		$this->bots->create( 'Support Bot', 'token' );
+
+		$key = wp_generate_uuid4();
+
+		$first  = $this->controller->handle_start( $this->start_request( null, $key, bin2hex( random_bytes( 32 ) ) ) );
+		$second = $this->controller->handle_start( $this->start_request( null, $key, bin2hex( random_bytes( 32 ) ) ) );
+
+		$this->assertSame( 200, $first->get_status() );
+		$this->assertSame( 400, $second->get_status() );
+		$this->assertSame( array( 'ok' => false ), $second->get_data() );
+	}
+
+	// -- WP0: per-message idempotency (M06 plan §0, ADR-0021 amendment) --
+
+	public function test_post_message_replay_with_same_key_returns_original_response_without_a_duplicate_row(): void {
+		$started = $this->started_conversation();
+		$found   = $this->conversations->find_by_uuid( $started['conversation_uuid'] );
+
+		$key = wp_generate_uuid4();
+
+		$request = $this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello' ) ) );
+		$request->set_header( 'Idempotency-Key', $key );
+		$first = $this->controller->handle_post_message( $request );
+
+		$replay = $this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello' ) ) );
+		$replay->set_header( 'Idempotency-Key', $key );
+		$second = $this->controller->handle_post_message( $replay );
+
+		$this->assertSame( 200, $first->get_status() );
+		$this->assertSame( array( 'ok' => true ), $second->get_data() );
+		$this->assertCount( 1, $this->messages->messages_since( $found->id(), 0 ) );
 	}
 }

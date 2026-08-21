@@ -171,3 +171,54 @@ gains new rows through this milestone's own write path but no schema
 change. No existing REST route, webhook behavior, or outbound pipeline
 behavior changes for any caller outside the new conversation-scoped paths
 this ADR introduces.
+
+## Amendment (M06 plan §0): Idempotency-Key Support for Start and Message Endpoints
+
+**Status:** Accepted (M06-core).
+
+**Context.** M06's chat widget must be able to safely retry `POST /conversations` and `POST /messages`
+after a network or `5xx` failure. This ADR as originally written has no notion of a client-supplied
+idempotency key, so a naive client-side retry risks creating a duplicate conversation or duplicate
+message. Additionally, the original flow generates the bearer secret server-side and returns it once;
+a safe start-replay requires the server to be able to verify a resend of that same secret without ever
+storing more than a hash of it.
+
+**Decision — start (`POST /conversations`).** The client now generates **both** the `Idempotency-Key`
+and the 256-bit bearer secret itself, before dispatch, and sends them as two request headers —
+`Idempotency-Key` and `X-Universal-Telegram-Conversation-Secret` — never in the body, a URL, or any
+logged/cached location. On an unseen `Idempotency-Key`, the server validates the secret's format (64
+lowercase hex characters), creates the conversation row storing `password_hash(secret)` (via
+`password_hash()`, as before) and the unique `start_idempotency_key`, and returns
+`{ok:true, conversation_uuid, secret}` where `secret` is simply the value the caller supplied. On a
+replay with the same `Idempotency-Key`, the server looks up the conversation by that key, verifies the
+supplied secret via `password_verify()` against the stored hash, and — on a match — returns the
+identical response shape without creating a second row. A replay with a missing or incorrect secret
+returns the same generic `400` failure shape used for any other malformed start request, so no
+information about the key's existence or the correct secret leaks. The server **never** persists the
+secret itself, encrypted or otherwise — only its hash, exactly as originally specified for the
+non-replay path.
+
+**Decision — message (`POST /conversations/{uuid}/messages`).** Accepts an optional `Idempotency-Key`
+header, persisted scoped to `(conversation_id, idempotency_key)` (unique index); a replay with the same
+key returns the original message's success response rather than inserting a duplicate row, and does not
+re-run the status transition, topic-creation dispatch, or outbound routing side effects a second time.
+
+**Schema.** Both columns are added to the two existing tables — no new table — via one new `Migrator`
+step (`step_13_add_conversation_idempotency_columns()`), advancing `db_version` from `12` to `13`:
+`universal_telegram_conversations.start_idempotency_key CHAR(36) NULL` with a unique key, and
+`universal_telegram_conversation_messages.idempotency_key CHAR(36) NULL` with a unique key on
+`(conversation_id, idempotency_key)`. Both are nullable specifically so pre-migration rows require no
+backfill (unique indexes permit multiple `NULL`s), making the upgrade path safe for existing
+installations.
+
+**Retention.** Both the `start_idempotency_key` column and the per-message idempotency key are retained
+only as long as the row they are attached to, using the same retention/cleanup path this ADR already
+defines — no separate cleanup logic, since the columns are deleted along with their row. Neither key is
+ever included in a poll response.
+
+**Consequences.** M06 (and any future client) can safely implement bounded automatic retry for both
+endpoints, using a key the client already holds rather than one the server must return and the client
+must remember. This is a backend schema/logic change to the Conversations boundary (`db_version` `12 →
+13` migration adding the two columns/unique indexes, plus a `password_verify()`-based replay branch in
+the start handler and a replay branch in the message handler) and shipped as an M06-core prerequisite
+(M06 plan §0) before the chat widget client relies on automatic retry of these routes.

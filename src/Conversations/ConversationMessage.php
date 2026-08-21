@@ -30,6 +30,7 @@ final class ConversationMessage {
 	 * @param int|null    $telegram_message_id    The Telegram message id, once delivered or received.
 	 * @param string      $delivery_state         stored|sent|failed.
 	 * @param string      $created_at             Creation timestamp.
+	 * @param string|null $idempotency_key        Client-supplied per-message idempotency key, or null (M06 plan §0, ADR-0021 amendment).
 	 */
 	public function __construct(
 		private readonly int $id,
@@ -40,7 +41,8 @@ final class ConversationMessage {
 		private readonly ?string $outbound_message_uuid,
 		private readonly ?int $telegram_message_id,
 		private readonly string $delivery_state,
-		private readonly string $created_at
+		private readonly string $created_at,
+		private readonly ?string $idempotency_key = null
 	) {}
 
 	/**
@@ -124,5 +126,15 @@ final class ConversationMessage {
 	 */
 	public function created_at(): string {
 		return $this->created_at;
+	}
+
+	/**
+	 * Client-supplied per-message idempotency key, or null. Never included
+	 * in a poll response (M06 plan §0, ADR-0021 amendment).
+	 *
+	 * @return string|null
+	 */
+	public function idempotency_key(): ?string {
+		return $this->idempotency_key;
 	}
 }
