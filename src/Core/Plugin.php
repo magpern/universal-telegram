@@ -42,6 +42,7 @@ use UniversalTelegram\Events\Emitters\RestRequestFailureEmitter;
 use UniversalTelegram\Events\Emitters\ScheduledTaskFailureEmitter;
 use UniversalTelegram\Events\Emitters\UpdateEmitter;
 use UniversalTelegram\Events\Emitters\UserLifecycleEmitter;
+use UniversalTelegram\Events\Visitor\VisitorEventCatalog;
 use UniversalTelegram\Integrations\WooCommerce\Events\CartEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Events\CheckoutEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Events\CouponEventEmitter;
@@ -593,6 +594,12 @@ final class Plugin {
 		add_action( 'universal_telegram_register_event_types', array( $rest_request_failure_emitter, 'register_event_types' ), 10 );
 		add_action( 'universal_telegram_register_event_types', array( $mail_failure_emitter, 'register_event_types' ), 10 );
 		add_action( 'universal_telegram_register_event_types', array( $fatal_error_promotion_job, 'register_event_types' ), 10 );
+
+		// Visitor/browser event catalog (M04 plan §4.2, ADR-0019): the six
+		// always-on visitor.* types, registered unconditionally at priority
+		// 20, independent of WooCommerce presence.
+		$visitor_event_catalog = new VisitorEventCatalog();
+		add_action( 'universal_telegram_register_event_types', array( $visitor_event_catalog, 'register_event_types' ), 20 );
 
 		// WooCommerce event emitters (M03 plan §4, ADR-0018): constructed
 		// and wired only when WooCommerceSupport::is_active() is true.
