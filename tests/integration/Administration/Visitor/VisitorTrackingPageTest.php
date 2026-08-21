@@ -20,7 +20,7 @@ final class VisitorTrackingPageTest extends WP_UnitTestCase {
 		wp_set_current_user( $subscriber_id );
 
 		$this->expectException( \WPDieException::class );
-		$this->page()->render();
+		$this->page()->render_tab_content();
 	}
 
 	public function test_an_administrator_can_render_the_page(): void {
@@ -28,10 +28,10 @@ final class VisitorTrackingPageTest extends WP_UnitTestCase {
 		wp_set_current_user( $admin_id );
 
 		ob_start();
-		$this->page()->render();
+		$this->page()->render_tab_content();
 		$output = ob_get_clean();
 
-		$this->assertStringContainsString( 'Visitor Tracking', $output );
+		$this->assertStringContainsString( 'Enable visitor tracking', $output );
 		$this->assertStringContainsString( 'cannot be verified by the server', $output );
 	}
 

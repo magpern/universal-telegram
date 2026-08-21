@@ -810,7 +810,9 @@ final class Plugin {
 		);
 
 		$this->visitor_tracking_page = new VisitorTrackingPage( $settings );
-		add_action( 'admin_menu', array( $this->visitor_tracking_page, 'register_menu' ) );
+		$this->hub_tab_registry->register(
+			new Tab( VisitorTrackingPage::TAB_ID, __( 'Visitor Tracking', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->visitor_tracking_page, 'render_tab_content' ) )
+		);
 		add_action( 'admin_post_' . VisitorTrackingPage::ADMIN_POST_ACTION, array( $this->visitor_tracking_page, 'handle_request' ) );
 
 		$retention_cleanup = new RetentionCleanup(
