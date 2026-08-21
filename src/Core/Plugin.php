@@ -7,16 +7,43 @@
 
 namespace UniversalTelegram\Core;
 
+use UniversalTelegram\Administration\Automations\EventCatalogPage;
+use UniversalTelegram\Administration\Automations\EventHistoryPage;
+use UniversalTelegram\Administration\Automations\RuleBuilderPage;
+use UniversalTelegram\Administration\Automations\RuleBuilderRequestHandler;
+use UniversalTelegram\Administration\Automations\RuleSimulatorPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
 use UniversalTelegram\Administration\Diagnostics\SelfTest;
+use UniversalTelegram\Administration\PluginActionLinks;
 use UniversalTelegram\Administration\Telegram\BotManagementController;
 use UniversalTelegram\Administration\Telegram\BotManagementPage;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
+use UniversalTelegram\Automations\DispatchLogRepository;
+use UniversalTelegram\Automations\NotificationDispatcher;
+use UniversalTelegram\Automations\NotificationRuleRepository;
+use UniversalTelegram\Automations\RuleEvaluator;
+use UniversalTelegram\Automations\RuleSimulator;
+use UniversalTelegram\Automations\TemplateRenderer;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Security\CredentialVault;
+use UniversalTelegram\Events\EventDispatcher;
+use UniversalTelegram\Events\EventEmitter;
+use UniversalTelegram\Events\EventHistoryRepository;
+use UniversalTelegram\Events\Emitters\ContentEmitter;
+use UniversalTelegram\Events\Emitters\FatalErrorMarkerWriter;
+use UniversalTelegram\Events\Emitters\FatalErrorPromotionJob;
+use UniversalTelegram\Events\Emitters\LoginEmitter;
+use UniversalTelegram\Events\Emitters\MailFailureEmitter;
+use UniversalTelegram\Events\Emitters\PluginLifecycleEmitter;
+use UniversalTelegram\Events\Emitters\RestRequestFailureEmitter;
+use UniversalTelegram\Events\Emitters\ScheduledTaskFailureEmitter;
+use UniversalTelegram\Events\Emitters\UpdateEmitter;
+use UniversalTelegram\Events\Emitters\UserLifecycleEmitter;
+use UniversalTelegram\Events\Registry;
+use UniversalTelegram\Events\RetentionCleanup;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Persistence\MigrationFailedException;
 use UniversalTelegram\Persistence\MigrationLock;
@@ -258,6 +285,83 @@ final class Plugin {
 	private ?BotManagementController $bot_management_controller = null;
 
 	/**
+	 * The current request's event registry, constructed by init().
+	 *
+	 * @var Registry|null
+	 */
+	private ?Registry $event_registry = null;
+
+	/**
+	 * The internal event ingestion orchestrator, constructed by init().
+	 *
+	 * @var EventDispatcher|null
+	 */
+	private ?EventDispatcher $event_dispatcher = null;
+
+	/**
+	 * The safety-wrapped event emission façade, constructed by init().
+	 *
+	 * @var EventEmitter|null
+	 */
+	private ?EventEmitter $event_emitter = null;
+
+	/**
+	 * The notification rule repository, constructed by init().
+	 *
+	 * @var NotificationRuleRepository|null
+	 */
+	private ?NotificationRuleRepository $notification_rule_repository = null;
+
+	/**
+	 * The idempotent dispatch-log repository, constructed by init().
+	 *
+	 * @var DispatchLogRepository|null
+	 */
+	private ?DispatchLogRepository $dispatch_log_repository = null;
+
+	/**
+	 * The event history repository, constructed by init().
+	 *
+	 * @var EventHistoryRepository|null
+	 */
+	private ?EventHistoryRepository $event_history_repository = null;
+
+	/**
+	 * The event catalog admin page, constructed by init().
+	 *
+	 * @var EventCatalogPage|null
+	 */
+	private ?EventCatalogPage $event_catalog_page = null;
+
+	/**
+	 * The rule builder admin page, constructed by init().
+	 *
+	 * @var RuleBuilderPage|null
+	 */
+	private ?RuleBuilderPage $rule_builder_page = null;
+
+	/**
+	 * The rule builder request handler, constructed by init().
+	 *
+	 * @var RuleBuilderRequestHandler|null
+	 */
+	private ?RuleBuilderRequestHandler $rule_builder_request_handler = null;
+
+	/**
+	 * The rule simulator admin page, constructed by init().
+	 *
+	 * @var RuleSimulatorPage|null
+	 */
+	private ?RuleSimulatorPage $rule_simulator_page = null;
+
+	/**
+	 * The event history browser admin page, constructed by init().
+	 *
+	 * @var EventHistoryPage|null
+	 */
+	private ?EventHistoryPage $event_history_page = null;
+
+	/**
 	 * Private constructor; use instance().
 	 */
 	private function __construct() {}
@@ -411,6 +515,16 @@ final class Plugin {
 		);
 		add_action( 'admin_menu', array( $this->bot_management_page, 'register_menu' ) );
 
+		// Events/Automations (M02) repositories: constructed here, ahead of
+		// DiagnosticsReport below (which reads their aggregate counts),
+		// always unconditionally regardless of schema availability —
+		// individual repositories check SchemaHealth at their own point of
+		// use (docs/adr/0007).
+		$this->event_registry               = new Registry();
+		$this->event_history_repository     = new EventHistoryRepository( $this->schema_health, $this->event_registry, new Redactor() );
+		$this->notification_rule_repository = new NotificationRuleRepository( $this->schema_health, $this->event_registry );
+		$this->dispatch_log_repository      = new DispatchLogRepository( $this->schema_health );
+
 		$report                 = new DiagnosticsReport(
 			$this->queue_health,
 			$this->audit_log_repository,
@@ -419,6 +533,9 @@ final class Plugin {
 			$this->bot_profile_repository,
 			$this->destination_repository,
 			$this->queue_health_alert,
+			$this->event_history_repository,
+			$this->notification_rule_repository,
+			$this->dispatch_log_repository,
 			(int) $settings_values['telegram_stale_pending_alert_seconds'],
 			(int) $settings_values['telegram_webhook_rotation_max_pending_hours']
 		);
@@ -432,6 +549,149 @@ final class Plugin {
 		);
 		add_action( 'admin_menu', array( $this->diagnostics_page, 'register_menu' ) );
 		add_action( 'admin_notices', array( $this->diagnostics_page, 'render_admin_notice' ) );
+
+		// Events/Automations (M02) continued: the repositories above are
+		// already constructed; wire the remaining dispatch/evaluation/
+		// emission services.
+		$notification_dispatcher = new NotificationDispatcher(
+			$this->dispatch_log_repository,
+			$this->bot_profile_repository,
+			$this->destination_repository,
+			$this->event_registry,
+			new TemplateRenderer(),
+			$this->message_dispatcher
+		);
+		$rule_evaluator          = new RuleEvaluator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher );
+		$this->event_dispatcher  = new EventDispatcher( $this->event_history_repository, $rule_evaluator );
+		$this->event_emitter     = new EventEmitter( $this->event_registry, $this->event_dispatcher, $this->audit_logger );
+
+		// Core WordPress event emitters (M02 plan §8): constructed and
+		// wired unconditionally, at bootstrap. Each registers its own
+		// event type(s) at priority 10 on universal_telegram_register_event_types,
+		// and its own WordPress hook callback(s) directly.
+		$login_emitter                  = new LoginEmitter();
+		$user_lifecycle_emitter         = new UserLifecycleEmitter();
+		$content_emitter                = new ContentEmitter();
+		$plugin_lifecycle_emitter       = new PluginLifecycleEmitter();
+		$update_emitter                 = new UpdateEmitter();
+		$scheduled_task_failure_emitter = new ScheduledTaskFailureEmitter();
+		$rest_request_failure_emitter   = new RestRequestFailureEmitter();
+		$mail_failure_emitter           = new MailFailureEmitter();
+		$fatal_error_promotion_job      = new FatalErrorPromotionJob( $this->schema_health );
+
+		add_action( 'universal_telegram_register_event_types', array( $login_emitter, 'register_event_types' ), 10 );
+		add_action( 'universal_telegram_register_event_types', array( $user_lifecycle_emitter, 'register_event_types' ), 10 );
+		add_action( 'universal_telegram_register_event_types', array( $content_emitter, 'register_event_types' ), 10 );
+		add_action( 'universal_telegram_register_event_types', array( $plugin_lifecycle_emitter, 'register_event_types' ), 10 );
+		add_action( 'universal_telegram_register_event_types', array( $update_emitter, 'register_event_types' ), 10 );
+		add_action( 'universal_telegram_register_event_types', array( $scheduled_task_failure_emitter, 'register_event_types' ), 10 );
+		add_action( 'universal_telegram_register_event_types', array( $rest_request_failure_emitter, 'register_event_types' ), 10 );
+		add_action( 'universal_telegram_register_event_types', array( $mail_failure_emitter, 'register_event_types' ), 10 );
+		add_action( 'universal_telegram_register_event_types', array( $fatal_error_promotion_job, 'register_event_types' ), 10 );
+
+		// Fired once, at priority 20, after WooCommerce presence detection
+		// (already established above) and before any admin-menu
+		// registration — core WordPress event types (§8) register at
+		// priority 10 on this same hook (M02 plan §5.3).
+		add_action(
+			'init',
+			function () {
+				/**
+				 * Fires once, at init priority 20, so third-party code (and
+				 * later milestones) can register their own event types
+				 * against the shared Events\Registry instance (M02 plan
+				 * §5.3).
+				 *
+				 * @since 0.2.0
+				 *
+				 * @param Registry $event_registry The current request's event registry.
+				 */
+				do_action( 'universal_telegram_register_event_types', $this->event_registry );
+			},
+			20
+		);
+
+		add_action( 'wp_login', array( $login_emitter, 'on_login' ), 10, 2 );
+		add_action( 'wp_login_failed', array( $login_emitter, 'on_login_failed' ), 10, 2 );
+		add_action( 'user_register', array( $user_lifecycle_emitter, 'on_user_registered' ), 10, 1 );
+		add_action( 'set_user_role', array( $user_lifecycle_emitter, 'on_role_changed' ), 10, 3 );
+		add_action( 'after_password_reset', array( $user_lifecycle_emitter, 'on_password_reset' ), 10, 2 );
+		add_action( 'transition_post_status', array( $content_emitter, 'on_post_status_transition' ), 10, 3 );
+		add_action( 'comment_post', array( $content_emitter, 'on_comment_submitted' ), 10, 2 );
+		add_action( 'activated_plugin', array( $plugin_lifecycle_emitter, 'on_activated' ), 10, 2 );
+		add_action( 'deactivated_plugin', array( $plugin_lifecycle_emitter, 'on_deactivated' ), 10, 2 );
+		add_action( 'upgrader_process_complete', array( $update_emitter, 'on_update_completed' ), 10, 2 );
+		add_action( 'action_scheduler_failed_action', array( $scheduled_task_failure_emitter, 'on_action_failed' ), 10, 2 );
+		add_filter( 'rest_request_after_callbacks', array( $rest_request_failure_emitter, 'on_rest_request_after_callbacks' ), 10, 3 );
+		add_action( 'wp_mail_failed', array( $mail_failure_emitter, 'on_mail_failed' ), 10, 1 );
+
+		add_action( UpdateEmitter::CHECK_HOOK, array( $update_emitter, 'check_for_updates' ) );
+		add_action(
+			'init',
+			static function () {
+				if ( ! as_has_scheduled_action( UpdateEmitter::CHECK_HOOK, array(), WorkerRunner::GROUP ) ) {
+					as_schedule_recurring_action( time() + DAY_IN_SECONDS, DAY_IN_SECONDS, UpdateEmitter::CHECK_HOOK, array(), WorkerRunner::GROUP );
+				}
+			}
+		);
+
+		add_action( FatalErrorPromotionJob::HOOK, array( $fatal_error_promotion_job, 'run' ) );
+		add_action(
+			'init',
+			static function () {
+				if ( ! as_has_scheduled_action( FatalErrorPromotionJob::HOOK, array(), WorkerRunner::GROUP ) ) {
+					as_schedule_recurring_action( time() + 5 * MINUTE_IN_SECONDS, 5 * MINUTE_IN_SECONDS, FatalErrorPromotionJob::HOOK, array(), WorkerRunner::GROUP );
+				}
+			}
+		);
+
+		( new FatalErrorMarkerWriter() )->register();
+
+		// Administration (M02): capability-gated event catalog and rule
+		// builder screens, submenus of the existing top-level Diagnostics
+		// page, mirroring how M01 added its own Telegram subdomain.
+		$this->event_catalog_page = new EventCatalogPage( $this->event_registry );
+		add_action( 'admin_menu', array( $this->event_catalog_page, 'register_menu' ) );
+
+		$this->rule_builder_page = new RuleBuilderPage(
+			$this->notification_rule_repository,
+			$this->event_registry,
+			$this->bot_profile_repository,
+			$this->destination_repository
+		);
+		add_action( 'admin_menu', array( $this->rule_builder_page, 'register_menu' ) );
+
+		$this->rule_builder_request_handler = new RuleBuilderRequestHandler( $this->notification_rule_repository );
+		add_action( 'admin_post_' . RuleBuilderRequestHandler::ADMIN_POST_ACTION, array( $this->rule_builder_request_handler, 'handle_request' ) );
+
+		if ( defined( 'UNIVERSAL_TELEGRAM_PLUGIN_FILE' ) ) {
+			( new PluginActionLinks( plugin_basename( UNIVERSAL_TELEGRAM_PLUGIN_FILE ) ) )->register();
+		}
+
+		$rule_simulator = new RuleSimulator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher );
+
+		$this->rule_simulator_page = new RuleSimulatorPage( $rule_simulator, $this->event_registry );
+		add_action( 'admin_menu', array( $this->rule_simulator_page, 'register_menu' ) );
+
+		$this->event_history_page = new EventHistoryPage( $this->schema_health );
+		add_action( 'admin_menu', array( $this->event_history_page, 'register_menu' ) );
+
+		$retention_cleanup = new RetentionCleanup(
+			$this->schema_health,
+			(int) $settings_values['event_retention_days'],
+			(int) $settings_values['dispatch_log_retention_days'],
+			(int) $settings_values['fatal_marker_retention_days']
+		);
+		add_action( RetentionCleanup::HOOK, array( $retention_cleanup, 'run' ) );
+
+		add_action(
+			'init',
+			static function () {
+				if ( ! as_has_scheduled_action( RetentionCleanup::HOOK, array(), WorkerRunner::GROUP ) ) {
+					as_schedule_recurring_action( time() + DAY_IN_SECONDS, DAY_IN_SECONDS, RetentionCleanup::HOOK, array(), WorkerRunner::GROUP );
+				}
+			}
+		);
 	}
 
 	/**
@@ -626,5 +886,82 @@ final class Plugin {
 	 */
 	public function bot_management_controller(): ?BotManagementController {
 		return $this->bot_management_controller;
+	}
+
+	/**
+	 * The current request's event registry. Available only after init() has run.
+	 */
+	public function event_registry(): ?Registry {
+		return $this->event_registry;
+	}
+
+	/**
+	 * The internal event ingestion orchestrator. Available only after init() has run.
+	 */
+	public function event_dispatcher(): ?EventDispatcher {
+		return $this->event_dispatcher;
+	}
+
+	/**
+	 * The safety-wrapped event emission façade. Available only after init() has run.
+	 */
+	public function event_emitter(): ?EventEmitter {
+		return $this->event_emitter;
+	}
+
+	/**
+	 * The notification rule repository. Available only after init() has run.
+	 */
+	public function notification_rule_repository(): ?NotificationRuleRepository {
+		return $this->notification_rule_repository;
+	}
+
+	/**
+	 * The idempotent dispatch-log repository. Available only after init() has run.
+	 */
+	public function dispatch_log_repository(): ?DispatchLogRepository {
+		return $this->dispatch_log_repository;
+	}
+
+	/**
+	 * The event history repository. Available only after init() has run.
+	 */
+	public function event_history_repository(): ?EventHistoryRepository {
+		return $this->event_history_repository;
+	}
+
+	/**
+	 * The event catalog admin page. Available only after init() has run.
+	 */
+	public function event_catalog_page(): ?EventCatalogPage {
+		return $this->event_catalog_page;
+	}
+
+	/**
+	 * The rule builder admin page. Available only after init() has run.
+	 */
+	public function rule_builder_page(): ?RuleBuilderPage {
+		return $this->rule_builder_page;
+	}
+
+	/**
+	 * The rule builder request handler. Available only after init() has run.
+	 */
+	public function rule_builder_request_handler(): ?RuleBuilderRequestHandler {
+		return $this->rule_builder_request_handler;
+	}
+
+	/**
+	 * The rule simulator admin page. Available only after init() has run.
+	 */
+	public function rule_simulator_page(): ?RuleSimulatorPage {
+		return $this->rule_simulator_page;
+	}
+
+	/**
+	 * The event history browser admin page. Available only after init() has run.
+	 */
+	public function event_history_page(): ?EventHistoryPage {
+		return $this->event_history_page;
 	}
 }

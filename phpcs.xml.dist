@@ -58,6 +58,9 @@
 	<rule ref="Squiz.Commenting.ClassComment.Missing">
 		<exclude-pattern>*/tests/*</exclude-pattern>
 	</rule>
+	<rule ref="Squiz.Commenting.VariableComment.Missing">
+		<exclude-pattern>*/tests/*</exclude-pattern>
+	</rule>
 	<rule ref="Squiz.Commenting.FileComment.Missing">
 		<exclude-pattern>*/tests/*</exclude-pattern>
 	</rule>
@@ -119,5 +122,58 @@
 	     comment to every $_POST access across a dozen private methods. -->
 	<rule ref="WordPress.Security.NonceVerification.Missing">
 		<exclude-pattern>*/src/Administration/Telegram/BotManagementController.php</exclude-pattern>
+		<exclude-pattern>*/src/Administration/Automations/RuleBuilderRequestHandler.php</exclude-pattern>
+	</rule>
+
+	<!-- M02's own event_type identifiers are a fixed, lower-case,
+	     dot-namespaced format (e.g. "wordpress.user_registered" —
+	     M02 plan §5.1's ^[a-z][a-z0-9]*(\.[a-z][a-z0-9_]*)+$ contract), not
+	     prose referring to the WordPress project by name. This sniff's
+	     "WordPress" capitalization heuristic cannot distinguish the two and
+	     produces pervasive false positives against every literal event-type
+	     string, so it is disabled specifically for the Events/Automations
+	     boundaries (both source and tests) where those literals live. -->
+	<rule ref="WordPress.WP.CapitalPDangit">
+		<exclude-pattern>*/src/Events/*</exclude-pattern>
+		<exclude-pattern>*/src/Automations/*</exclude-pattern>
+		<exclude-pattern>*/src/Administration/Automations/*</exclude-pattern>
+		<exclude-pattern>*/tests/unit/Events/*</exclude-pattern>
+		<exclude-pattern>*/tests/unit/Automations/*</exclude-pattern>
+		<exclude-pattern>*/tests/integration/Events/*</exclude-pattern>
+		<exclude-pattern>*/tests/integration/Automations/*</exclude-pattern>
+		<exclude-pattern>*/tests/integration/Administration/Automations/*</exclude-pattern>
+		<exclude-pattern>*/tests/integration/Persistence/MigratorEventsSchemaTest.php</exclude-pattern>
+	</rule>
+
+	<!-- Every WordPress core hook this milestone's emitters attach to
+	     (wp_login, wp_login_failed, user_register, set_user_role,
+	     after_password_reset, transition_post_status, comment_post,
+	     activated_plugin, deactivated_plugin, upgrader_process_complete,
+	     rest_request_after_callbacks, wp_mail_failed) and the Action
+	     Scheduler hook this milestone subscribes to
+	     (action_scheduler_failed_action) is, by definition, someone else's
+	     hook name the plugin is merely subscribing to, never firing itself
+	     — neither this plugin's own prefix nor its own docblock convention
+	     applies to a name it does not own. -->
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound">
+		<exclude-pattern>*/src/Events/*</exclude-pattern>
+		<exclude-pattern>*/tests/integration/Events/*</exclude-pattern>
+	</rule>
+	<rule ref="WooCommerce.Commenting.CommentHooks">
+		<exclude-pattern>*/src/Events/*</exclude-pattern>
+		<exclude-pattern>*/tests/integration/Events/*</exclude-pattern>
+	</rule>
+
+	<!-- Every M02 event-emitter callback's own parameter list is fixed by
+	     the WordPress core (or Action Scheduler) hook signature it
+	     subscribes to, not chosen by this plugin — e.g. LoginEmitter::
+	     on_login_failed()'s $error, UserLifecycleEmitter::on_password_reset()'s
+	     $new_pass (deliberately never read, M02 plan §5.5's privacy
+	     guarantee), ScheduledTaskFailureEmitter::on_action_failed()'s
+	     $error. Trimming an unused trailing parameter would only work by
+	     coincidence of argument position and silently break if the
+	     upstream hook's own signature ever adds a parameter before it. -->
+	<rule ref="Generic.CodeAnalysis.UnusedFunctionParameter">
+		<exclude-pattern>*/src/Events/Emitters/*</exclude-pattern>
 	</rule>
 </ruleset>

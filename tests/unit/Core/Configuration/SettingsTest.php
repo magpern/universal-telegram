@@ -49,6 +49,15 @@ final class SettingsTest extends TestCase {
 		$this->assertSame( 24, $defaults['telegram_webhook_rotation_max_pending_hours'] );
 	}
 
+	public function test_defaults_include_the_frozen_m02_retention_defaults(): void {
+		$settings = new Settings();
+		$defaults = $settings->defaults();
+
+		$this->assertSame( 90, $defaults['event_retention_days'] );
+		$this->assertSame( 90, $defaults['dispatch_log_retention_days'] );
+		$this->assertSame( 30, $defaults['fatal_marker_retention_days'] );
+	}
+
 	/**
 	 * @dataProvider positive_integer_field_provider
 	 */
@@ -83,6 +92,9 @@ final class SettingsTest extends TestCase {
 			'telegram_stale_pending_alert_seconds'        => array( 'telegram_stale_pending_alert_seconds' ),
 			'telegram_rate_limit_fallback_wait_seconds'   => array( 'telegram_rate_limit_fallback_wait_seconds' ),
 			'telegram_webhook_rotation_max_pending_hours' => array( 'telegram_webhook_rotation_max_pending_hours' ),
+			'event_retention_days'                        => array( 'event_retention_days' ),
+			'dispatch_log_retention_days'                 => array( 'dispatch_log_retention_days' ),
+			'fatal_marker_retention_days'                 => array( 'fatal_marker_retention_days' ),
 		);
 	}
 }

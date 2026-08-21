@@ -22,13 +22,17 @@ namespace UniversalTelegram\Persistence;
  */
 class Migrator {
 
-	public const AUDIT_LOG_TABLE         = 'universal_telegram_audit_log';
-	public const BOTS_TABLE              = 'universal_telegram_bots';
-	public const DESTINATIONS_TABLE      = 'universal_telegram_destinations';
-	public const OUTBOUND_MESSAGES_TABLE = 'universal_telegram_outbound_messages';
-	public const INBOUND_UPDATES_TABLE   = 'universal_telegram_inbound_updates';
-	public const CIRCUIT_BREAKER_TABLE   = 'universal_telegram_circuit_breaker_state';
-	public const RATE_LIMIT_TABLE        = 'universal_telegram_rate_limit_state';
+	public const AUDIT_LOG_TABLE           = 'universal_telegram_audit_log';
+	public const BOTS_TABLE                = 'universal_telegram_bots';
+	public const DESTINATIONS_TABLE        = 'universal_telegram_destinations';
+	public const OUTBOUND_MESSAGES_TABLE   = 'universal_telegram_outbound_messages';
+	public const INBOUND_UPDATES_TABLE     = 'universal_telegram_inbound_updates';
+	public const CIRCUIT_BREAKER_TABLE     = 'universal_telegram_circuit_breaker_state';
+	public const RATE_LIMIT_TABLE          = 'universal_telegram_rate_limit_state';
+	public const EVENT_HISTORY_TABLE       = 'universal_telegram_event_history';
+	public const FATAL_ERROR_MARKERS_TABLE = 'universal_telegram_fatal_error_markers';
+	public const NOTIFICATION_RULES_TABLE  = 'universal_telegram_notification_rules';
+	public const DISPATCH_LOG_TABLE        = 'universal_telegram_notification_dispatch_log';
 
 	private const DB_VERSION_OPTION = 'universal_telegram_db_version';
 
@@ -55,7 +59,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 7;
+		return 10;
 	}
 
 	/**
@@ -124,13 +128,16 @@ class Migrator {
 	 */
 	protected function run_step( int $number ): void {
 		$steps = array(
-			1 => array( array( $this, 'step_1_create_audit_log_table' ), array( $this, 'verify_step_1' ) ),
-			2 => array( array( $this, 'step_2_create_bots_table' ), array( $this, 'verify_step_2' ) ),
-			3 => array( array( $this, 'step_3_create_destinations_table' ), array( $this, 'verify_step_3' ) ),
-			4 => array( array( $this, 'step_4_create_outbound_messages_table' ), array( $this, 'verify_step_4' ) ),
-			5 => array( array( $this, 'step_5_create_inbound_updates_table' ), array( $this, 'verify_step_5' ) ),
-			6 => array( array( $this, 'step_6_create_circuit_breaker_table' ), array( $this, 'verify_step_6' ) ),
-			7 => array( array( $this, 'step_7_create_rate_limit_table' ), array( $this, 'verify_step_7' ) ),
+			1  => array( array( $this, 'step_1_create_audit_log_table' ), array( $this, 'verify_step_1' ) ),
+			2  => array( array( $this, 'step_2_create_bots_table' ), array( $this, 'verify_step_2' ) ),
+			3  => array( array( $this, 'step_3_create_destinations_table' ), array( $this, 'verify_step_3' ) ),
+			4  => array( array( $this, 'step_4_create_outbound_messages_table' ), array( $this, 'verify_step_4' ) ),
+			5  => array( array( $this, 'step_5_create_inbound_updates_table' ), array( $this, 'verify_step_5' ) ),
+			6  => array( array( $this, 'step_6_create_circuit_breaker_table' ), array( $this, 'verify_step_6' ) ),
+			7  => array( array( $this, 'step_7_create_rate_limit_table' ), array( $this, 'verify_step_7' ) ),
+			8  => array( array( $this, 'step_8_create_events_and_markers_tables' ), array( $this, 'verify_step_8' ) ),
+			9  => array( array( $this, 'step_9_create_notification_rules_table' ), array( $this, 'verify_step_9' ) ),
+			10 => array( array( $this, 'step_10_create_notification_dispatch_log_table' ), array( $this, 'verify_step_10' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -503,6 +510,174 @@ class Migrator {
 		return $this->table_has_columns(
 			$wpdb->prefix . self::RATE_LIMIT_TABLE,
 			array( 'id', 'scope_type', 'scope_id', 'tokens_available', 'last_refill_at' )
+		);
+	}
+
+	/**
+	 * Creates the durable, PUBLIC-only event history projection table
+	 * (docs/adr/0017) and the bounded, privacy-safe fatal-error marker
+	 * table (M02 plan §5.4, §8.6) in the same step, since both are part of
+	 * the Events boundary's own schema.
+	 */
+	private function step_8_create_events_and_markers_tables(): void {
+		global $wpdb;
+
+		$charset_collate = $wpdb->get_charset_collate();
+
+		$history_table = $wpdb->prefix . self::EVENT_HISTORY_TABLE;
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$history_table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				event_id CHAR(64) NOT NULL,
+				event_type VARCHAR(190) NOT NULL,
+				schema_version SMALLINT UNSIGNED NOT NULL,
+				occurred_at DATETIME NOT NULL,
+				source VARCHAR(32) NOT NULL,
+				projected_fields_json TEXT NOT NULL,
+				created_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY event_id (event_id),
+				KEY event_type_occurred_at (event_type, occurred_at)
+			) {$charset_collate}"
+		);
+
+		$markers_table = $wpdb->prefix . self::FATAL_ERROR_MARKERS_TABLE;
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$markers_table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				error_type VARCHAR(32) NOT NULL,
+				location_hash CHAR(64) NOT NULL,
+				status VARCHAR(16) NOT NULL DEFAULT 'pending',
+				occurred_at DATETIME NOT NULL,
+				promoted_at DATETIME NULL,
+				created_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY error_type_location (error_type, location_hash)
+			) {$charset_collate}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_8(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::EVENT_HISTORY_TABLE,
+			array( 'id', 'event_id', 'event_type', 'schema_version', 'occurred_at', 'source', 'projected_fields_json', 'created_at' )
+		) && $this->table_has_columns(
+			$wpdb->prefix . self::FATAL_ERROR_MARKERS_TABLE,
+			array( 'id', 'error_type', 'location_hash', 'status', 'occurred_at', 'promoted_at', 'created_at' )
+		);
+	}
+
+	/**
+	 * Creates the notification rule storage table (M02 plan §7.1): a flat,
+	 * AND-only condition array per rule, ordered deterministically for
+	 * evaluation by (priority ASC, id ASC).
+	 */
+	private function step_9_create_notification_rules_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::NOTIFICATION_RULES_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				name VARCHAR(190) NOT NULL,
+				event_type VARCHAR(190) NOT NULL,
+				schema_version_min SMALLINT UNSIGNED NOT NULL,
+				conditions_json TEXT NOT NULL,
+				bot_id BIGINT UNSIGNED NOT NULL,
+				destination_id BIGINT UNSIGNED NOT NULL,
+				template TEXT NOT NULL,
+				enabled TINYINT(1) NOT NULL DEFAULT 1,
+				priority INT NOT NULL DEFAULT 100,
+				cooldown_seconds INT UNSIGNED NOT NULL DEFAULT 0,
+				created_at DATETIME NOT NULL,
+				updated_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				KEY event_type_enabled_priority (event_type, enabled, priority, id)
+			) {$charset_collate}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_9(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::NOTIFICATION_RULES_TABLE,
+			array(
+				'id',
+				'name',
+				'event_type',
+				'schema_version_min',
+				'conditions_json',
+				'bot_id',
+				'destination_id',
+				'template',
+				'enabled',
+				'priority',
+				'cooldown_seconds',
+				'created_at',
+				'updated_at',
+			)
+		);
+	}
+
+	/**
+	 * Creates the idempotent dispatch-log table (M02 plan §7.5,
+	 * docs/adr/0016): the UNIQUE(rule_id, event_id) constraint is the sole
+	 * duplicate-prevention mechanism for a rule's handoff decision.
+	 */
+	private function step_10_create_notification_dispatch_log_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::DISPATCH_LOG_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				rule_id BIGINT UNSIGNED NOT NULL,
+				event_id CHAR(64) NOT NULL,
+				outbound_message_uuid CHAR(36) NULL,
+				result VARCHAR(32) NOT NULL,
+				reason_code VARCHAR(64) NULL,
+				dispatched_at DATETIME NOT NULL,
+				updated_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY rule_event (rule_id, event_id)
+			) {$charset_collate}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_10(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::DISPATCH_LOG_TABLE,
+			array( 'id', 'rule_id', 'event_id', 'outbound_message_uuid', 'result', 'reason_code', 'dispatched_at', 'updated_at' )
 		);
 	}
 

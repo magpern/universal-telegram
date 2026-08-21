@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.1.0
+Stable tag: 0.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -13,12 +13,15 @@ destinations, and send and receive messages, with no separately deployed compani
 
 == Description ==
 
-This release makes the plugin's core premise real: an administrator connects a Telegram bot and
-confirms messages flow bidirectionally. It supports multiple independent bot profiles, destinations
-across private chats, groups, supergroups (including forum topics), and channels, an outbound queue,
-an authenticated inbound webhook, retry and rate limiting, circuit breaking, dead-letter handling,
-and diagnostics. Event capture, rule automation, conversations, the chat widget, and AI assistance
-are not part of this release; they arrive in later milestones.
+This release adds a normalized WordPress event model and an administrator-configurable notification
+rule engine on top of the Telegram connectivity delivered previously: an administrator connects a
+Telegram bot, defines rules against a catalog of core WordPress events (logins, user lifecycle,
+content publishing, plugin/update activity, scheduled-task and REST failures, bounded fatal-error
+capture), and Telegram notifications fire deterministically, with no duplicate rule-engine handoff
+across retries. Deduplication and cooldown, message templates, a PUBLIC-only durable event history,
+and a rule-simulation tool with no live Telegram traffic are all included. WooCommerce-specific
+events, visitor/browser events, conversations, the chat widget, and AI assistance are not part of
+this release; they arrive in later milestones.
 
 == Delivery guarantees ==
 
@@ -31,6 +34,16 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.2.0 =
+* Normalized events and notifications: deterministic event identity and a safety-wrapped emission
+  facade; core WordPress event coverage (logins, user lifecycle, content publishing, plugin/update
+  activity, scheduled-task and REST-request failures with feedback-loop exclusions, bounded
+  privacy-safe fatal-error capture); a PUBLIC-only durable event history; an administrator-
+  configurable notification rule engine with AND-only conditions, deterministic evaluation, message
+  templates, an idempotent and honestly-scoped dispatch state model (no duplicate rule-engine
+  handoff across retries), cooldown, event/rule administration screens, and a rule-simulation tool
+  with no live Telegram traffic.
 
 = 0.1.0 =
 * Telegram connectivity: multiple bot profiles, destinations (private/group/supergroup/channel,

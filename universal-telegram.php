@@ -3,7 +3,7 @@
  * Plugin Name:       Telegram Operations Hub for WordPress
  * Plugin URI:        https://github.com/magpern/universal-telegram
  * Description:       Bidirectional Telegram bot connectivity: multiple bot profiles, destinations, outbound queue, authenticated inbound webhook, retry, rate limiting, circuit breaking, dead-letter handling, and diagnostics.
- * Version:           0.1.0
+ * Version:           0.2.0
  * Requires at least: 6.9
  * Requires PHP:      8.1
  * Author:            Magnus Pernemark
@@ -18,11 +18,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'UNIVERSAL_TELEGRAM_VERSION', '0.1.0' );
+define( 'UNIVERSAL_TELEGRAM_VERSION', '0.2.0' );
 define( 'UNIVERSAL_TELEGRAM_PLUGIN_FILE', __FILE__ );
 
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/vendor/woocommerce/action-scheduler/action-scheduler.php';
+require_once __DIR__ . '/universal-telegram-functions.php';
 
 add_action(
 	'before_woocommerce_init',

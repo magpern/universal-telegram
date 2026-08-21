@@ -20,6 +20,10 @@ Each plan, stored at docs/plans/mNN-slug-plan-vN.md, must contain:
 
 ## Freeze, revision, and supersession
 
+M02's frozen plan is `docs/plans/m02-normalized-events-and-notifications-plan-v1.md`, together with
+ADR-0015 through ADR-0017.
+
+
 - A plan is committed standalone, code-free, together with every new ADR it depends on, or after those ADRs already exist from an earlier documentation-only commit — see docs/governance.md, Freeze model.
 - Once committed, a plan is immutable. A required change is a new file that supersedes the prior plan; the prior plan file is never edited or deleted.
 - The implementation report produced at the end of the milestone must reference the plan-freeze commit SHA it implemented, and every superseding plan's SHA if the plan was revised during the milestone.

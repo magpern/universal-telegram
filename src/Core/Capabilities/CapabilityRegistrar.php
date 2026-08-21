@@ -10,28 +10,32 @@ declare( strict_types=1 );
 namespace UniversalTelegram\Core\Capabilities;
 
 /**
- * Owns the plugin's one WordPress capability, granted to the
- * administrator role on activation and revoked from every role
- * unconditionally on uninstall (docs/adr/0010). Later milestones extend
- * this same grant-and-revoke pattern with their own capability constants.
+ * Owns the plugin's WordPress capabilities, granted to the administrator
+ * role on activation and revoked from every role unconditionally on
+ * uninstall (docs/adr/0010). M02 adds MANAGE_AUTOMATIONS as a distinct
+ * constant, since rule/event configuration is a genuinely distinct
+ * authorization need from bot/destination configuration (M02 plan §6.3);
+ * manage_options is never substituted for either.
  */
 final class CapabilityRegistrar {
 
-	public const MANAGE = 'universal_telegram_manage';
+	public const MANAGE             = 'universal_telegram_manage';
+	public const MANAGE_AUTOMATIONS = 'universal_telegram_manage_automations';
 
 	/**
-	 * Grants the capability to the administrator role.
+	 * Grants every capability to the administrator role.
 	 */
 	public function grant_to_administrator(): void {
 		$role = get_role( 'administrator' );
 
 		if ( null !== $role ) {
 			$role->add_cap( self::MANAGE );
+			$role->add_cap( self::MANAGE_AUTOMATIONS );
 		}
 	}
 
 	/**
-	 * Revokes the capability from every role, unconditionally.
+	 * Revokes every capability from every role, unconditionally.
 	 */
 	public function revoke_from_all_roles(): void {
 		$wp_roles = wp_roles();
@@ -42,6 +46,7 @@ final class CapabilityRegistrar {
 		// WP_Role::remove_cap() on each role object updates both.
 		foreach ( $wp_roles->role_objects as $role ) {
 			$role->remove_cap( self::MANAGE );
+			$role->remove_cap( self::MANAGE_AUTOMATIONS );
 		}
 	}
 }
