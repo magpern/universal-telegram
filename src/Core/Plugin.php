@@ -33,6 +33,11 @@ use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Automations\RuleEvaluator;
 use UniversalTelegram\Automations\RuleSimulator;
 use UniversalTelegram\Automations\TemplateRenderer;
+use UniversalTelegram\Conversations\ChatProfileResolver;
+use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\MessageRepository;
+use UniversalTelegram\Conversations\Rest\ConversationsController;
+use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Security\CredentialVault;
@@ -284,6 +289,27 @@ final class Plugin {
 	private ?RateLimiter $rate_limiter = null;
 
 	/**
+	 * Conversation persistence, constructed by init().
+	 *
+	 * @var ConversationRepository|null
+	 */
+	private ?ConversationRepository $conversation_repository = null;
+
+	/**
+	 * Conversation message persistence, constructed by init().
+	 *
+	 * @var MessageRepository|null
+	 */
+	private ?MessageRepository $message_repository = null;
+
+	/**
+	 * The public visitor conversation REST controller, constructed by init().
+	 *
+	 * @var ConversationsController|null
+	 */
+	private ?ConversationsController $conversations_controller = null;
+
+	/**
 	 * The per-bot/per-destination circuit breaker, constructed by init().
 	 *
 	 * @var CircuitBreaker|null
@@ -517,6 +543,18 @@ final class Plugin {
 			(int) $settings_values['telegram_webhook_max_body_bytes']
 		);
 		add_action( 'rest_api_init', array( $this->webhook_controller, 'register_routes' ) );
+
+		$this->conversation_repository  = new ConversationRepository( $this->schema_health );
+		$this->message_repository       = new MessageRepository( $this->schema_health, $this->credential_vault );
+		$this->conversations_controller = new ConversationsController(
+			$this->schema_health,
+			$this->conversation_repository,
+			$this->message_repository,
+			new VisitorTokenGenerator(),
+			new ChatProfileResolver( $this->bot_profile_repository ),
+			$this->rate_limiter
+		);
+		add_action( 'rest_api_init', array( $this->conversations_controller, 'register_routes' ) );
 
 		$this->retention_cleanup_handler = new RetentionCleanupHandler(
 			$this->outbound_message_repository,
@@ -1026,6 +1064,27 @@ final class Plugin {
 	 */
 	public function rate_limiter(): ?RateLimiter {
 		return $this->rate_limiter;
+	}
+
+	/**
+	 * Conversation persistence. Available only after init() has run.
+	 */
+	public function conversation_repository(): ?ConversationRepository {
+		return $this->conversation_repository;
+	}
+
+	/**
+	 * Conversation message persistence. Available only after init() has run.
+	 */
+	public function message_repository(): ?MessageRepository {
+		return $this->message_repository;
+	}
+
+	/**
+	 * The public visitor conversation REST controller. Available only after init() has run.
+	 */
+	public function conversations_controller(): ?ConversationsController {
+		return $this->conversations_controller;
 	}
 
 	/**
