@@ -116,13 +116,22 @@ for m02_table in event_history fatal_error_markers notification_rules notificati
 	echo "OK: universal_telegram_${m02_table} table exists."
 done
 
-echo "== Verifying db_version reached 10 =="
+echo "== Verifying activation created M05's two conversation tables =="
+for m05_table in conversations conversation_messages; do
+	if [ -z "$(m02_table_exists "$m05_table")" ]; then
+		echo "FAIL: universal_telegram_${m05_table} table was not created on activation" >&2
+		exit 1
+	fi
+	echo "OK: universal_telegram_${m05_table} table exists."
+done
+
+echo "== Verifying db_version reached 12 =="
 DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "10" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=10, got ${DB_VERSION}" >&2
+if [ "12" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=12, got ${DB_VERSION}" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 10."
+echo "OK: universal_telegram_db_version is 12."
 
 echo "== Verifying M02 event emission projects only PUBLIC fields into event_history =="
 wp eval '
@@ -458,7 +467,13 @@ for m02_table in event_history fatal_error_markers notification_rules notificati
 		exit 1
 	fi
 done
-echo "OK: default-retention uninstall kept the plugin's own data, including the bots table and all four M02 tables."
+for m05_table in conversations conversation_messages; do
+	if [ -z "$(m02_table_exists "$m05_table")" ]; then
+		echo "FAIL: default-retention uninstall removed universal_telegram_${m05_table} despite remove_data_on_uninstall defaulting to false" >&2
+		exit 1
+	fi
+done
+echo "OK: default-retention uninstall kept the plugin's own data, including the bots table, all four M02 tables, and both M05 tables."
 
 echo "== Reinstalling to verify uninstall with retention explicitly enabled removes data =="
 wp plugin install "$ZIP_PATH" --activate --path="$WP_DIR" --allow-root
@@ -487,6 +502,12 @@ for m02_table in event_history fatal_error_markers notification_rules notificati
 		exit 1
 	fi
 done
-echo "OK: opt-in uninstall removed the plugin's own data, including all six M01 tables and all four M02 tables."
+for m05_table in conversations conversation_messages; do
+	if [ -n "$(m02_table_exists "$m05_table")" ]; then
+		echo "FAIL: opt-in uninstall did not remove universal_telegram_${m05_table}" >&2
+		exit 1
+	fi
+done
+echo "OK: opt-in uninstall removed the plugin's own data, including all six M01 tables, all four M02 tables, and both M05 tables."
 
 echo "== PACKAGE TEST PASSED for WordPress ${WP_VERSION}${WC_VERSION:+, WooCommerce ${WC_VERSION}} =="
