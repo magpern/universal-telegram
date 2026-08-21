@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Automations;
 
+use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Automations\InvalidConditionFieldException;
 use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
@@ -59,7 +60,7 @@ class RuleBuilderRequestHandler {
 				break;
 		}
 
-		$this->redirect_and_exit( admin_url( 'admin.php?page=' . RuleBuilderPage::SLUG ) );
+		$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . RuleBuilderPage::TAB_ID ) );
 	}
 
 	/**

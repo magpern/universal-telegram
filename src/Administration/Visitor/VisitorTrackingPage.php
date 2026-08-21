@@ -9,7 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Visitor;
 
-use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
+use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 
@@ -27,6 +27,7 @@ use UniversalTelegram\Core\Configuration\Settings;
 class VisitorTrackingPage {
 
 	public const SLUG              = 'universal-telegram-visitor-tracking';
+	public const TAB_ID            = 'visitor-tracking';
 	public const ADMIN_POST_ACTION = 'universal_telegram_visitor_tracking_save';
 	public const NONCE_ACTION      = 'universal_telegram_visitor_tracking_save';
 
@@ -36,20 +37,6 @@ class VisitorTrackingPage {
 	 * @param Settings $settings Reads/writes the current visitor tracking configuration.
 	 */
 	public function __construct( private readonly Settings $settings ) {}
-
-	/**
-	 * Registers the admin submenu entry.
-	 */
-	public function register_menu(): void {
-		add_submenu_page(
-			DiagnosticsPage::SLUG,
-			__( 'Visitor Tracking', 'universal-telegram' ),
-			__( 'Visitor Tracking', 'universal-telegram' ),
-			CapabilityRegistrar::MANAGE,
-			self::SLUG,
-			array( $this, 'render' )
-		);
-	}
 
 	/**
 	 * The admin-post save handler.
@@ -72,21 +59,20 @@ class VisitorTrackingPage {
 		$sanitized = $this->settings->sanitize( array_merge( $this->settings->get(), $input ) );
 		update_option( Settings::OPTION_NAME, $sanitized );
 
-		$this->redirect_and_exit( admin_url( 'admin.php?page=' . self::SLUG ) );
+		$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . self::TAB_ID ) );
 	}
 
 	/**
-	 * Renders the page.
+	 * Renders this tab's content only (no outer .wrap/<h1> — owned by
+	 * HubPage).
 	 */
-	public function render(): void {
+	public function render_tab_content(): void {
 		if ( ! current_user_can( CapabilityRegistrar::MANAGE ) ) {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'universal-telegram' ) );
 		}
 
 		$values = $this->settings->get();
 
-		echo '<div class="wrap">';
-		echo '<h1>' . esc_html__( 'Visitor Tracking', 'universal-telegram' ) . '</h1>';
 		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 		wp_nonce_field( self::NONCE_ACTION );
 		echo '<input type="hidden" name="action" value="' . esc_attr( self::ADMIN_POST_ACTION ) . '" />';
@@ -125,7 +111,6 @@ class VisitorTrackingPage {
 
 		submit_button();
 		echo '</form>';
-		echo '</div>';
 	}
 
 	/**

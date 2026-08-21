@@ -15,6 +15,12 @@ use UniversalTelegram\Administration\Automations\RuleSimulatorPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
 use UniversalTelegram\Administration\Diagnostics\SelfTest;
+use UniversalTelegram\Administration\Hub\HubPage;
+use UniversalTelegram\Administration\Hub\LegacyUrlRedirector;
+use UniversalTelegram\Administration\Hub\OverviewPage;
+use UniversalTelegram\Administration\Hub\SettingsPage;
+use UniversalTelegram\Administration\Hub\Tab;
+use UniversalTelegram\Administration\Hub\TabRegistry;
 use UniversalTelegram\Administration\PluginActionLinks;
 use UniversalTelegram\Administration\Telegram\BotManagementController;
 use UniversalTelegram\Administration\Telegram\BotManagementPage;
@@ -185,6 +191,27 @@ final class Plugin {
 	 * @var DiagnosticsPage|null
 	 */
 	private ?DiagnosticsPage $diagnostics_page = null;
+
+	/**
+	 * The administration hub's tab registry, constructed by init().
+	 *
+	 * @var TabRegistry|null
+	 */
+	private ?TabRegistry $hub_tab_registry = null;
+
+	/**
+	 * The administration hub shell page, constructed by init().
+	 *
+	 * @var HubPage|null
+	 */
+	private ?HubPage $hub_page = null;
+
+	/**
+	 * The Settings tab page, constructed by init().
+	 *
+	 * @var SettingsPage|null
+	 */
+	private ?SettingsPage $settings_page = null;
 
 	/**
 	 * The bounded diagnostic self-test, constructed by init().
@@ -540,7 +567,6 @@ final class Plugin {
 			$this->update_repository,
 			$this->outbound_message_repository
 		);
-		add_action( 'admin_menu', array( $this->bot_management_page, 'register_menu' ) );
 
 		// Events/Automations (M02) repositories: constructed here, ahead of
 		// DiagnosticsReport below (which reads their aggregate counts),
@@ -575,8 +601,28 @@ final class Plugin {
 			(int) $settings_values['telegram_stale_pending_alert_seconds'],
 			(int) $settings_values['telegram_webhook_rotation_max_pending_hours']
 		);
-		add_action( 'admin_menu', array( $this->diagnostics_page, 'register_menu' ) );
 		add_action( 'admin_notices', array( $this->diagnostics_page, 'render_admin_notice' ) );
+
+		// Administration hub (M04.1, ADR-0020): a single top-level menu
+		// entry with URL-driven tabs, superseding the per-screen
+		// add_submenu_page()/add_menu_page() pattern every screen below
+		// used through M04. Tabs are registered here and at each
+		// migrated screen's own former wiring point, in the plan's
+		// work-package order; register_menu() itself is wired once.
+		$overview_page          = new OverviewPage();
+		$this->hub_tab_registry = new TabRegistry();
+		$this->hub_tab_registry->register(
+			new Tab( OverviewPage::TAB_ID, __( 'Overview', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $overview_page, 'render_tab_content' ) )
+		);
+		$this->hub_tab_registry->register(
+			new Tab( 'bots', __( 'Bots', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->bot_management_page, 'render_tab_content' ) )
+		);
+		// 'diagnostics' is registered last of all (see below), so display
+		// order matches the plan's mapping (M04.1 plan §3): Overview,
+		// Bots, Events, Rules, Simulator, Event History, Visitor
+		// Tracking, Settings, Diagnostics.
+		$this->hub_page = new HubPage( $this->hub_tab_registry );
+		add_action( 'admin_menu', array( $this->hub_page, 'register_menu' ) );
 
 		// Events/Automations (M02) continued: the repositories above are
 		// already constructed; wire the remaining dispatch/evaluation/
@@ -733,11 +779,13 @@ final class Plugin {
 
 		( new FatalErrorMarkerWriter() )->register();
 
-		// Administration (M02): capability-gated event catalog and rule
-		// builder screens, submenus of the existing top-level Diagnostics
-		// page, mirroring how M01 added its own Telegram subdomain.
+		// Administration (M02, migrated into the hub at M04.1/ADR-0020):
+		// capability-gated event catalog and rule builder screens, now
+		// Events/Rules tabs of the single administration hub.
 		$this->event_catalog_page = new EventCatalogPage( $this->event_registry );
-		add_action( 'admin_menu', array( $this->event_catalog_page, 'register_menu' ) );
+		$this->hub_tab_registry->register(
+			new Tab( 'events', __( 'Events', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_catalog_page, 'render_tab_content' ) )
+		);
 
 		$this->rule_builder_page = new RuleBuilderPage(
 			$this->notification_rule_repository,
@@ -745,7 +793,9 @@ final class Plugin {
 			$this->bot_profile_repository,
 			$this->destination_repository
 		);
-		add_action( 'admin_menu', array( $this->rule_builder_page, 'register_menu' ) );
+		$this->hub_tab_registry->register(
+			new Tab( 'rules', __( 'Rules', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_builder_page, 'render_tab_content' ) )
+		);
 
 		$this->rule_builder_request_handler = new RuleBuilderRequestHandler( $this->notification_rule_repository );
 		add_action( 'admin_post_' . RuleBuilderRequestHandler::ADMIN_POST_ACTION, array( $this->rule_builder_request_handler, 'handle_request' ) );
@@ -757,14 +807,40 @@ final class Plugin {
 		$rule_simulator = new RuleSimulator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher );
 
 		$this->rule_simulator_page = new RuleSimulatorPage( $rule_simulator, $this->event_registry );
-		add_action( 'admin_menu', array( $this->rule_simulator_page, 'register_menu' ) );
+		$this->hub_tab_registry->register(
+			new Tab( RuleSimulatorPage::TAB_ID, __( 'Simulator', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_simulator_page, 'render_tab_content' ) )
+		);
 
 		$this->event_history_page = new EventHistoryPage( $this->schema_health );
-		add_action( 'admin_menu', array( $this->event_history_page, 'register_menu' ) );
+		$this->hub_tab_registry->register(
+			new Tab( EventHistoryPage::TAB_ID, __( 'Event History', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_history_page, 'render_tab_content' ) )
+		);
 
 		$this->visitor_tracking_page = new VisitorTrackingPage( $settings );
-		add_action( 'admin_menu', array( $this->visitor_tracking_page, 'register_menu' ) );
+		$this->hub_tab_registry->register(
+			new Tab( VisitorTrackingPage::TAB_ID, __( 'Visitor Tracking', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->visitor_tracking_page, 'render_tab_content' ) )
+		);
 		add_action( 'admin_post_' . VisitorTrackingPage::ADMIN_POST_ACTION, array( $this->visitor_tracking_page, 'handle_request' ) );
+
+		// Settings (M04.1 plan §6): plugin-wide configuration that
+		// previously had no admin UI at all. Registered second-to-last;
+		// 'diagnostics' is registered last of all, so display order
+		// matches the plan's mapping (M04.1 plan §3).
+		$this->settings_page = new SettingsPage( $settings );
+		$this->hub_tab_registry->register(
+			new Tab( SettingsPage::TAB_ID, __( 'Settings', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->settings_page, 'render_tab_content' ) )
+		);
+		add_action( 'admin_post_' . SettingsPage::ADMIN_POST_ACTION, array( $this->settings_page, 'handle_request' ) );
+
+		$this->hub_tab_registry->register(
+			new Tab( 'diagnostics', __( 'Diagnostics', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->diagnostics_page, 'render_tab_content' ) )
+		);
+
+		// Legacy URL compatibility (M04.1 plan §5, ADR-0020): every
+		// retired admin page slug stays permanently reachable, redirecting
+		// only an authorized GET request (302, never 301) to its
+		// equivalent Hub tab.
+		add_action( 'admin_menu', array( new LegacyUrlRedirector(), 'register' ) );
 
 		$retention_cleanup = new RetentionCleanup(
 			$this->schema_health,
@@ -863,6 +939,22 @@ final class Plugin {
 	 */
 	public function diagnostics_page(): ?DiagnosticsPage {
 		return $this->diagnostics_page;
+	}
+
+	/**
+	 * The administration hub's tab registry. Available only after init()
+	 * has run.
+	 */
+	public function hub_tab_registry(): ?TabRegistry {
+		return $this->hub_tab_registry;
+	}
+
+	/**
+	 * The administration hub shell page. Available only after init() has
+	 * run.
+	 */
+	public function hub_page(): ?HubPage {
+		return $this->hub_page;
 	}
 
 	/**

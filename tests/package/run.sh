@@ -199,7 +199,7 @@ wp eval '
 	$page   = $plugin->diagnostics_page();
 
 	ob_start();
-	$page->render();
+	$page->render_tab_content();
 	$html = ob_get_clean();
 
 	if ( false === strpos( $html, "Automations (M02)" ) ) {
@@ -252,13 +252,9 @@ wp eval '
 	$page   = $plugin->diagnostics_page();
 
 	ob_start();
-	$page->render();
+	$page->render_tab_content();
 	$html = ob_get_clean();
 
-	if ( false === strpos( $html, "Telegram Operations Hub" ) ) {
-		fwrite( STDERR, "FAIL: diagnostics page did not render the expected heading\n" );
-		exit( 1 );
-	}
 	if ( false === strpos( $html, "Diagnostic self-test" ) ) {
 		fwrite( STDERR, "FAIL: self-test control was not rendered despite WP_DEBUG=true\n" );
 		exit( 1 );
@@ -328,21 +324,82 @@ wp eval '
 	echo "OK: fail_count=5 failed all five permitted attempts, never succeeded.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
-echo "== Verifying the plugin-row Settings action link is present and points at the Diagnostics page =="
+echo "== Verifying the plugin-row Settings action link is present and points at the Settings tab =="
 wp eval '
 	$links = apply_filters( "plugin_action_links_universal-telegram/universal-telegram.php", array() );
 	$found = false;
 	foreach ( $links as $link ) {
-		if ( false !== strpos( $link, "page=universal-telegram-diagnostics" ) && false !== strpos( $link, "Settings" ) ) {
+		if ( false !== strpos( $link, "page=universal-telegram" ) && false !== strpos( $link, "tab=settings" ) && false !== strpos( $link, "Settings" ) ) {
 			$found = true;
 			break;
 		}
 	}
 	if ( ! $found ) {
-		fwrite( STDERR, "FAIL: no Settings action link pointing at the Diagnostics page was found\n" );
+		fwrite( STDERR, "FAIL: no Settings action link pointing at the Settings tab was found\n" );
 		exit( 1 );
 	}
-	echo "OK: the Settings action link is present and points at the Diagnostics page.\n";
+	echo "OK: the Settings action link is present and points at the Settings tab.\n";
+' --path="$WP_DIR" --allow-root --user=admin
+
+echo "== Verifying the administration hub registers exactly the nine expected tabs, in order =="
+wp eval '
+	$expected_tabs = array( "overview", "bots", "events", "rules", "simulator", "event-history", "visitor-tracking", "settings", "diagnostics" );
+
+	$plugin   = UniversalTelegram\Core\Plugin::instance();
+	$registry = $plugin->hub_tab_registry();
+
+	if ( null === $registry ) {
+		fwrite( STDERR, "FAIL: the hub tab registry was never constructed\n" );
+		exit( 1 );
+	}
+
+	$ids = array_map( static fn( $tab ) => $tab->id(), $registry->all() );
+	if ( $ids !== $expected_tabs ) {
+		fwrite( STDERR, "FAIL: hub tab set/order was " . implode( ",", $ids ) . ", expected " . implode( ",", $expected_tabs ) . "\n" );
+		exit( 1 );
+	}
+	echo "OK: the administration hub registers exactly the nine expected tabs, in order.\n";
+' --path="$WP_DIR" --allow-root --user=admin
+
+echo "== Verifying the hub shell renders the requested tab content and the full tab nav =="
+wp eval '
+	$plugin = UniversalTelegram\Core\Plugin::instance();
+	$hub    = $plugin->hub_page();
+
+	$_GET["tab"] = "bots";
+	ob_start();
+	$hub->render();
+	$html = ob_get_clean();
+
+	if ( false === strpos( $html, "nav-tab-wrapper" ) ) {
+		fwrite( STDERR, "FAIL: the hub shell did not render the tab navigation\n" );
+		exit( 1 );
+	}
+	if ( false === strpos( $html, "Add a bot" ) ) {
+		fwrite( STDERR, "FAIL: the hub shell did not render the requested (bots) tab content\n" );
+		exit( 1 );
+	}
+	unset( $_GET["tab"] );
+	echo "OK: the hub shell renders the tab navigation and the requested tab content.\n";
+' --path="$WP_DIR" --allow-root --user=admin
+
+echo "== Verifying a legacy admin page slug redirects a GET request to its equivalent tab (302) =="
+wp eval '
+	$redirector = new class() extends UniversalTelegram\Administration\Hub\LegacyUrlRedirector {
+		public $captured_url = null;
+		protected function redirect_and_exit( string $url ): void {
+			$this->captured_url = $url;
+		}
+	};
+
+	$_SERVER["REQUEST_METHOD"] = "GET";
+	$redirector->redirect( UniversalTelegram\Administration\Telegram\BotManagementPage::SLUG );
+
+	if ( null === $redirector->captured_url || false === strpos( $redirector->captured_url, "tab=bots" ) ) {
+		fwrite( STDERR, "FAIL: the legacy bots slug did not redirect to tab=bots\n" );
+		exit( 1 );
+	}
+	echo "OK: the legacy bots slug redirects to the bots tab.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
 echo "== Verifying no plaintext token appears in the bot management page's rendered output =="
@@ -359,7 +416,7 @@ wp eval '
 	}
 
 	ob_start();
-	$plugin->bot_management_page()->render();
+	$plugin->bot_management_page()->render_tab_content();
 	$html = ob_get_clean();
 
 	if ( false !== strpos( $html, $known_synthetic_token ) ) {

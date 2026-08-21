@@ -243,7 +243,7 @@ final class SelfTestTest extends WP_UnitTestCase {
 		$diagnostics_page   = new DiagnosticsPage( $report, $schema_health, $self_test, $alert );
 
 		ob_start();
-		$diagnostics_page->render();
+		$diagnostics_page->render_tab_content();
 		$output = ob_get_clean();
 
 		$this->assertStringNotContainsString( self::SECRET, $output );

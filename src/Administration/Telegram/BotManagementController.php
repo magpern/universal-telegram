@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Telegram;
 
+use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Privacy\Classification;
 use UniversalTelegram\Queue\JobEnvelope;
@@ -112,7 +113,7 @@ class BotManagementController {
 				break;
 		}
 
-		$this->redirect_and_exit( admin_url( 'admin.php?page=' . BotManagementPage::SLUG ) );
+		$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . BotManagementPage::TAB_ID ) );
 	}
 
 	/**

@@ -26,7 +26,8 @@ use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
  */
 final class BotManagementPage {
 
-	public const SLUG = 'universal-telegram-bots';
+	public const SLUG   = 'universal-telegram-bots';
+	public const TAB_ID = 'bots';
 
 	/**
 	 * Constructor.
@@ -44,37 +45,18 @@ final class BotManagementPage {
 	) {}
 
 	/**
-	 * Registers the admin menu entry.
+	 * Renders this tab's content only (no outer .wrap/<h1> — owned by
+	 * HubPage). Defense in depth: the Hub shell's own capability check
+	 * already denies an unauthorized user before this ever runs.
 	 */
-	public function register_menu(): void {
-		add_submenu_page(
-			\UniversalTelegram\Administration\Diagnostics\DiagnosticsPage::SLUG,
-			__( 'Telegram Bots', 'universal-telegram' ),
-			__( 'Bots', 'universal-telegram' ),
-			CapabilityRegistrar::MANAGE,
-			self::SLUG,
-			array( $this, 'render' )
-		);
-	}
-
-	/**
-	 * Renders the page. Defense in depth: the menu registration's own
-	 * capability parameter already denies an unauthorized user before this
-	 * ever runs.
-	 */
-	public function render(): void {
+	public function render_tab_content(): void {
 		if ( ! current_user_can( CapabilityRegistrar::MANAGE ) ) {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'universal-telegram' ) );
 		}
 
-		echo '<div class="wrap">';
-		echo '<h1>' . esc_html__( 'Telegram Bots', 'universal-telegram' ) . '</h1>';
-
 		$this->render_bot_list();
 		$this->render_create_bot_form();
 		$this->render_dead_letter_list();
-
-		echo '</div>';
 	}
 
 	/**
