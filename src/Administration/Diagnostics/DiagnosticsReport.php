@@ -70,6 +70,8 @@ final class DiagnosticsReport {
 	 *     php_version: string,
 	 *     wp_version: string,
 	 *     woocommerce_active: bool,
+	 *     woocommerce_hpos_enabled: bool,
+	 *     woocommerce_event_emitters_registered: bool,
 	 *     queue_pending: int,
 	 *     queue_failed: int,
 	 *     telegram_bot_count: int,
@@ -111,6 +113,12 @@ final class DiagnosticsReport {
 			'php_version'                            => PHP_VERSION,
 			'wp_version'                             => get_bloginfo( 'version' ),
 			'woocommerce_active'                     => $this->woocommerce_support->is_active(),
+			'woocommerce_hpos_enabled'               => $this->woocommerce_hpos_enabled(),
+			// Restates $woocommerce_support->is_active() under an explicit
+			// diagnostics label — M03's WooCommerce event-emitter gating
+			// (Core\Plugin::init()) is exactly 1:1 with WC activity, so
+			// there is no separate state to track (M03 plan §6).
+			'woocommerce_event_emitters_registered'  => $this->woocommerce_support->is_active(),
 			'queue_pending'                          => $this->schema_health->is_available() ? $this->queue_health->pending_count() : 0,
 			'queue_failed'                           => $this->schema_health->is_available() ? $this->queue_health->failed_count() : 0,
 			'telegram_bot_count'                     => count( $bots ),
@@ -131,5 +139,24 @@ final class DiagnosticsReport {
 			'automations_last_evaluation_error_code' => (string) get_option( RuleEvaluator::LAST_EVALUATION_ERROR_CODE_OPTION, 'none' ),
 			'recent_audit_entries'                   => $this->audit_log_repository->recent( 20 ),
 		);
+	}
+
+	/**
+	 * Whether WooCommerce's HPOS custom-orders-table storage is enabled.
+	 * Returns false when WooCommerce is absent (the utility class won't
+	 * exist), guarded by both class_exists() and is_active() (M03 plan §6).
+	 *
+	 * @return bool
+	 */
+	private function woocommerce_hpos_enabled(): bool {
+		if ( ! $this->woocommerce_support->is_active() ) {
+			return false;
+		}
+
+		if ( ! class_exists( '\Automattic\WooCommerce\Utilities\OrderUtil' ) ) {
+			return false;
+		}
+
+		return \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
 	}
 }
