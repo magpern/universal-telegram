@@ -534,9 +534,15 @@
 		closeButton.textContent = 'Close';
 		closeButton.setAttribute( 'aria-label', 'Close chat' );
 
+		var endButton = doc.createElement( 'button' );
+		endButton.type = 'button';
+		endButton.className = 'ut-chat-widget__end';
+		endButton.textContent = 'End conversation';
+
 		var header = doc.createElement( 'div' );
 		header.className = 'ut-chat-widget__header';
 		header.appendChild( heading );
+		header.appendChild( endButton );
 		header.appendChild( closeButton );
 
 		var log = doc.createElement( 'div' );
@@ -683,6 +689,14 @@
 
 		closeButton.addEventListener( 'click', closePanel );
 
+		// "End conversation" (M06 plan §6): local client-state clearing
+		// only. No M05 endpoint is called to end/archive/revoke -- none
+		// exists for this. The server-side conversation is unaffected and
+		// resolves/archives on its own per M05's existing lifecycle.
+		endButton.addEventListener( 'click', function () {
+			client.endConversation();
+		} );
+
 		form.addEventListener( 'submit', function ( event ) {
 			event.preventDefault();
 			var text = input.value;
@@ -713,4 +727,57 @@
 
 	window.__UT_CHAT_WIDGET_UI_DESCRIBE_STATE__ = describeUiState;
 	window.__UT_CHAT_WIDGET_UI_FACTORY__ = buildWidget;
+
+	// -- Bootstrap / lifecycle wiring (M06 plan WP6) --------------------
+
+	/**
+	 * Reads the static config data island (M06 plan §4). Returns null if
+	 * absent or malformed -- e.g. the widget's own assets were not
+	 * enqueued for this request at all.
+	 *
+	 * @return {object|null}
+	 */
+	function readConfig() {
+		if ( ! window.document || typeof window.document.getElementById !== 'function' ) {
+			return null;
+		}
+		var element = window.document.getElementById( 'ut-chat-widget-config' );
+		if ( ! element ) {
+			return null;
+		}
+		try {
+			var parsed = JSON.parse( element.textContent );
+			return ( parsed && typeof parsed === 'object' ) ? parsed : null;
+		} catch ( error ) {
+			return null;
+		}
+	}
+
+	/**
+	 * Mounts the widget. Deliberately does not open the panel or start
+	 * polling on load, even when a conversation already exists in
+	 * sessionStorage (reload/re-entry) -- polling only ever runs while
+	 * the panel is open (M06 plan §3), and opening is always the
+	 * visitor's own action, never automatic (privacy-minimal, M06 plan §6).
+	 */
+	function boot() {
+		var config = readConfig();
+		if ( ! config || ! window.document || ! window.document.body ) {
+			return;
+		}
+
+		var state  = createState();
+		var client = createClient( state, config );
+		var widget = buildWidget( client );
+
+		window.document.body.appendChild( widget.root );
+	}
+
+	if ( window.document ) {
+		if ( 'loading' === window.document.readyState ) {
+			window.document.addEventListener( 'DOMContentLoaded', boot );
+		} else {
+			boot();
+		}
+	}
 } )();
