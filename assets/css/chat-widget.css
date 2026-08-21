@@ -1,4 +1,191 @@
 /*
- * M06 chat widget styles. Built out in WP5 (UI, accessibility, responsive
- * presentation) — see docs/plans/m06-chat-widget-plan-v1.md §5.
+ * M06 chat widget styles (docs/plans/m06-chat-widget-plan-v1.md §5).
+ * Fixed CSS custom properties only -- no live-preview editor, no scoped
+ * custom-CSS layer (deferred charter scope, see the plan's scope decision).
  */
+
+.ut-chat-widget {
+	--ut-chat-bg: #ffffff;
+	--ut-chat-fg: #1a1a1a;
+	--ut-chat-accent: #0a5cff;
+	--ut-chat-accent-fg: #ffffff;
+	--ut-chat-border: #d0d0d0;
+	--ut-chat-log-bg: #f5f6f8;
+
+	position: fixed;
+	right: 1rem;
+	bottom: 1rem;
+	z-index: 999999;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.ut-chat-widget__toggle {
+	background: var( --ut-chat-accent );
+	color: var( --ut-chat-accent-fg );
+	border: none;
+	border-radius: 999px;
+	padding: 0.75rem 1.25rem;
+	font-size: 1rem;
+	cursor: pointer;
+}
+
+.ut-chat-widget__toggle:focus-visible {
+	outline: 2px solid var( --ut-chat-accent );
+	outline-offset: 2px;
+}
+
+.ut-chat-widget__panel {
+	position: fixed;
+	right: 1rem;
+	bottom: 5rem;
+	width: min( 22rem, calc( 100vw - 2rem ) );
+	max-height: min( 70vh, calc( 100% - 4rem ) );
+	display: flex;
+	flex-direction: column;
+	background: var( --ut-chat-bg );
+	color: var( --ut-chat-fg );
+	border: 1px solid var( --ut-chat-border );
+	border-radius: 0.75rem;
+	box-shadow: 0 0.5rem 1.5rem rgba( 0, 0, 0, 0.2 );
+	overflow: hidden;
+}
+
+.ut-chat-widget__panel[hidden] {
+	display: none;
+}
+
+.ut-chat-widget__header {
+	position: sticky;
+	top: 0;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.75rem 1rem;
+	border-bottom: 1px solid var( --ut-chat-border );
+	background: var( --ut-chat-bg );
+}
+
+.ut-chat-widget__heading {
+	margin: 0;
+	font-size: 1rem;
+}
+
+.ut-chat-widget__close {
+	background: none;
+	border: none;
+	color: var( --ut-chat-fg );
+	font-size: 1rem;
+	cursor: pointer;
+	padding: 0.25rem 0.5rem;
+}
+
+.ut-chat-widget__close:focus-visible,
+.ut-chat-widget__send:focus-visible,
+.ut-chat-widget__restart:focus-visible,
+.ut-chat-widget__input:focus-visible {
+	outline: 2px solid var( --ut-chat-accent );
+	outline-offset: 2px;
+}
+
+.ut-chat-widget__log {
+	flex: 1;
+	overflow-y: auto;
+	padding: 0.75rem 1rem;
+	background: var( --ut-chat-log-bg );
+}
+
+.ut-chat-widget__message {
+	margin-bottom: 0.5rem;
+	padding: 0.5rem 0.75rem;
+	border-radius: 0.5rem;
+	max-width: 85%;
+	word-wrap: break-word;
+}
+
+.ut-chat-widget__message--visitor {
+	margin-left: auto;
+	background: var( --ut-chat-accent );
+	color: var( --ut-chat-accent-fg );
+}
+
+.ut-chat-widget__message--operator {
+	margin-right: auto;
+	background: var( --ut-chat-bg );
+	border: 1px solid var( --ut-chat-border );
+}
+
+.ut-chat-widget__status {
+	padding: 0 1rem;
+	font-size: 0.875rem;
+	min-height: 1.25rem;
+}
+
+.ut-chat-widget__form {
+	display: flex;
+	gap: 0.5rem;
+	padding: 0.75rem 1rem;
+	border-top: 1px solid var( --ut-chat-border );
+}
+
+.ut-chat-widget__input {
+	flex: 1;
+	resize: none;
+	min-height: 2.25rem;
+	max-height: 6rem;
+	border: 1px solid var( --ut-chat-border );
+	border-radius: 0.5rem;
+	padding: 0.5rem;
+	font: inherit;
+}
+
+.ut-chat-widget__send {
+	background: var( --ut-chat-accent );
+	color: var( --ut-chat-accent-fg );
+	border: none;
+	border-radius: 0.5rem;
+	padding: 0.5rem 1rem;
+	cursor: pointer;
+}
+
+.ut-chat-widget__input:disabled,
+.ut-chat-widget__send:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.ut-chat-widget__restart {
+	display: block;
+	margin: 0.25rem 0 0.5rem;
+	background: none;
+	border: 1px solid var( --ut-chat-accent );
+	color: var( --ut-chat-accent );
+	border-radius: 0.5rem;
+	padding: 0.375rem 0.75rem;
+	cursor: pointer;
+}
+
+/* Mobile bottom sheet: below 600px, the panel becomes a full-width sheet
+ * anchored to the bottom, safe-area aware, with a sticky (always
+ * reachable, never scrolls away) close control in the header above. */
+@media ( max-width: 600px ) {
+	.ut-chat-widget__panel {
+		left: 0.5rem;
+		right: 0.5rem;
+		bottom: 0.5rem;
+		width: auto;
+		max-height: min( 70vh, calc( 100% - 4rem ) );
+		padding-bottom: env( safe-area-inset-bottom );
+	}
+}
+
+@media ( prefers-reduced-motion: no-preference ) {
+	.ut-chat-widget__panel {
+		transition: opacity 150ms ease, transform 150ms ease;
+	}
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	.ut-chat-widget__panel {
+		transition: none;
+	}
+}

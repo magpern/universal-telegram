@@ -462,4 +462,255 @@
 	}
 
 	window.__UT_CHAT_WIDGET_CLIENT_FACTORY__ = createClient;
+
+	// -- UI module (M06 plan §5, WP5) -----------------------------------
+
+	var UI_ANNOUNCEMENTS = {
+		idle: '',
+		sending: 'Sending…',
+		active: '',
+		unavailable: 'Chat is currently unavailable.',
+		'transient-failure': 'Something went wrong. Please try again.',
+		ended: 'This conversation has ended.',
+	};
+
+	/**
+	 * Pure mapping from a client "state" event status to the seven-state
+	 * model's UI-facing facts (M06 plan §6): the live-region announcement
+	 * and whether the composer should accept input. No DOM access, so
+	 * this is unit-testable without a real document (docs/plans/
+	 * m06-chat-widget-plan-v1.md §9 — no jsdom/browser runner here).
+	 *
+	 * @param {string} status One of the seven-state model's values.
+	 * @return {{status: string, announce: string, inputDisabled: boolean}}
+	 */
+	function describeUiState( status ) {
+		var known = Object.prototype.hasOwnProperty.call( UI_ANNOUNCEMENTS, status ) ? status : 'idle';
+		return {
+			status: known,
+			announce: UI_ANNOUNCEMENTS[ known ],
+			inputDisabled: 'sending' === known || 'ended' === known || 'unavailable' === known,
+		};
+	}
+
+	/**
+	 * Builds and wires the widget's DOM. Not unit-tested beyond
+	 * describeUiState() above — real focus/keyboard/ARIA/viewport
+	 * behavior is covered by the one-time manual checklist (M06 plan §9),
+	 * since this repository has no jsdom/browser test runner.
+	 *
+	 * @param {object} client A REST client instance (see createClient()).
+	 * @return {{root: Node, open: Function, close: Function}}
+	 */
+	function buildWidget( client ) {
+		var doc = window.document;
+
+		var root = doc.createElement( 'div' );
+		root.className = 'ut-chat-widget';
+
+		var toggleButton = doc.createElement( 'button' );
+		toggleButton.type = 'button';
+		toggleButton.className = 'ut-chat-widget__toggle';
+		toggleButton.setAttribute( 'aria-expanded', 'false' );
+		toggleButton.textContent = 'Open chat';
+
+		var headingId = 'ut-chat-widget-heading';
+
+		var panel = doc.createElement( 'div' );
+		panel.className = 'ut-chat-widget__panel';
+		panel.setAttribute( 'role', 'dialog' );
+		panel.setAttribute( 'aria-modal', 'true' );
+		panel.setAttribute( 'aria-labelledby', headingId );
+		panel.hidden = true;
+
+		var heading = doc.createElement( 'h2' );
+		heading.id = headingId;
+		heading.className = 'ut-chat-widget__heading';
+		heading.textContent = 'Chat';
+
+		var closeButton = doc.createElement( 'button' );
+		closeButton.type = 'button';
+		closeButton.className = 'ut-chat-widget__close';
+		closeButton.textContent = 'Close';
+		closeButton.setAttribute( 'aria-label', 'Close chat' );
+
+		var header = doc.createElement( 'div' );
+		header.className = 'ut-chat-widget__header';
+		header.appendChild( heading );
+		header.appendChild( closeButton );
+
+		var log = doc.createElement( 'div' );
+		log.className = 'ut-chat-widget__log';
+		log.setAttribute( 'role', 'log' );
+		log.setAttribute( 'aria-live', 'polite' );
+
+		var statusRegion = doc.createElement( 'div' );
+		statusRegion.className = 'ut-chat-widget__status';
+		statusRegion.setAttribute( 'role', 'status' );
+		statusRegion.setAttribute( 'aria-live', 'polite' );
+
+		var form = doc.createElement( 'form' );
+		form.className = 'ut-chat-widget__form';
+
+		var input = doc.createElement( 'textarea' );
+		input.className = 'ut-chat-widget__input';
+		input.setAttribute( 'aria-label', 'Message' );
+
+		var sendButton = doc.createElement( 'button' );
+		sendButton.type = 'submit';
+		sendButton.className = 'ut-chat-widget__send';
+		sendButton.textContent = 'Send';
+
+		form.appendChild( input );
+		form.appendChild( sendButton );
+
+		panel.appendChild( header );
+		panel.appendChild( log );
+		panel.appendChild( statusRegion );
+		panel.appendChild( form );
+
+		root.appendChild( toggleButton );
+		root.appendChild( panel );
+
+		var renderedMessageIds  = {};
+		var pendingVisitorTexts = []; // Reconciles an optimistic local bubble with its eventual polled echo (same text, visitor direction) so it is never rendered twice.
+
+		function appendMessage( message ) {
+			if ( renderedMessageIds[ message.id ] ) {
+				return;
+			}
+			renderedMessageIds[ message.id ] = true;
+
+			if ( 'visitor' === message.direction && pendingVisitorTexts.length && pendingVisitorTexts[ 0 ] === message.text ) {
+				pendingVisitorTexts.shift();
+				return;
+			}
+
+			var row = doc.createElement( 'div' );
+			row.className = 'ut-chat-widget__message ut-chat-widget__message--' +
+				( 'operator' === message.direction ? 'operator' : 'visitor' );
+			// Text-only rendering (M06 plan §4): textContent only, never
+			// innerHTML, for visitor- or Telegram-origin text alike.
+			row.textContent = message.text;
+			log.appendChild( row );
+		}
+
+		function setStatus( status ) {
+			var described = describeUiState( status );
+			statusRegion.textContent = described.announce;
+			input.disabled = described.inputDisabled;
+			sendButton.disabled = described.inputDisabled;
+
+			if ( 'ended' === described.status && ! statusRegion.querySelector( '.ut-chat-widget__restart' ) ) {
+				var restart = doc.createElement( 'button' );
+				restart.type = 'button';
+				restart.className = 'ut-chat-widget__restart';
+				restart.textContent = 'Start a new conversation';
+				restart.addEventListener( 'click', function () {
+					renderedMessageIds = {};
+					pendingVisitorTexts = [];
+					log.textContent = '';
+					statusRegion.textContent = '';
+					input.disabled = false;
+					sendButton.disabled = false;
+				} );
+				statusRegion.appendChild( restart );
+			}
+		}
+
+		var lastFocused = null;
+
+		function focusableElements() {
+			return panel.querySelectorAll( 'button, textarea, input, [href], [tabindex]:not([tabindex="-1"])' );
+		}
+
+		function trapFocus( event ) {
+			if ( 'Tab' !== event.key ) {
+				return;
+			}
+			var focusable = focusableElements();
+			if ( 0 === focusable.length ) {
+				return;
+			}
+			var first = focusable[ 0 ];
+			var last = focusable[ focusable.length - 1 ];
+
+			if ( event.shiftKey && doc.activeElement === first ) {
+				event.preventDefault();
+				last.focus();
+			} else if ( ! event.shiftKey && doc.activeElement === last ) {
+				event.preventDefault();
+				first.focus();
+			}
+		}
+
+		function onPanelKeydown( event ) {
+			if ( 'Escape' === event.key ) {
+				closePanel(); // eslint-disable-line no-use-before-define
+				return;
+			}
+			trapFocus( event );
+		}
+
+		function openPanel() {
+			panel.hidden = false;
+			toggleButton.setAttribute( 'aria-expanded', 'true' );
+			lastFocused = doc.activeElement;
+			input.focus();
+			panel.addEventListener( 'keydown', onPanelKeydown );
+			client.open();
+		}
+
+		function closePanel() {
+			panel.hidden = true;
+			toggleButton.setAttribute( 'aria-expanded', 'false' );
+			panel.removeEventListener( 'keydown', onPanelKeydown );
+			client.stopPolling();
+			if ( lastFocused && typeof lastFocused.focus === 'function' ) {
+				lastFocused.focus();
+			} else {
+				toggleButton.focus();
+			}
+		}
+
+		toggleButton.addEventListener( 'click', function () {
+			if ( panel.hidden ) {
+				openPanel();
+			} else {
+				closePanel();
+			}
+		} );
+
+		closeButton.addEventListener( 'click', closePanel );
+
+		form.addEventListener( 'submit', function ( event ) {
+			event.preventDefault();
+			var text = input.value;
+			if ( ! text ) {
+				return;
+			}
+
+			pendingVisitorTexts.push( text );
+			appendMessage( { id: 'local-' + Date.now() + '-' + pendingVisitorTexts.length, direction: 'visitor', text: text } );
+			input.value = '';
+
+			client.sendMessage( text ).catch( function () {
+				// Failure is already surfaced via the 'state' event above.
+			} );
+		} );
+
+		client.on( 'message', appendMessage );
+		client.on( 'state', function ( event ) {
+			setStatus( event.status );
+		} );
+
+		return {
+			root: root,
+			open: openPanel,
+			close: closePanel,
+		};
+	}
+
+	window.__UT_CHAT_WIDGET_UI_DESCRIBE_STATE__ = describeUiState;
+	window.__UT_CHAT_WIDGET_UI_FACTORY__ = buildWidget;
 } )();
