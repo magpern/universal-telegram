@@ -15,7 +15,7 @@
   - `98ce43f` — fix: lean-gate fixups for M06 idempotency migration and boundary guard
   - `dd78838` — test(package): assert db_version 13 and M06 idempotency columns
 - **PR:** [magpern/universal-telegram#10](https://github.com/magpern/universal-telegram/pull/10), merged via merge commit `6996efcd6d3c6069bbdfa2130b542035c0f6e8e2` (all eleven commits preserved individually, not squashed, matching the M00–M05 merge-commit precedent).
-- **Closure commit SHA:** recorded once this document itself is committed and pushed (see step 7 of the authorized closure process); `main` immediately after closure will be verified `main == origin/main`, clean working tree.
+- **Closure commit SHA:** `08528608e4343d1b64640196d5ec1b6bec63f3af` — this document's own commit; it was `main` immediately after M06-core technical closure (verified `main == origin/main`, clean working tree). This documentation-correction commit becomes the new current `main` head once it is merged.
 
 ## Technical status
 
