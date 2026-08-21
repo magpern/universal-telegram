@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress
+Closed (PASS) — see docs/closure/m02-normalized-events-and-notifications-closure.md. Product Owner acceptance pending.
 
 ## Dependencies
 

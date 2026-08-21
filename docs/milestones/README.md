@@ -6,7 +6,7 @@ Status values: Not Started, Planned, In Progress, Implemented, Verifying, Closed
 |---|---|---|---|---|
 | M00 | Product foundation | [m00-product-foundation.md](m00-product-foundation.md) | Closed (PASS) | none |
 | M01 | Telegram connectivity | [m01-telegram-connectivity.md](m01-telegram-connectivity.md) | Closed (PASS) | M00 |
-| M02 | Normalized events and notifications | [m02-normalized-events-and-notifications.md](m02-normalized-events-and-notifications.md) | In Progress | M00, M01 |
+| M02 | Normalized events and notifications | [m02-normalized-events-and-notifications.md](m02-normalized-events-and-notifications.md) | Closed (PASS) | M00, M01 |
 | M03 | WooCommerce event coverage | [m03-woocommerce-event-coverage.md](m03-woocommerce-event-coverage.md) | Not Started | M02 |
 | M04 | Visitor and browser events | [m04-visitor-and-browser-events.md](m04-visitor-and-browser-events.md) | Not Started | M02 |
 | M05 | Conversation backend | [m05-conversation-backend.md](m05-conversation-backend.md) | Not Started | M00, M01 |
