@@ -5,6 +5,14 @@ parameters:
     scanFiles:
         - vendor/woocommerce/action-scheduler/functions.php
         - universal-telegram-functions.php
+        # WooCommerce is a genuinely optional runtime dependency (ADR-0003),
+        # never a Composer require — these are declaration-only stubs (no
+        # runtime code), added as a dev-only static-analysis aid so PHPStan
+        # can type-check M03's WooCommerce event emitters
+        # (src/Integrations/WooCommerce/Events/), which reference WC_Order/
+        # WC_Product/wc_get_order() etc. only inside the
+        # WooCommerceSupport::is_active() gated code path.
+        - vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
     scanDirectories:
         - vendor/woocommerce/action-scheduler/classes
 
