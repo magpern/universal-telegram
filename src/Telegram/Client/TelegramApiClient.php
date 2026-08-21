@@ -101,6 +101,30 @@ class TelegramApiClient {
 	}
 
 	/**
+	 * Calls createForumTopic. Used only by
+	 * Conversations\TopicCreationHandler, exactly once per conversation,
+	 * gated on the caller's own compare-and-set guard (docs/adr/0021).
+	 *
+	 * @param string $token   The bot token.
+	 * @param string $chat_id The supergroup chat ID the topic is created in.
+	 * @param string $name    The forum topic's name.
+	 *
+	 * @return TelegramApiResult
+	 *
+	 * @throws TelegramApiException If the response cannot be parsed at all.
+	 */
+	public function create_forum_topic( string $token, string $chat_id, string $name ): TelegramApiResult {
+		return $this->call(
+			$token,
+			'createForumTopic',
+			array(
+				'chat_id' => $chat_id,
+				'name'    => $name,
+			)
+		);
+	}
+
+	/**
 	 * Calls deleteWebhook. Used by Uninstaller, best-effort, bounded-timeout.
 	 *
 	 * @param string $token The bot token.

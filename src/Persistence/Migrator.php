@@ -22,17 +22,19 @@ namespace UniversalTelegram\Persistence;
  */
 class Migrator {
 
-	public const AUDIT_LOG_TABLE           = 'universal_telegram_audit_log';
-	public const BOTS_TABLE                = 'universal_telegram_bots';
-	public const DESTINATIONS_TABLE        = 'universal_telegram_destinations';
-	public const OUTBOUND_MESSAGES_TABLE   = 'universal_telegram_outbound_messages';
-	public const INBOUND_UPDATES_TABLE     = 'universal_telegram_inbound_updates';
-	public const CIRCUIT_BREAKER_TABLE     = 'universal_telegram_circuit_breaker_state';
-	public const RATE_LIMIT_TABLE          = 'universal_telegram_rate_limit_state';
-	public const EVENT_HISTORY_TABLE       = 'universal_telegram_event_history';
-	public const FATAL_ERROR_MARKERS_TABLE = 'universal_telegram_fatal_error_markers';
-	public const NOTIFICATION_RULES_TABLE  = 'universal_telegram_notification_rules';
-	public const DISPATCH_LOG_TABLE        = 'universal_telegram_notification_dispatch_log';
+	public const AUDIT_LOG_TABLE             = 'universal_telegram_audit_log';
+	public const BOTS_TABLE                  = 'universal_telegram_bots';
+	public const DESTINATIONS_TABLE          = 'universal_telegram_destinations';
+	public const OUTBOUND_MESSAGES_TABLE     = 'universal_telegram_outbound_messages';
+	public const INBOUND_UPDATES_TABLE       = 'universal_telegram_inbound_updates';
+	public const CIRCUIT_BREAKER_TABLE       = 'universal_telegram_circuit_breaker_state';
+	public const RATE_LIMIT_TABLE            = 'universal_telegram_rate_limit_state';
+	public const EVENT_HISTORY_TABLE         = 'universal_telegram_event_history';
+	public const FATAL_ERROR_MARKERS_TABLE   = 'universal_telegram_fatal_error_markers';
+	public const NOTIFICATION_RULES_TABLE    = 'universal_telegram_notification_rules';
+	public const DISPATCH_LOG_TABLE          = 'universal_telegram_notification_dispatch_log';
+	public const CONVERSATIONS_TABLE         = 'universal_telegram_conversations';
+	public const CONVERSATION_MESSAGES_TABLE = 'universal_telegram_conversation_messages';
 
 	private const DB_VERSION_OPTION = 'universal_telegram_db_version';
 
@@ -59,7 +61,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 10;
+		return 12;
 	}
 
 	/**
@@ -138,6 +140,8 @@ class Migrator {
 			8  => array( array( $this, 'step_8_create_events_and_markers_tables' ), array( $this, 'verify_step_8' ) ),
 			9  => array( array( $this, 'step_9_create_notification_rules_table' ), array( $this, 'verify_step_9' ) ),
 			10 => array( array( $this, 'step_10_create_notification_dispatch_log_table' ), array( $this, 'verify_step_10' ) ),
+			11 => array( array( $this, 'step_11_create_conversations_table' ), array( $this, 'verify_step_11' ) ),
+			12 => array( array( $this, 'step_12_create_conversation_messages_table' ), array( $this, 'verify_step_12' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -678,6 +682,140 @@ class Migrator {
 		return $this->table_has_columns(
 			$wpdb->prefix . self::DISPATCH_LOG_TABLE,
 			array( 'id', 'rule_id', 'event_id', 'outbound_message_uuid', 'result', 'reason_code', 'dispatched_at', 'updated_at' )
+		);
+	}
+
+	/**
+	 * Creates the conversations table (docs/adr/0021): one row per visitor
+	 * conversation, looked up only by its own unique conversation_uuid — no
+	 * bearer token is ever used as, or derived into, a lookup key.
+	 * topic_creation_state and telegram_topic_id support the WP3
+	 * compare-and-set topic-creation guard; created_at supports the
+	 * retention scan (M05 plan §8–§9).
+	 */
+	private function step_11_create_conversations_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::CONVERSATIONS_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				conversation_uuid CHAR(36) NOT NULL,
+				secret_hash VARCHAR(255) NULL,
+				bot_id BIGINT UNSIGNED NOT NULL,
+				destination_id BIGINT UNSIGNED NULL,
+				chat_profile VARCHAR(64) NULL,
+				status VARCHAR(20) NOT NULL DEFAULT 'new',
+				assigned_operator_id BIGINT UNSIGNED NULL,
+				topic_creation_state VARCHAR(16) NOT NULL DEFAULT 'none',
+				telegram_topic_id BIGINT NULL,
+				ai_participation_state VARCHAR(16) NOT NULL DEFAULT 'none',
+				consent_state VARCHAR(16) NOT NULL DEFAULT 'unknown',
+				session_ref VARCHAR(191) NULL,
+				created_at DATETIME NOT NULL,
+				updated_at DATETIME NOT NULL,
+				resolved_at DATETIME NULL,
+				expires_at DATETIME NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY conversation_uuid (conversation_uuid),
+				KEY status (status),
+				KEY telegram_topic_id (telegram_topic_id),
+				KEY topic_creation_state (topic_creation_state),
+				KEY created_at (created_at)
+			) {$charset_collate}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_11(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::CONVERSATIONS_TABLE,
+			array(
+				'id',
+				'conversation_uuid',
+				'secret_hash',
+				'bot_id',
+				'destination_id',
+				'chat_profile',
+				'status',
+				'assigned_operator_id',
+				'topic_creation_state',
+				'telegram_topic_id',
+				'ai_participation_state',
+				'consent_state',
+				'session_ref',
+				'created_at',
+				'updated_at',
+				'resolved_at',
+				'expires_at',
+			)
+		);
+	}
+
+	/**
+	 * Creates the conversation messages table (docs/adr/0021): one row per
+	 * visitor or operator message, decrypted only per-request for the
+	 * authenticated caller (M05 plan §4, §9). conversation_created supports
+	 * both the since_id poll cursor and per-conversation retention cleanup.
+	 */
+	private function step_12_create_conversation_messages_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::CONVERSATION_MESSAGES_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				conversation_id BIGINT UNSIGNED NOT NULL,
+				message_uuid CHAR(36) NOT NULL,
+				direction VARCHAR(8) NOT NULL,
+				body_ciphertext LONGTEXT NULL,
+				outbound_message_uuid CHAR(36) NULL,
+				telegram_message_id BIGINT NULL,
+				delivery_state VARCHAR(16) NOT NULL DEFAULT 'stored',
+				created_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY message_uuid (message_uuid),
+				KEY conversation_created (conversation_id, created_at),
+				KEY outbound_message_uuid (outbound_message_uuid)
+			) {$charset_collate}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_12(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::CONVERSATION_MESSAGES_TABLE,
+			array(
+				'id',
+				'conversation_id',
+				'message_uuid',
+				'direction',
+				'body_ciphertext',
+				'outbound_message_uuid',
+				'telegram_message_id',
+				'delivery_state',
+				'created_at',
+			)
 		);
 	}
 

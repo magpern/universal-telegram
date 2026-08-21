@@ -33,6 +33,16 @@ use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Automations\RuleEvaluator;
 use UniversalTelegram\Automations\RuleSimulator;
 use UniversalTelegram\Automations\TemplateRenderer;
+use UniversalTelegram\Conversations\ChatProfileResolver;
+use UniversalTelegram\Conversations\ConversationOutboundDispatcher;
+use UniversalTelegram\Conversations\ConversationOutboundHandler;
+use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\MessageRepository;
+use UniversalTelegram\Conversations\Rest\ConversationsController;
+use UniversalTelegram\Conversations\RetentionCleanupHandler as ConversationRetentionCleanupHandler;
+use UniversalTelegram\Conversations\TopicCreationDispatcher;
+use UniversalTelegram\Conversations\TopicCreationHandler;
+use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Security\CredentialVault;
@@ -284,6 +294,34 @@ final class Plugin {
 	private ?RateLimiter $rate_limiter = null;
 
 	/**
+	 * Conversation persistence, constructed by init().
+	 *
+	 * @var ConversationRepository|null
+	 */
+	private ?ConversationRepository $conversation_repository = null;
+
+	/**
+	 * Conversation message persistence, constructed by init().
+	 *
+	 * @var MessageRepository|null
+	 */
+	private ?MessageRepository $message_repository = null;
+
+	/**
+	 * The public visitor conversation REST controller, constructed by init().
+	 *
+	 * @var ConversationsController|null
+	 */
+	private ?ConversationsController $conversations_controller = null;
+
+	/**
+	 * Idempotent Telegram forum-topic creation dispatch, constructed by init().
+	 *
+	 * @var TopicCreationDispatcher|null
+	 */
+	private ?TopicCreationDispatcher $topic_creation_dispatcher = null;
+
+	/**
 	 * The per-bot/per-destination circuit breaker, constructed by init().
 	 *
 	 * @var CircuitBreaker|null
@@ -303,6 +341,13 @@ final class Plugin {
 	 * @var RetentionCleanupHandler|null
 	 */
 	private ?RetentionCleanupHandler $retention_cleanup_handler = null;
+
+	/**
+	 * The conversation retention cleanup handler, constructed by init().
+	 *
+	 * @var ConversationRetentionCleanupHandler|null
+	 */
+	private ?ConversationRetentionCleanupHandler $conversation_retention_cleanup_handler = null;
 
 	/**
 	 * The webhook registration/rotation coordinator, constructed by init().
@@ -507,6 +552,9 @@ final class Plugin {
 		);
 		$this->handler_registry->register( MessageDispatcher::JOB_TYPE, array( $send_message_handler, 'handle_job' ) );
 
+		$this->conversation_repository = new ConversationRepository( $this->schema_health );
+		$this->message_repository      = new MessageRepository( $this->schema_health, $this->credential_vault );
+
 		$this->update_repository       = new UpdateRepository( $this->schema_health );
 		$this->webhook_secret_verifier = new WebhookSecretVerifier( $this->bot_profile_repository, $this->audit_logger );
 		$this->webhook_controller      = new WebhookController(
@@ -514,9 +562,44 @@ final class Plugin {
 			$this->bot_profile_repository,
 			$this->webhook_secret_verifier,
 			$this->update_repository,
+			$this->conversation_repository,
+			$this->message_repository,
+			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
 			(int) $settings_values['telegram_webhook_max_body_bytes']
 		);
 		add_action( 'rest_api_init', array( $this->webhook_controller, 'register_routes' ) );
+
+		$this->topic_creation_dispatcher = new TopicCreationDispatcher( $this->conversation_repository, $this->dispatcher );
+		$topic_creation_handler          = new TopicCreationHandler(
+			$this->conversation_repository,
+			$this->bot_profile_repository,
+			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
+			$this->destination_repository,
+			$this->telegram_api_client,
+			new RetryPolicy()
+		);
+		$this->handler_registry->register( TopicCreationHandler::JOB_TYPE, array( $topic_creation_handler, 'handle_job' ) );
+
+		$conversation_outbound_dispatcher = new ConversationOutboundDispatcher( $this->dispatcher );
+		$conversation_outbound_handler    = new ConversationOutboundHandler(
+			$this->message_repository,
+			$this->conversation_repository,
+			$this->outbound_message_repository,
+			$this->dispatcher
+		);
+		$this->handler_registry->register( ConversationOutboundHandler::JOB_TYPE, array( $conversation_outbound_handler, 'handle_job' ) );
+
+		$this->conversations_controller = new ConversationsController(
+			$this->schema_health,
+			$this->conversation_repository,
+			$this->message_repository,
+			new VisitorTokenGenerator(),
+			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
+			$this->rate_limiter,
+			$this->topic_creation_dispatcher,
+			$conversation_outbound_dispatcher
+		);
+		add_action( 'rest_api_init', array( $this->conversations_controller, 'register_routes' ) );
 
 		$this->retention_cleanup_handler = new RetentionCleanupHandler(
 			$this->outbound_message_repository,
@@ -533,6 +616,24 @@ final class Plugin {
 			static function () {
 				if ( ! as_has_scheduled_action( RetentionCleanupHandler::HOOK, array(), WorkerRunner::GROUP ) ) {
 					as_schedule_recurring_action( time() + DAY_IN_SECONDS, DAY_IN_SECONDS, RetentionCleanupHandler::HOOK, array(), WorkerRunner::GROUP );
+				}
+			}
+		);
+
+		$this->conversation_retention_cleanup_handler = new ConversationRetentionCleanupHandler(
+			$this->conversation_repository,
+			$this->message_repository,
+			$this->destination_repository
+		);
+		add_action( ConversationRetentionCleanupHandler::HOOK, array( $this->conversation_retention_cleanup_handler, 'run' ) );
+
+		// Fixed defaults, no settings UI in M05 (M05 plan §9); scheduled the
+		// same deferred way as the Telegram outbound retention action above.
+		add_action(
+			'init',
+			static function () {
+				if ( ! as_has_scheduled_action( ConversationRetentionCleanupHandler::HOOK, array(), WorkerRunner::GROUP ) ) {
+					as_schedule_recurring_action( time() + DAY_IN_SECONDS, DAY_IN_SECONDS, ConversationRetentionCleanupHandler::HOOK, array(), WorkerRunner::GROUP );
 				}
 			}
 		);
@@ -1029,6 +1130,34 @@ final class Plugin {
 	}
 
 	/**
+	 * Conversation persistence. Available only after init() has run.
+	 */
+	public function conversation_repository(): ?ConversationRepository {
+		return $this->conversation_repository;
+	}
+
+	/**
+	 * Conversation message persistence. Available only after init() has run.
+	 */
+	public function message_repository(): ?MessageRepository {
+		return $this->message_repository;
+	}
+
+	/**
+	 * The public visitor conversation REST controller. Available only after init() has run.
+	 */
+	public function conversations_controller(): ?ConversationsController {
+		return $this->conversations_controller;
+	}
+
+	/**
+	 * Idempotent Telegram forum-topic creation dispatch. Available only after init() has run.
+	 */
+	public function topic_creation_dispatcher(): ?TopicCreationDispatcher {
+		return $this->topic_creation_dispatcher;
+	}
+
+	/**
 	 * The per-bot/per-destination circuit breaker. Available only after init() has run.
 	 */
 	public function circuit_breaker(): ?CircuitBreaker {
@@ -1047,6 +1176,13 @@ final class Plugin {
 	 */
 	public function retention_cleanup_handler(): ?RetentionCleanupHandler {
 		return $this->retention_cleanup_handler;
+	}
+
+	/**
+	 * The conversation retention cleanup handler. Available only after init() has run.
+	 */
+	public function conversation_retention_cleanup_handler(): ?ConversationRetentionCleanupHandler {
+		return $this->conversation_retention_cleanup_handler;
 	}
 
 	/**
