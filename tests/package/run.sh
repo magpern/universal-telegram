@@ -90,6 +90,10 @@ bots_table_exists() {
 	wp db query "SHOW TABLES LIKE '${TABLE_PREFIX}universal_telegram_bots'" --path="$WP_DIR" --allow-root --skip-column-names
 }
 
+m02_table_exists() {
+	wp db query "SHOW TABLES LIKE '${TABLE_PREFIX}universal_telegram_${1}'" --path="$WP_DIR" --allow-root --skip-column-names
+}
+
 echo "== Verifying activation created the plugin's own tables =="
 if [ -z "$(audit_table_exists)" ]; then
 	echo "FAIL: audit log table was not created on activation" >&2
@@ -102,6 +106,145 @@ if [ -z "$(bots_table_exists)" ]; then
 	exit 1
 fi
 echo "OK: bots table exists."
+
+echo "== Verifying activation created M02's four Events/Automations tables =="
+for m02_table in event_history fatal_error_markers notification_rules notification_dispatch_log; do
+	if [ -z "$(m02_table_exists "$m02_table")" ]; then
+		echo "FAIL: universal_telegram_${m02_table} table was not created on activation" >&2
+		exit 1
+	fi
+	echo "OK: universal_telegram_${m02_table} table exists."
+done
+
+echo "== Verifying db_version reached 10 =="
+DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
+if [ "10" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=10, got ${DB_VERSION}" >&2
+	exit 1
+fi
+echo "OK: universal_telegram_db_version is 10."
+
+echo "== Verifying M02 event emission projects only PUBLIC fields into event_history =="
+wp eval '
+	do_action( "set_user_role", 1, "editor", array( "subscriber" ) );
+
+	global $wpdb;
+	$table = $wpdb->prefix . "universal_telegram_event_history";
+	$row   = $wpdb->get_row( "SELECT * FROM {$table} WHERE event_type = \"wordpress.user_role_changed\" ORDER BY id DESC LIMIT 1", ARRAY_A );
+
+	if ( null === $row ) {
+		fwrite( STDERR, "FAIL: no wordpress.user_role_changed event_history row was recorded\n" );
+		exit( 1 );
+	}
+	if ( false !== strpos( $row["projected_fields_json"], "subscriber" ) ) {
+		fwrite( STDERR, "FAIL: the INTERNAL-classified old_roles_csv field leaked into event_history\n" );
+		exit( 1 );
+	}
+	if ( false === strpos( $row["projected_fields_json"], "editor" ) ) {
+		fwrite( STDERR, "FAIL: the PUBLIC-classified new_role field is missing from event_history\n" );
+		exit( 1 );
+	}
+	echo "OK: event_history contains only the declared PUBLIC fields.\n";
+' --path="$WP_DIR" --allow-root --user=admin
+
+echo "== Verifying the bounded fatal-error mechanism never stores message text, a stack trace, or a raw file path =="
+wp eval '
+	$plugin = UniversalTelegram\Core\Plugin::instance();
+
+	$writer = new UniversalTelegram\Events\Emitters\FatalErrorMarkerWriter();
+	$writer->write_marker_for(
+		array(
+			"type"    => E_ERROR,
+			"message" => "Package-test simulated fatal: uncaught RuntimeException with a secret value abc123",
+			"file"    => "/var/www/html/wp-content/plugins/some-vulnerable-plugin/leaky-file.php",
+			"line"    => 42,
+		)
+	);
+
+	global $wpdb;
+	$markers_table = $wpdb->prefix . "universal_telegram_fatal_error_markers";
+	$marker        = $wpdb->get_row( "SELECT * FROM {$markers_table} WHERE status = \"pending\" ORDER BY id DESC LIMIT 1", ARRAY_A );
+
+	if ( null === $marker ) {
+		fwrite( STDERR, "FAIL: no pending fatal_error_markers row was written\n" );
+		exit( 1 );
+	}
+	foreach ( $marker as $column => $value ) {
+		if ( is_string( $value ) && ( false !== strpos( $value, "leaky-file.php" ) || false !== strpos( $value, "secret value" ) || false !== strpos( $value, "RuntimeException" ) ) ) {
+			fwrite( STDERR, "FAIL: fatal_error_markers column {$column} leaked message text or a raw file path\n" );
+			exit( 1 );
+		}
+	}
+
+	$job = new UniversalTelegram\Events\Emitters\FatalErrorPromotionJob( $plugin->schema_health() );
+	$job->run();
+
+	$history_table = $wpdb->prefix . "universal_telegram_event_history";
+	$history_row   = $wpdb->get_row( "SELECT * FROM {$history_table} WHERE event_type = \"wordpress.fatal_error\" ORDER BY id DESC LIMIT 1", ARRAY_A );
+
+	if ( null === $history_row ) {
+		fwrite( STDERR, "FAIL: no wordpress.fatal_error event_history row was recorded after promotion\n" );
+		exit( 1 );
+	}
+	if ( false !== strpos( $history_row["projected_fields_json"], "leaky-file.php" ) || false !== strpos( $history_row["projected_fields_json"], "secret value" ) || false !== strpos( $history_row["projected_fields_json"], "RuntimeException" ) ) {
+		fwrite( STDERR, "FAIL: the promoted fatal_error event leaked message text or a raw file path\n" );
+		exit( 1 );
+	}
+	echo "OK: the fatal-error mechanism never persisted message text, a stack trace, or a raw file path.\n";
+' --path="$WP_DIR" --allow-root --user=admin
+
+echo "== Verifying the diagnostics page renders the Automations section without a raw exception message =="
+wp eval '
+	$plugin = UniversalTelegram\Core\Plugin::instance();
+	$page   = $plugin->diagnostics_page();
+
+	ob_start();
+	$page->render();
+	$html = ob_get_clean();
+
+	if ( false === strpos( $html, "Automations (M02)" ) ) {
+		fwrite( STDERR, "FAIL: diagnostics page did not render the Automations (M02) section\n" );
+		exit( 1 );
+	}
+	if ( false !== strpos( $html, "RuntimeException" ) || false !== strpos( $html, "Exception" ) || false !== strpos( $html, "Stack trace" ) ) {
+		fwrite( STDERR, "FAIL: diagnostics page rendered raw exception detail\n" );
+		exit( 1 );
+	}
+	echo "OK: diagnostics page rendered the Automations section with no raw exception detail.\n";
+' --path="$WP_DIR" --allow-root --user=admin
+
+echo "== Verifying rule simulation never sends a live message or writes to the dispatch log =="
+wp eval '
+	$plugin    = UniversalTelegram\Core\Plugin::instance();
+	$registry  = $plugin->event_registry();
+	$simulator = new UniversalTelegram\Automations\RuleSimulator(
+		$plugin->notification_rule_repository(),
+		$registry,
+		$plugin->dispatch_log_repository(),
+		new UniversalTelegram\Automations\NotificationDispatcher(
+			$plugin->dispatch_log_repository(),
+			$plugin->bot_profile_repository(),
+			$plugin->destination_repository(),
+			$registry,
+			new UniversalTelegram\Automations\TemplateRenderer(),
+			$plugin->message_dispatcher()
+		)
+	);
+
+	global $wpdb;
+	$dispatch_log_table = $wpdb->prefix . "universal_telegram_notification_dispatch_log";
+	$before              = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$dispatch_log_table}" );
+
+	$result = $simulator->simulate( "wordpress.user_role_changed", array( "subject" => array( "user_id" => 1 ), "payload" => array( "new_role" => "editor" ) ), "package-test-sim" );
+
+	$after = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$dispatch_log_table}" );
+
+	if ( $before !== $after ) {
+		fwrite( STDERR, "FAIL: rule simulation wrote to notification_dispatch_log\n" );
+		exit( 1 );
+	}
+	echo "OK: rule simulation wrote no dispatch-log row.\n";
+' --path="$WP_DIR" --allow-root --user=admin
 
 echo "== Verifying the diagnostics page renders with the self-test control present =="
 wp eval '
@@ -185,6 +328,23 @@ wp eval '
 	echo "OK: fail_count=5 failed all five permitted attempts, never succeeded.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
+echo "== Verifying the plugin-row Settings action link is present and points at the Diagnostics page =="
+wp eval '
+	$links = apply_filters( "plugin_action_links_universal-telegram/universal-telegram.php", array() );
+	$found = false;
+	foreach ( $links as $link ) {
+		if ( false !== strpos( $link, "page=universal-telegram-diagnostics" ) && false !== strpos( $link, "Settings" ) ) {
+			$found = true;
+			break;
+		}
+	}
+	if ( ! $found ) {
+		fwrite( STDERR, "FAIL: no Settings action link pointing at the Diagnostics page was found\n" );
+		exit( 1 );
+	}
+	echo "OK: the Settings action link is present and points at the Diagnostics page.\n";
+' --path="$WP_DIR" --allow-root --user=admin
+
 echo "== Verifying no plaintext token appears in the bot management page's rendered output =="
 wp eval '
 	$plugin = UniversalTelegram\Core\Plugin::instance();
@@ -235,7 +395,13 @@ if [ -z "$(bots_table_exists)" ]; then
 	echo "FAIL: default-retention uninstall removed the bots table despite remove_data_on_uninstall defaulting to false" >&2
 	exit 1
 fi
-echo "OK: default-retention uninstall kept the plugin's own data, including the bots table."
+for m02_table in event_history fatal_error_markers notification_rules notification_dispatch_log; do
+	if [ -z "$(m02_table_exists "$m02_table")" ]; then
+		echo "FAIL: default-retention uninstall removed universal_telegram_${m02_table} despite remove_data_on_uninstall defaulting to false" >&2
+		exit 1
+	fi
+done
+echo "OK: default-retention uninstall kept the plugin's own data, including the bots table and all four M02 tables."
 
 echo "== Reinstalling to verify uninstall with retention explicitly enabled removes data =="
 wp plugin install "$ZIP_PATH" --activate --path="$WP_DIR" --allow-root
@@ -258,6 +424,12 @@ if [ -n "$(bots_table_exists)" ]; then
 	echo "FAIL: opt-in uninstall did not remove the bots table" >&2
 	exit 1
 fi
-echo "OK: opt-in uninstall removed the plugin's own data, including all six Telegram tables."
+for m02_table in event_history fatal_error_markers notification_rules notification_dispatch_log; do
+	if [ -n "$(m02_table_exists "$m02_table")" ]; then
+		echo "FAIL: opt-in uninstall did not remove universal_telegram_${m02_table}" >&2
+		exit 1
+	fi
+done
+echo "OK: opt-in uninstall removed the plugin's own data, including all six M01 tables and all four M02 tables."
 
 echo "== PACKAGE TEST PASSED for WordPress ${WP_VERSION}${WC_VERSION:+, WooCommerce ${WC_VERSION}} =="
