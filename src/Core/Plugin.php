@@ -42,6 +42,8 @@ use UniversalTelegram\Events\Emitters\RestRequestFailureEmitter;
 use UniversalTelegram\Events\Emitters\ScheduledTaskFailureEmitter;
 use UniversalTelegram\Events\Emitters\UpdateEmitter;
 use UniversalTelegram\Events\Emitters\UserLifecycleEmitter;
+use UniversalTelegram\Integrations\WooCommerce\Events\CartEventEmitter;
+use UniversalTelegram\Integrations\WooCommerce\Events\CouponEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Events\OrderEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Events\StockEventEmitter;
 use UniversalTelegram\Events\Registry;
@@ -598,14 +600,20 @@ final class Plugin {
 		// type is ever registered, and no WooCommerce hook callback is
 		// ever bound. Zero runtime surface when WooCommerce is not present.
 		if ( $this->woocommerce_support->is_active() ) {
-			$order_event_emitter = new OrderEventEmitter();
-			$stock_event_emitter = new StockEventEmitter();
+			$order_event_emitter  = new OrderEventEmitter();
+			$stock_event_emitter  = new StockEventEmitter();
+			$cart_event_emitter   = new CartEventEmitter();
+			$coupon_event_emitter = new CouponEventEmitter();
 
 			add_action( 'universal_telegram_register_event_types', array( $order_event_emitter, 'register_event_types' ), 10 );
 			add_action( 'universal_telegram_register_event_types', array( $stock_event_emitter, 'register_event_types' ), 10 );
+			add_action( 'universal_telegram_register_event_types', array( $cart_event_emitter, 'register_event_types' ), 10 );
+			add_action( 'universal_telegram_register_event_types', array( $coupon_event_emitter, 'register_event_types' ), 10 );
 
 			$order_event_emitter->register_hooks();
 			$stock_event_emitter->register_hooks();
+			$cart_event_emitter->register_hooks();
+			$coupon_event_emitter->register_hooks();
 		}
 
 		// Fired once, at priority 20, after WooCommerce presence detection
