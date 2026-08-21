@@ -98,7 +98,7 @@ final class LegacyUrlRedirectorTest extends WP_UnitTestCase {
 		try {
 			$redirector->redirect( BotManagementPage::SLUG );
 		} catch ( \WPDieException $exception ) {
-			// Expected: capability denial, before any redirect target is computed.
+			$this->assertNotNull( $exception, 'Expected capability denial before any redirect target was computed.' );
 		}
 
 		$this->assertNull( $redirector->captured_url );

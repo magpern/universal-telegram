@@ -44,22 +44,22 @@ final class SettingsPageTest extends WP_UnitTestCase {
 	}
 
 	public function test_every_integer_field_round_trips_through_the_existing_sanitizer(): void {
-		$settings = new Settings();
+		$settings  = new Settings();
 		$sanitized = $settings->sanitize(
 			array_merge(
 				$settings->defaults(),
 				array(
-					'remove_data_on_uninstall'                    => true,
-					'telegram_message_retention_days'             => 45,
-					'telegram_delivery_log_retention_days'        => 120,
-					'telegram_max_pending_seconds'                => 7200,
-					'telegram_webhook_max_body_bytes'             => 2097152,
-					'telegram_stale_pending_alert_seconds'        => 900,
-					'telegram_rate_limit_fallback_wait_seconds'   => 60,
+					'remove_data_on_uninstall'             => true,
+					'telegram_message_retention_days'      => 45,
+					'telegram_delivery_log_retention_days' => 120,
+					'telegram_max_pending_seconds'         => 7200,
+					'telegram_webhook_max_body_bytes'      => 2097152,
+					'telegram_stale_pending_alert_seconds' => 900,
+					'telegram_rate_limit_fallback_wait_seconds' => 60,
 					'telegram_webhook_rotation_max_pending_hours' => 12,
-					'event_retention_days'                        => 180,
-					'dispatch_log_retention_days'                 => 180,
-					'fatal_marker_retention_days'                 => 14,
+					'event_retention_days'                 => 180,
+					'dispatch_log_retention_days'          => 180,
+					'fatal_marker_retention_days'          => 14,
 				)
 			)
 		);

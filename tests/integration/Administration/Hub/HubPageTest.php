@@ -105,7 +105,7 @@ final class HubPageTest extends WP_UnitTestCase {
 		try {
 			( new HubPage( $this->make_registry() ) )->render();
 		} catch ( \WPDieException $exception ) {
-			// Expected: wp_die() denial, no content should have been emitted before it.
+			$this->assertNotNull( $exception, 'Expected wp_die() denial before any content was emitted.' );
 		}
 		$output = ob_get_clean();
 
