@@ -33,12 +33,12 @@ final class ConversationOutboundHandlerTest extends WP_UnitTestCase {
 		parent::setUp();
 
 		$this->schema_health     = new SchemaHealth();
-		$this->vault              = new CredentialVault();
-		$this->conversations      = new ConversationRepository( $this->schema_health );
-		$this->messages           = new MessageRepository( $this->schema_health, $this->vault );
-		$this->bots               = new BotProfileRepository( $this->schema_health, $this->vault );
-		$this->destinations       = new DestinationRepository( $this->schema_health );
-		$this->outbound_messages  = new OutboundMessageRepository( $this->schema_health, $this->vault );
+		$this->vault             = new CredentialVault();
+		$this->conversations     = new ConversationRepository( $this->schema_health );
+		$this->messages          = new MessageRepository( $this->schema_health, $this->vault );
+		$this->bots              = new BotProfileRepository( $this->schema_health, $this->vault );
+		$this->destinations      = new DestinationRepository( $this->schema_health );
+		$this->outbound_messages = new OutboundMessageRepository( $this->schema_health, $this->vault );
 
 		$this->handler = new ConversationOutboundHandler(
 			$this->messages,

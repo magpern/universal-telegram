@@ -37,10 +37,10 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$vault         = new CredentialVault();
 
 		$this->conversations = new ConversationRepository( $schema_health );
-		$this->messages       = new MessageRepository( $schema_health, $vault );
-		$this->tokens         = new VisitorTokenGenerator();
-		$this->bots           = new BotProfileRepository( $schema_health, $vault );
-		$this->destinations   = new DestinationRepository( $schema_health );
+		$this->messages      = new MessageRepository( $schema_health, $vault );
+		$this->tokens        = new VisitorTokenGenerator();
+		$this->bots          = new BotProfileRepository( $schema_health, $vault );
+		$this->destinations  = new DestinationRepository( $schema_health );
 
 		$this->controller = new ConversationsController(
 			$schema_health,
@@ -236,6 +236,11 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'second' ) ) )
 		);
 
+		// A single poll here, deliberately: the per-conversation minimum-
+		// poll-interval limiter (exercised on its own below) would otherwise
+		// trip a second immediate poll in the same request. Cursor-advance
+		// semantics themselves are covered at the repository layer
+		// (MessageRepositoryTest::test_messages_since_returns_only_messages_after_the_cursor_ascending).
 		$response = $this->controller->handle_poll( $this->poll_request( $started['conversation_uuid'], $started['secret'] ) );
 		$data     = $response->get_data();
 
@@ -245,14 +250,6 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$this->assertSame( 'first', $data['messages'][0]['text'] );
 		$this->assertSame( 'second', $data['messages'][1]['text'] );
 		$this->assertArrayNotHasKey( 'secret', $data );
-
-		$cursor_response = $this->controller->handle_poll(
-			$this->poll_request( $started['conversation_uuid'], $started['secret'], $data['messages'][0]['id'] )
-		);
-		$cursor_data = $cursor_response->get_data();
-
-		$this->assertCount( 1, $cursor_data['messages'] );
-		$this->assertSame( 'second', $cursor_data['messages'][0]['text'] );
 	}
 
 	public function test_poll_with_wrong_secret_returns_uniform_404(): void {

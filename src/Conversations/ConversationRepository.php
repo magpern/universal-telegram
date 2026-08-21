@@ -188,7 +188,7 @@ class ConversationRepository {
 
 		if ( ConversationStatus::RESOLVED === $to ) {
 			$data['resolved_at'] = $now;
-			$formats[]            = '%s';
+			$formats[]           = '%s';
 		}
 
 		$updated = $wpdb->update(
@@ -230,11 +230,11 @@ class ConversationRepository {
 			$table,
 			array(
 				'topic_creation_state' => 'pending',
-				'updated_at'            => current_time( 'mysql', true ),
+				'updated_at'           => current_time( 'mysql', true ),
 			),
 			array(
-				'id'                    => $id,
-				'topic_creation_state'  => 'none',
+				'id'                   => $id,
+				'topic_creation_state' => 'none',
 			),
 			array( '%s', '%s' ),
 			array( '%d', '%s' )

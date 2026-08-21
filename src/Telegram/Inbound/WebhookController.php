@@ -155,10 +155,10 @@ final class WebhookController {
 	 * visitor-visible content — byte-for-byte identical to today's
 	 * metadata-only outcome.
 	 *
-	 * @param int                   $bot_id             The receiving bot's primary key.
-	 * @param string|null           $chat_id             The update's chat id, metadata already extracted.
-	 * @param int|null              $message_thread_id   The update's forum topic id, metadata already extracted.
-	 * @param array<string, mixed>  $decoded             The full decoded update body.
+	 * @param int                  $bot_id             The receiving bot's primary key.
+	 * @param string|null          $chat_id             The update's chat id, metadata already extracted.
+	 * @param int|null             $message_thread_id   The update's forum topic id, metadata already extracted.
+	 * @param array<string, mixed> $decoded             The full decoded update body.
 	 */
 	private function maybe_route_to_conversation( int $bot_id, ?string $chat_id, ?int $message_thread_id, array $decoded ): void {
 		if ( null === $chat_id || null === $message_thread_id ) {

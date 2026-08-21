@@ -28,8 +28,8 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 
 		$this->schema_health = new SchemaHealth();
 		$this->conversations = new ConversationRepository( $this->schema_health );
-		$this->messages        = new MessageRepository( $this->schema_health, new CredentialVault() );
-		$this->destinations     = new DestinationRepository( $this->schema_health );
+		$this->messages      = new MessageRepository( $this->schema_health, new CredentialVault() );
+		$this->destinations  = new DestinationRepository( $this->schema_health );
 
 		$this->handler = new RetentionCleanupHandler( $this->conversations, $this->messages, $this->destinations );
 	}
@@ -41,7 +41,7 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 	}
 
 	private function resolved_conversation(): \UniversalTelegram\Conversations\Conversation {
-		$conversation = $this->conversations->create( 'uuid-' . wp_generate_uuid4(), 'hash', 1, null );
+		$conversation = $this->conversations->create( wp_generate_uuid4(), 'hash', 1, null );
 		$this->conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
 		$this->conversations->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::RESOLVED );
 

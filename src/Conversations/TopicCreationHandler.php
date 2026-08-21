@@ -58,7 +58,7 @@ class TopicCreationHandler {
 	 */
 	public function handle_job( array $job ): void {
 		$conversation_id = (int) $job['payload']['conversation_id'];
-		$conversation     = $this->conversations->find( $conversation_id );
+		$conversation    = $this->conversations->find( $conversation_id );
 
 		if ( null === $conversation ) {
 			// Deleted by retention or never existed; nothing to create a

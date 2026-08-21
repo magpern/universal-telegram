@@ -109,7 +109,7 @@ final class ConversationMessage {
 	}
 
 	/**
-	 * stored|sent|failed.
+	 * One of stored|sent|failed.
 	 *
 	 * @return string
 	 */

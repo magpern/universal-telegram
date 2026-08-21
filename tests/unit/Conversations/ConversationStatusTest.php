@@ -22,15 +22,15 @@ final class ConversationStatusTest extends TestCase {
 	 */
 	public function allowed_transitions_provider(): array {
 		return array(
-			'new to open'                        => array( ConversationStatus::NEW, ConversationStatus::OPEN ),
-			'open to waiting_for_visitor'         => array( ConversationStatus::OPEN, ConversationStatus::WAITING_FOR_VISITOR ),
-			'open to waiting_for_operator'        => array( ConversationStatus::OPEN, ConversationStatus::WAITING_FOR_OPERATOR ),
-			'waiting_for_visitor back to open'    => array( ConversationStatus::WAITING_FOR_VISITOR, ConversationStatus::OPEN ),
-			'waiting_for_operator back to open'   => array( ConversationStatus::WAITING_FOR_OPERATOR, ConversationStatus::OPEN ),
-			'open to resolved'                    => array( ConversationStatus::OPEN, ConversationStatus::RESOLVED ),
-			'waiting_for_visitor to resolved'     => array( ConversationStatus::WAITING_FOR_VISITOR, ConversationStatus::RESOLVED ),
-			'waiting_for_operator to resolved'    => array( ConversationStatus::WAITING_FOR_OPERATOR, ConversationStatus::RESOLVED ),
-			'resolved to archived'                => array( ConversationStatus::RESOLVED, ConversationStatus::ARCHIVED ),
+			'new to open'                       => array( ConversationStatus::NEW, ConversationStatus::OPEN ),
+			'open to waiting_for_visitor'       => array( ConversationStatus::OPEN, ConversationStatus::WAITING_FOR_VISITOR ),
+			'open to waiting_for_operator'      => array( ConversationStatus::OPEN, ConversationStatus::WAITING_FOR_OPERATOR ),
+			'waiting_for_visitor back to open'  => array( ConversationStatus::WAITING_FOR_VISITOR, ConversationStatus::OPEN ),
+			'waiting_for_operator back to open' => array( ConversationStatus::WAITING_FOR_OPERATOR, ConversationStatus::OPEN ),
+			'open to resolved'                  => array( ConversationStatus::OPEN, ConversationStatus::RESOLVED ),
+			'waiting_for_visitor to resolved'   => array( ConversationStatus::WAITING_FOR_VISITOR, ConversationStatus::RESOLVED ),
+			'waiting_for_operator to resolved'  => array( ConversationStatus::WAITING_FOR_OPERATOR, ConversationStatus::RESOLVED ),
+			'resolved to archived'              => array( ConversationStatus::RESOLVED, ConversationStatus::ARCHIVED ),
 		);
 	}
 
@@ -46,7 +46,7 @@ final class ConversationStatusTest extends TestCase {
 	 */
 	public function disallowed_transitions_provider(): array {
 		return array(
-			'new cannot go directly to resolved'    => array( ConversationStatus::NEW, ConversationStatus::RESOLVED ),
+			'new cannot go directly to resolved'     => array( ConversationStatus::NEW, ConversationStatus::RESOLVED ),
 			'new cannot go directly to archived'     => array( ConversationStatus::NEW, ConversationStatus::ARCHIVED ),
 			'open cannot go directly to archived'    => array( ConversationStatus::OPEN, ConversationStatus::ARCHIVED ),
 			'archived cannot transition anywhere'    => array( ConversationStatus::ARCHIVED, ConversationStatus::OPEN ),

@@ -43,34 +43,40 @@ final class ConversationsController {
 
 	private const RATE_LIMIT_SECRET_OPTION = 'universal_telegram_conversation_rate_limit_secret';
 
-	private const START_SITE_SCOPE       = 'conversation_start_site';
-	private const START_SITE_CAPACITY    = 120.0;
-	private const START_SITE_REFILL      = 2.0;
-	private const START_CLIENT_SCOPE     = 'conversation_start_client';
-	private const START_CLIENT_CAPACITY  = 5.0;
-	private const START_CLIENT_REFILL    = 5.0 / DAY_IN_SECONDS;
+	// RateLimiter's shared universal_telegram_rate_limit_state table stores
+	// scope_type in a VARCHAR(16) column (Migrator step 7) — every constant
+	// below is deliberately kept to 16 characters or fewer. A longer value
+	// would be silently truncated on write while read_state()'s own lookup
+	// still queries by the full, untruncated string, so the bucket's state
+	// would never be found and the limiter would never actually limit.
+	private const START_SITE_SCOPE      = 'conv_start_site';
+	private const START_SITE_CAPACITY   = 120.0;
+	private const START_SITE_REFILL     = 2.0;
+	private const START_CLIENT_SCOPE    = 'conv_start_ip';
+	private const START_CLIENT_CAPACITY = 5.0;
+	private const START_CLIENT_REFILL   = 5.0 / DAY_IN_SECONDS;
 
-	private const POST_SITE_SCOPE            = 'conversation_post_site';
+	private const POST_SITE_SCOPE            = 'conv_post_site';
 	private const POST_SITE_CAPACITY         = 300.0;
 	private const POST_SITE_REFILL           = 5.0;
-	private const POST_CONVERSATION_SCOPE    = 'conversation_post';
+	private const POST_CONVERSATION_SCOPE    = 'conv_post';
 	private const POST_CONVERSATION_CAPACITY = 20.0;
 	private const POST_CONVERSATION_REFILL   = 20.0 / 60.0;
 
-	private const POLL_SITE_SCOPE            = 'conversation_poll_site';
+	private const POLL_SITE_SCOPE            = 'conv_poll_site';
 	private const POLL_SITE_CAPACITY         = 1200.0;
 	private const POLL_SITE_REFILL           = 20.0;
-	private const POLL_CONVERSATION_SCOPE    = 'conversation_poll';
+	private const POLL_CONVERSATION_SCOPE    = 'conv_poll';
 	private const POLL_CONVERSATION_CAPACITY = 1.0;
 	private const POLL_CONVERSATION_REFILL   = 1.0 / 2.0;
 
 	/**
 	 * Constructor.
 	 *
-	 * @param SchemaHealth           $schema_health Checked before any processing.
-	 * @param ConversationRepository $conversations Conversation persistence.
-	 * @param MessageRepository      $messages      Message persistence and decryption.
-	 * @param VisitorTokenGenerator  $tokens        Generates the two-part visitor credential.
+	 * @param SchemaHealth                   $schema_health Checked before any processing.
+	 * @param ConversationRepository         $conversations Conversation persistence.
+	 * @param MessageRepository              $messages      Message persistence and decryption.
+	 * @param VisitorTokenGenerator          $tokens        Generates the two-part visitor credential.
 	 * @param ChatProfileResolver            $chat_profiles     Resolves the optional chat_profile to a bot.
 	 * @param RateLimiter                    $rate_limiter      The two-tier abuse control, shared with the Telegram outbound boundary.
 	 * @param TopicCreationDispatcher        $topic_creation    Idempotent Telegram forum-topic creation dispatch.
@@ -163,7 +169,7 @@ final class ConversationsController {
 			return $this->rate_limited();
 		}
 
-		if ( ! $this->rate_limiter->try_consume( self::START_CLIENT_SCOPE, $this->client_scope_id( $request ), self::START_CLIENT_CAPACITY, self::START_CLIENT_REFILL ) ) {
+		if ( ! $this->rate_limiter->try_consume( self::START_CLIENT_SCOPE, $this->client_scope_id(), self::START_CLIENT_CAPACITY, self::START_CLIENT_REFILL ) ) {
 			return $this->rate_limited();
 		}
 
@@ -391,11 +397,9 @@ final class ConversationsController {
 	 * 31-bit integer — the same non-reversible pattern IngestController
 	 * already uses (M04 plan §4.4), reused here per M05 plan §4.
 	 *
-	 * @param WP_REST_Request $request The inbound request.
-	 *
 	 * @return int
 	 */
-	private function client_scope_id( WP_REST_Request $request ): int {
+	private function client_scope_id(): int {
 		$ip  = isset( $_SERVER['REMOTE_ADDR'] ) ? (string) wp_unslash( $_SERVER['REMOTE_ADDR'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		$day = gmdate( 'Y-m-d' );
 

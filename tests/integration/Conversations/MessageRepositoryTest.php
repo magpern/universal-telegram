@@ -20,7 +20,7 @@ final class MessageRepositoryTest extends WP_UnitTestCase {
 	private function conversation_id(): int {
 		$conversations = new ConversationRepository( new SchemaHealth() );
 
-		return $conversations->create( 'uuid-msg-' . wp_generate_uuid4(), 'hashed-secret', 1, null )->id();
+		return $conversations->create( wp_generate_uuid4(), 'hashed-secret', 1, null )->id();
 	}
 
 	public function test_create_stores_ciphertext_and_decrypt_recovers_the_plaintext(): void {

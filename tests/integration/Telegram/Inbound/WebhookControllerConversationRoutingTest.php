@@ -42,15 +42,15 @@ final class WebhookControllerConversationRoutingTest extends WP_UnitTestCase {
 		parent::setUp();
 
 		$this->schema_health = new SchemaHealth();
-		$vault                = new CredentialVault();
-		$audit_logger         = new AuditLogger( $this->schema_health, new Redactor() );
+		$vault               = new CredentialVault();
+		$audit_logger        = new AuditLogger( $this->schema_health, new Redactor() );
 
 		$this->bots          = new BotProfileRepository( $this->schema_health, $vault );
 		$this->conversations = new ConversationRepository( $this->schema_health );
-		$this->messages       = new MessageRepository( $this->schema_health, $vault );
-		$this->destinations   = new DestinationRepository( $this->schema_health );
-		$updates              = new UpdateRepository( $this->schema_health );
-		$verifier             = new WebhookSecretVerifier( $this->bots, $audit_logger );
+		$this->messages      = new MessageRepository( $this->schema_health, $vault );
+		$this->destinations  = new DestinationRepository( $this->schema_health );
+		$updates             = new UpdateRepository( $this->schema_health );
+		$verifier            = new WebhookSecretVerifier( $this->bots, $audit_logger );
 
 		$this->controller = new WebhookController(
 			$this->schema_health,
@@ -107,7 +107,10 @@ final class WebhookControllerConversationRoutingTest extends WP_UnitTestCase {
 			$this->conversations->transition( $conversation->id(), ConversationStatus::OPEN, $status );
 		}
 
-		return array( 'bot' => $bot, 'conversation' => $this->conversations->find( $conversation->id() ) );
+		return array(
+			'bot'          => $bot,
+			'conversation' => $this->conversations->find( $conversation->id() ),
+		);
 	}
 
 	public function test_an_operator_reply_in_the_known_topic_is_captured_and_transitions_the_conversation(): void {
@@ -120,7 +123,7 @@ final class WebhookControllerConversationRoutingTest extends WP_UnitTestCase {
 
 		$this->assertSame( 200, $response->get_status() );
 
-		$updated  = $this->conversations->find( $fixture['conversation']->id() );
+		$updated = $this->conversations->find( $fixture['conversation']->id() );
 		$this->assertSame( ConversationStatus::WAITING_FOR_VISITOR, $updated->status() );
 
 		$messages = $this->messages->messages_since( $fixture['conversation']->id(), 0 );

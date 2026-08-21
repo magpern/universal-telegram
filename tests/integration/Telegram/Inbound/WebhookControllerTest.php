@@ -55,12 +55,12 @@ final class WebhookControllerTest extends WP_UnitTestCase {
 		$audit_logger  = new AuditLogger( $schema_health, new Redactor() );
 
 		$this->bots          = new BotProfileRepository( $schema_health, $vault );
-		$this->updates        = new UpdateRepository( $schema_health );
-		$this->conversations  = new ConversationRepository( $schema_health );
-		$this->destinations   = new DestinationRepository( $schema_health );
-		$messages             = new MessageRepository( $schema_health, $vault );
-		$verifier             = new WebhookSecretVerifier( $this->bots, $audit_logger );
-		$this->controller     = new WebhookController(
+		$this->updates       = new UpdateRepository( $schema_health );
+		$this->conversations = new ConversationRepository( $schema_health );
+		$this->destinations  = new DestinationRepository( $schema_health );
+		$messages            = new MessageRepository( $schema_health, $vault );
+		$verifier            = new WebhookSecretVerifier( $this->bots, $audit_logger );
+		$this->controller    = new WebhookController(
 			$schema_health,
 			$this->bots,
 			$verifier,

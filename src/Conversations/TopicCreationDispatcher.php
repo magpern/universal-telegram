@@ -29,7 +29,7 @@ final class TopicCreationDispatcher {
 	 * Constructor.
 	 *
 	 * @param ConversationRepository $conversations Owns the compare-and-set guard.
-	 * @param Dispatcher              $dispatcher    M00's generic queue dispatcher, used as-is.
+	 * @param Dispatcher             $dispatcher    M00's generic queue dispatcher, used as-is.
 	 */
 	public function __construct(
 		private readonly ConversationRepository $conversations,

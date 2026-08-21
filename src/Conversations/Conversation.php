@@ -78,7 +78,7 @@ final class Conversation {
 	}
 
 	/**
-	 * password_hash() of the bearer secret, or null once revoked. Never
+	 * The bearer secret's password_hash(), or null once revoked. Never
 	 * serialize this value into a REST response.
 	 *
 	 * @return string|null
@@ -133,7 +133,7 @@ final class Conversation {
 	}
 
 	/**
-	 * none|pending|created|failed.
+	 * One of none|pending|created|failed.
 	 *
 	 * @return string
 	 */
@@ -160,7 +160,7 @@ final class Conversation {
 	}
 
 	/**
-	 * unknown|granted|declined.
+	 * One of unknown|granted|declined.
 	 *
 	 * @return string
 	 */
