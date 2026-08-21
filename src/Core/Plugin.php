@@ -42,6 +42,10 @@ use UniversalTelegram\Events\Emitters\RestRequestFailureEmitter;
 use UniversalTelegram\Events\Emitters\ScheduledTaskFailureEmitter;
 use UniversalTelegram\Events\Emitters\UpdateEmitter;
 use UniversalTelegram\Events\Emitters\UserLifecycleEmitter;
+use UniversalTelegram\Events\Visitor\BotFilter;
+use UniversalTelegram\Events\Visitor\IngestController;
+use UniversalTelegram\Events\Visitor\IngestRequestValidator;
+use UniversalTelegram\Events\Visitor\Sampler;
 use UniversalTelegram\Events\Visitor\VisitorEventCatalog;
 use UniversalTelegram\Integrations\WooCommerce\Events\CartEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Events\CheckoutEventEmitter;
@@ -600,6 +604,21 @@ final class Plugin {
 		// 20, independent of WooCommerce presence.
 		$visitor_event_catalog = new VisitorEventCatalog();
 		add_action( 'universal_telegram_register_event_types', array( $visitor_event_catalog, 'register_event_types' ), 20 );
+
+		// Public visitor event ingestion endpoint (M04 plan §4.4,
+		// ADR-0019): unauthenticated at the WP-REST layer, reusing the
+		// same generic RateLimiter instance already constructed above
+		// under two new scope_type values.
+		$ingest_controller = new IngestController(
+			$this->schema_health,
+			$this->event_registry,
+			$settings,
+			$this->rate_limiter,
+			new IngestRequestValidator(),
+			new BotFilter(),
+			new Sampler()
+		);
+		add_action( 'rest_api_init', array( $ingest_controller, 'register_routes' ) );
 
 		// WooCommerce event emitters (M03 plan §4, ADR-0018): constructed
 		// and wired only when WooCommerceSupport::is_active() is true.
