@@ -16,6 +16,7 @@ use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
 use UniversalTelegram\Administration\Diagnostics\SelfTest;
 use UniversalTelegram\Administration\Hub\HubPage;
+use UniversalTelegram\Administration\Hub\LegacyUrlRedirector;
 use UniversalTelegram\Administration\Hub\OverviewPage;
 use UniversalTelegram\Administration\Hub\SettingsPage;
 use UniversalTelegram\Administration\Hub\Tab;
@@ -836,6 +837,12 @@ final class Plugin {
 			new Tab( 'diagnostics', __( 'Diagnostics', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->diagnostics_page, 'render_tab_content' ) )
 		);
 
+		// Legacy URL compatibility (M04.1 plan §5, ADR-0020): every
+		// retired admin page slug stays permanently reachable, redirecting
+		// only an authorized GET request (302, never 301) to its
+		// equivalent Hub tab.
+		add_action( 'admin_menu', array( new LegacyUrlRedirector(), 'register' ) );
+
 		$retention_cleanup = new RetentionCleanup(
 			$this->schema_health,
 			(int) $settings_values['event_retention_days'],
@@ -933,6 +940,22 @@ final class Plugin {
 	 */
 	public function diagnostics_page(): ?DiagnosticsPage {
 		return $this->diagnostics_page;
+	}
+
+	/**
+	 * The administration hub's tab registry. Available only after init()
+	 * has run.
+	 */
+	public function hub_tab_registry(): ?TabRegistry {
+		return $this->hub_tab_registry;
+	}
+
+	/**
+	 * The administration hub shell page. Available only after init() has
+	 * run.
+	 */
+	public function hub_page(): ?HubPage {
+		return $this->hub_page;
 	}
 
 	/**

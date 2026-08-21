@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.3.0
+Stable tag: 0.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -38,6 +38,19 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.3.1 =
+* Administration hub (M04.1, ADR-0020): the WordPress admin left menu now shows one entry,
+  "Telegram Hub", with every previous screen (Overview, Bots, Events, Rules, Simulator, Event
+  History, Visitor Tracking, Diagnostics) reached through deep-linkable, bookmarkable horizontal
+  tabs (`admin.php?page=universal-telegram&tab=<id>`), plus a new Settings tab exposing plugin-wide
+  configuration (uninstall data removal, Telegram/event/dispatch/fatal-marker retention) that
+  previously had no admin UI. Every existing form, nonce, capability check, and handler is
+  unchanged. Every retired admin page slug remains permanently reachable and redirects a `GET`
+  request from an authorized user to its equivalent tab (temporary, 302 — never permanent); no
+  redirect is ever issued for a non-`GET` request. The plugin-row Settings link now opens the
+  Settings tab directly. Pure navigation restructuring: no event, rule, persistence, Telegram,
+  WooCommerce, tracking, chat, or AI behavior change.
 
 = 0.3.0 =
 * Visitor and browser events: a dependency-free, cache-safe tracking client (page views, navigation,
