@@ -951,28 +951,41 @@ Validation:
 
 **Objective:** Deliver the complete administrator-configurable frontend chat.
 
-Deliverables:
+**Status: core slice delivered** (`docs/plans/m06-chat-widget-plan-v1.md`, `docs/closure/m06-chat-widget-core-closure.md`). The core slice covers open/close, first-explicit-send conversation creation, visitor text sending, short-poll operator-reply rendering, session state/accessibility/responsive presentation, and local end-conversation clearing — consuming M05's conversation REST contract only, gated by a single enable toggle on the existing Hub Settings tab. The remaining deliverables below are **explicitly deferred, unscheduled charter items** — not started, and not implied complete by the core-slice closure:
 
-* Floating and inline modes
-* Open, close, minimize and reopen behaviour
-* Desktop and mobile placement
 * Chat profiles and targeting
 * Business hours
 * Pre-chat form
 * Visual controls
 * Scoped custom CSS
 * Live preview
-* Localization
-* Accessibility compliance
 
-Validation:
+Deliverables (core slice, delivered):
 
-* Keyboard and screen-reader acceptance
-* Responsive viewport matrix
+* Floating placement, open/close behaviour
+* Desktop and mobile placement
+* Localization-ready markup
+* Accessibility compliance (keyboard, focus, ARIA, reduced motion)
+
+Deliverables (deferred, per above — not part of this milestone's core-slice closure):
+
+* Inline mode; minimize/reopen beyond open/close
+* Chat profiles and targeting
+* Business hours
+* Pre-chat form
+* Visual controls, scoped custom CSS, live preview
+
+Validation (core slice):
+
+* Keyboard and screen-reader acceptance (manual checklist, `docs/testing/m06-chat-widget-manual-checklist.md` — no jsdom/browser runner in this repository)
+* Responsive/mobile viewport manual check (375px/414px)
+* Cached-page compatibility (automated)
+
+Validation (deferred, applies once the deferred deliverables above are scheduled):
+
 * Theme-conflict tests
 * Profile-priority tests
-* Closed and minimized state tests
-* Cached-page compatibility
+* Closed and minimized state tests beyond open/close
 
 ## M7 — Operator workflow
 

@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.4.0
+Stable tag: 0.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -41,6 +41,22 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.5.0 =
+* Chat widget core (M06 core slice, ADR-0022, ADR-0021 amendment): a lightweight, accessible,
+  cache-safe frontend chat widget consuming M05's conversation REST contract only — open/close,
+  first-explicit-send conversation creation, visitor text sending, and short-poll operator reply
+  rendering. Enabled via one toggle on the existing Hub Settings tab, no new admin screen. Visitor
+  state (a client-generated bearer secret and the conversation uuid) lives only in sessionStorage,
+  bound to the browser tab's session; a new client-generated-secret start protocol (Idempotency-Key
+  plus a per-request secret header, verified by password_verify(), never stored beyond its hash)
+  makes safe automatic retry of the start and message-post requests possible without risking
+  duplicate conversations or messages (db_version 12 -> 13, two nullable/uniquely-indexed
+  idempotency columns on the existing conversation tables, no new table). Configuration reaches the
+  browser only as a static, non-executable JSON data island — never a per-visitor value, never
+  inline executable script — so full-page caching is unaffected. Deferred from this milestone's
+  fuller master-plan.md charter: chat profiles/targeting, business hours, pre-chat form, visual/CSS
+  controls, and page-builder embeds.
 
 = 0.4.0 =
 * Conversation backend (M05, ADR-0021): a persistent conversation and message store, a two-part
