@@ -45,7 +45,9 @@ use UniversalTelegram\Events\Emitters\UserLifecycleEmitter;
 use UniversalTelegram\Events\Visitor\BotFilter;
 use UniversalTelegram\Events\Visitor\IngestController;
 use UniversalTelegram\Events\Visitor\IngestRequestValidator;
+use UniversalTelegram\Events\Visitor\PageContext;
 use UniversalTelegram\Events\Visitor\Sampler;
+use UniversalTelegram\Events\Visitor\TrackerAssets;
 use UniversalTelegram\Events\Visitor\VisitorEventCatalog;
 use UniversalTelegram\Integrations\WooCommerce\Events\CartEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Events\CheckoutEventEmitter;
@@ -619,6 +621,9 @@ final class Plugin {
 			new Sampler()
 		);
 		add_action( 'rest_api_init', array( $ingest_controller, 'register_routes' ) );
+
+		$tracker_assets = new TrackerAssets( $settings, new PageContext(), $this->woocommerce_support, $this->capability_registrar );
+		add_action( 'wp_enqueue_scripts', array( $tracker_assets, 'enqueue' ) );
 
 		// WooCommerce event emitters (M03 plan §4, ADR-0018): constructed
 		// and wired only when WooCommerceSupport::is_active() is true.
