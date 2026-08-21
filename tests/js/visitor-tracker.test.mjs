@@ -143,8 +143,11 @@ test( 'a simulated same-tab navigation records one from_path/to_path pair per tr
 
 	const navEvents = tracker.getQueue().filter( ( e ) => 'nv' === e.type );
 	assert.equal( navEvents.length, 2 );
-	assert.deepEqual( navEvents[ 0 ].data, { from_path: '/start', to_path: '/next' } );
-	assert.deepEqual( navEvents[ 1 ].data, { from_path: '/next', to_path: '/final' } );
+	// Objects built inside the vm sandbox belong to a different realm, so
+	// they are compared via their JSON form rather than deepEqual, which
+	// would otherwise fail on prototype identity alone.
+	assert.equal( JSON.stringify( navEvents[ 0 ].data ), JSON.stringify( { from_path: '/start', to_path: '/next' } ) );
+	assert.equal( JSON.stringify( navEvents[ 1 ].data ), JSON.stringify( { from_path: '/next', to_path: '/final' } ) );
 } );
 
 test( 'a 6th simulated error after 5 produces no further outbound call', () => {
