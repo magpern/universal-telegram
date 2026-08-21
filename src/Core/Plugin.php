@@ -33,6 +33,8 @@ use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Automations\RuleEvaluator;
 use UniversalTelegram\Automations\RuleSimulator;
 use UniversalTelegram\Automations\TemplateRenderer;
+use UniversalTelegram\ChatWidget\ChatWidgetAssets;
+use UniversalTelegram\ChatWidget\ChatWidgetAvailability;
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationOutboundDispatcher;
 use UniversalTelegram\Conversations\ConversationOutboundHandler;
@@ -788,6 +790,15 @@ final class Plugin {
 
 		$tracker_assets = new TrackerAssets( $settings, new PageContext(), $this->woocommerce_support );
 		add_action( 'wp_enqueue_scripts', array( $tracker_assets, 'enqueue' ) );
+
+		$chat_widget_assets = new ChatWidgetAssets(
+			new ChatWidgetAvailability(
+				$settings,
+				new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository )
+			)
+		);
+		add_action( 'wp_enqueue_scripts', array( $chat_widget_assets, 'enqueue' ) );
+		add_action( 'wp_footer', array( $chat_widget_assets, 'print_config' ), 5 );
 
 		// WooCommerce event emitters (M03 plan §4, ADR-0018): constructed
 		// and wired only when WooCommerceSupport::is_active() is true.
