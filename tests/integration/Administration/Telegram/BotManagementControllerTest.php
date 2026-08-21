@@ -94,7 +94,14 @@ final class BotManagementControllerTest extends WP_UnitTestCase {
 			$destinations,
 			$messages,
 			$client,
-			new WebhookRegistrationCoordinator( $this->bots, $client, new AuditLogger( $this->schema_health, new Redactor() ), 'https://example.com/webhook/' ),
+			new WebhookRegistrationCoordinator(
+				$this->bots,
+				$client,
+				new AuditLogger( $this->schema_health, new Redactor() ),
+				static function (): string {
+					return 'https://example.com/webhook/';
+				}
+			),
 			new MessageDispatcher( $messages, new Dispatcher( $this->schema_health ) ),
 			new Dispatcher( $this->schema_health )
 		) extends BotManagementController {

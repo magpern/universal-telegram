@@ -510,11 +510,17 @@ final class Plugin {
 			}
 		);
 
+		// rest_url() is not called here: WordPress' rewrite state is not
+		// yet initialized during plugins_loaded (the hook init() runs on),
+		// so the URL is computed lazily, only when an operation is
+		// actually attempted, well after WordPress' own 'init' hook.
 		$this->webhook_registration_coordinator = new WebhookRegistrationCoordinator(
 			$this->bot_profile_repository,
 			$this->telegram_api_client,
 			$this->audit_logger,
-			rest_url( 'universal-telegram/v1/webhook/' )
+			static function (): string {
+				return rest_url( 'universal-telegram/v1/webhook/' );
+			}
 		);
 
 		$this->bot_management_controller = new BotManagementController(

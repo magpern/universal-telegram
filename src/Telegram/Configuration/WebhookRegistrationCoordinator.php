@@ -26,22 +26,28 @@ use UniversalTelegram\Telegram\Client\TelegramApiResult;
  * webhook_last_attempt_at before branching on its outcome. No operation
  * here, and no other code path in this milestone, ever discards, replaces,
  * or promotes a pending secret on the basis of elapsed time.
+ *
+ * $webhook_base_url_provider is called lazily, only inside
+ * attempt_set_webhook() — never at construction time — because this class
+ * is constructed during Core\Plugin::init() on plugins_loaded, before
+ * WordPress' rewrite state exists; calling rest_url() eagerly there fatals
+ * ("Call to a member function using_index_permalinks() on null").
  */
 final class WebhookRegistrationCoordinator {
 
 	/**
 	 * Constructor.
 	 *
-	 * @param BotProfileRepository $bots            Reads and mutates secret/registration-state fields.
-	 * @param TelegramApiClient    $client          Calls Telegram's own setWebhook.
-	 * @param AuditLogger          $audit_logger    Records every step of the protocol.
-	 * @param string               $webhook_base_url The REST route base URL, e.g. rest_url('universal-telegram/v1/webhook/').
+	 * @param BotProfileRepository $bots                      Reads and mutates secret/registration-state fields.
+	 * @param TelegramApiClient    $client                    Calls Telegram's own setWebhook.
+	 * @param AuditLogger          $audit_logger              Records every step of the protocol.
+	 * @param callable(): string   $webhook_base_url_provider Returns the REST route base URL, e.g. rest_url('universal-telegram/v1/webhook/'). Called lazily, never at construction time.
 	 */
 	public function __construct(
 		private readonly BotProfileRepository $bots,
 		private readonly TelegramApiClient $client,
 		private readonly AuditLogger $audit_logger,
-		private readonly string $webhook_base_url
+		private $webhook_base_url_provider
 	) {}
 
 	/**
@@ -228,7 +234,8 @@ final class WebhookRegistrationCoordinator {
 	 */
 	private function attempt_set_webhook( string $token, string $bot_uuid, string $secret ): RegistrationOutcome {
 		try {
-			$result = $this->client->set_webhook( $token, $this->webhook_base_url . $bot_uuid, $secret );
+			$webhook_base_url = ( $this->webhook_base_url_provider )();
+			$result           = $this->client->set_webhook( $token, $webhook_base_url . $bot_uuid, $secret );
 		} catch ( TelegramApiException $exception ) {
 			return RegistrationOutcome::UNCERTAIN;
 		}

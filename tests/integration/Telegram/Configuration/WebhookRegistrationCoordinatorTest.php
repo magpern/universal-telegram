@@ -57,8 +57,36 @@ final class WebhookRegistrationCoordinatorTest extends WP_UnitTestCase {
 			$bots,
 			new TelegramApiClient(),
 			new AuditLogger( new SchemaHealth(), new Redactor() ),
-			'https://example.com/wp-json/universal-telegram/v1/webhook/'
+			static function (): string {
+				return 'https://example.com/wp-json/universal-telegram/v1/webhook/';
+			}
 		);
+	}
+
+	/**
+	 * Regression for the bootstrap fatal: rest_url() (or any URL provider)
+	 * must never be evaluated at construction time, since this class is
+	 * constructed during Core\Plugin::init() on plugins_loaded, before
+	 * WordPress' rewrite state exists. The provider must be called only
+	 * when an operation is actually attempted.
+	 */
+	public function test_the_webhook_base_url_provider_is_never_called_at_construction_time(): void {
+		$schema_health = new SchemaHealth();
+		$bots          = new BotProfileRepository( $schema_health, new CredentialVault() );
+
+		$calls = 0;
+
+		new WebhookRegistrationCoordinator(
+			$bots,
+			new TelegramApiClient(),
+			new AuditLogger( $schema_health, new Redactor() ),
+			static function () use ( &$calls ): string {
+				$calls++;
+				return 'https://example.com/wp-json/universal-telegram/v1/webhook/';
+			}
+		);
+
+		$this->assertSame( 0, $calls, 'The URL provider must not be called at construction time.' );
 	}
 
 	/**
