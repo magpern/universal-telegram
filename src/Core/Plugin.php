@@ -607,8 +607,13 @@ final class Plugin {
 			new Tab( OverviewPage::TAB_ID, __( 'Overview', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $overview_page, 'render_tab_content' ) )
 		);
 		$this->hub_tab_registry->register(
-			new Tab( 'diagnostics', __( 'Diagnostics', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->diagnostics_page, 'render_tab_content' ) )
+			new Tab( 'bots', __( 'Bots', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->bot_management_page, 'render_tab_content' ) )
 		);
+		// 'diagnostics' is registered last (Core\Plugin::init()'s final Hub
+		// tab registration, alongside the Settings tab), so display order
+		// matches the plan's mapping (M04.1 plan §3): Overview, Bots,
+		// Events, Rules, Simulator, Event History, Visitor Tracking,
+		// Settings, Diagnostics.
 		$this->hub_page = new HubPage( $this->hub_tab_registry );
 		add_action( 'admin_menu', array( $this->hub_page, 'register_menu' ) );
 
@@ -767,11 +772,13 @@ final class Plugin {
 
 		( new FatalErrorMarkerWriter() )->register();
 
-		// Administration (M02): capability-gated event catalog and rule
-		// builder screens, submenus of the existing top-level Diagnostics
-		// page, mirroring how M01 added its own Telegram subdomain.
+		// Administration (M02, migrated into the hub at M04.1/ADR-0020):
+		// capability-gated event catalog and rule builder screens, now
+		// Events/Rules tabs of the single administration hub.
 		$this->event_catalog_page = new EventCatalogPage( $this->event_registry );
-		add_action( 'admin_menu', array( $this->event_catalog_page, 'register_menu' ) );
+		$this->hub_tab_registry->register(
+			new Tab( 'events', __( 'Events', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_catalog_page, 'render_tab_content' ) )
+		);
 
 		$this->rule_builder_page = new RuleBuilderPage(
 			$this->notification_rule_repository,
@@ -779,7 +786,9 @@ final class Plugin {
 			$this->bot_profile_repository,
 			$this->destination_repository
 		);
-		add_action( 'admin_menu', array( $this->rule_builder_page, 'register_menu' ) );
+		$this->hub_tab_registry->register(
+			new Tab( 'rules', __( 'Rules', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_builder_page, 'render_tab_content' ) )
+		);
 
 		$this->rule_builder_request_handler = new RuleBuilderRequestHandler( $this->notification_rule_repository );
 		add_action( 'admin_post_' . RuleBuilderRequestHandler::ADMIN_POST_ACTION, array( $this->rule_builder_request_handler, 'handle_request' ) );
@@ -791,10 +800,14 @@ final class Plugin {
 		$rule_simulator = new RuleSimulator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher );
 
 		$this->rule_simulator_page = new RuleSimulatorPage( $rule_simulator, $this->event_registry );
-		add_action( 'admin_menu', array( $this->rule_simulator_page, 'register_menu' ) );
+		$this->hub_tab_registry->register(
+			new Tab( RuleSimulatorPage::TAB_ID, __( 'Simulator', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_simulator_page, 'render_tab_content' ) )
+		);
 
 		$this->event_history_page = new EventHistoryPage( $this->schema_health );
-		add_action( 'admin_menu', array( $this->event_history_page, 'register_menu' ) );
+		$this->hub_tab_registry->register(
+			new Tab( EventHistoryPage::TAB_ID, __( 'Event History', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_history_page, 'render_tab_content' ) )
+		);
 
 		$this->visitor_tracking_page = new VisitorTrackingPage( $settings );
 		add_action( 'admin_menu', array( $this->visitor_tracking_page, 'register_menu' ) );

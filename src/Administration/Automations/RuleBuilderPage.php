@@ -9,7 +9,6 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Automations;
 
-use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
 use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Events\Registry;
@@ -24,7 +23,8 @@ use UniversalTelegram\Telegram\Configuration\DestinationRepository;
  */
 final class RuleBuilderPage {
 
-	public const SLUG = 'universal-telegram-rules';
+	public const SLUG   = 'universal-telegram-rules';
+	public const TAB_ID = 'rules';
 
 	/**
 	 * Constructor.
@@ -42,34 +42,16 @@ final class RuleBuilderPage {
 	) {}
 
 	/**
-	 * Registers the admin menu entry.
+	 * Renders this tab's content only (no outer .wrap/<h1> — owned by
+	 * HubPage).
 	 */
-	public function register_menu(): void {
-		add_submenu_page(
-			DiagnosticsPage::SLUG,
-			__( 'Notification Rules', 'universal-telegram' ),
-			__( 'Rules', 'universal-telegram' ),
-			CapabilityRegistrar::MANAGE_AUTOMATIONS,
-			self::SLUG,
-			array( $this, 'render' )
-		);
-	}
-
-	/**
-	 * Renders the page.
-	 */
-	public function render(): void {
+	public function render_tab_content(): void {
 		if ( ! current_user_can( CapabilityRegistrar::MANAGE_AUTOMATIONS ) ) {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'universal-telegram' ) );
 		}
 
-		echo '<div class="wrap">';
-		echo '<h1>' . esc_html__( 'Notification Rules', 'universal-telegram' ) . '</h1>';
-
 		$this->render_rule_list();
 		$this->render_rule_form();
-
-		echo '</div>';
 	}
 
 	/**

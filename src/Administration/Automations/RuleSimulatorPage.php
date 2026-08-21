@@ -9,7 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Automations;
 
-use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
+use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Automations\RuleSimulator;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Events\Registry;
@@ -24,7 +24,8 @@ use UniversalTelegram\Events\Registry;
  */
 final class RuleSimulatorPage {
 
-	public const SLUG = 'universal-telegram-rule-simulator';
+	public const SLUG   = 'universal-telegram-rule-simulator';
+	public const TAB_ID = 'simulator';
 
 	/**
 	 * Constructor.
@@ -38,35 +39,21 @@ final class RuleSimulatorPage {
 	) {}
 
 	/**
-	 * Registers the admin menu entry.
+	 * Renders this tab's content only (no outer .wrap/<h1> — owned by
+	 * HubPage), including a same-request simulation if a sample was
+	 * submitted (a GET-only preview tool; no state-changing write of any
+	 * kind occurs, so no nonce is required for this read-only action).
 	 */
-	public function register_menu(): void {
-		add_submenu_page(
-			DiagnosticsPage::SLUG,
-			__( 'Rule Simulator', 'universal-telegram' ),
-			__( 'Simulator', 'universal-telegram' ),
-			CapabilityRegistrar::MANAGE_AUTOMATIONS,
-			self::SLUG,
-			array( $this, 'render' )
-		);
-	}
-
-	/**
-	 * Renders the page, including a same-request simulation if a sample
-	 * was submitted (a GET-only preview tool; no state-changing write of
-	 * any kind occurs, so no nonce is required for this read-only action).
-	 */
-	public function render(): void {
+	public function render_tab_content(): void {
 		if ( ! current_user_can( CapabilityRegistrar::MANAGE_AUTOMATIONS ) ) {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'universal-telegram' ) );
 		}
 
-		echo '<div class="wrap">';
-		echo '<h1>' . esc_html__( 'Rule Simulator', 'universal-telegram' ) . '</h1>';
 		echo '<p>' . esc_html__( 'Preview which rules would match a sample event. No Telegram message is ever sent, and no dispatch-log row is ever written by this tool.', 'universal-telegram' ) . '</p>';
 
 		echo '<form method="get">';
-		echo '<input type="hidden" name="page" value="' . esc_attr( self::SLUG ) . '" />';
+		echo '<input type="hidden" name="page" value="' . esc_attr( HubPage::SLUG ) . '" />';
+		echo '<input type="hidden" name="tab" value="' . esc_attr( self::TAB_ID ) . '" />';
 
 		echo '<table class="form-table"><tbody>';
 		echo '<tr><th><label for="ut-sim-event-type">' . esc_html__( 'Event type', 'universal-telegram' ) . '</label></th><td><select id="ut-sim-event-type" name="event_type">';
@@ -83,8 +70,6 @@ final class RuleSimulatorPage {
 		if ( isset( $_GET['event_type'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only GET preview, no state changed.
 			$this->render_result();
 		}
-
-		echo '</div>';
 	}
 
 	/**

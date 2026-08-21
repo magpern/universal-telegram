@@ -9,16 +9,15 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Automations;
 
-use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Events\Registry;
 
 /**
  * Read-only listing of every registered event type, its schema version,
- * and its declared allowlisted fields (M02 plan §9.1). Gated on
- * MANAGE_AUTOMATIONS via add_submenu_page()'s own capability parameter,
- * with an explicit re-check inside render() as defense in depth, exactly
- * mirroring DiagnosticsPage's existing pattern.
+ * and its declared allowlisted fields (M02 plan §9.1). The Events tab of
+ * the administration hub (ADR-0020), gated on MANAGE_AUTOMATIONS,
+ * re-verified inside render_tab_content() as defense in depth alongside
+ * the Hub shell's own capability check.
  */
 final class EventCatalogPage {
 
@@ -32,29 +31,14 @@ final class EventCatalogPage {
 	public function __construct( private readonly Registry $registry ) {}
 
 	/**
-	 * Registers the admin menu entry.
+	 * Renders this tab's content only (no outer .wrap/<h1> — owned by
+	 * HubPage).
 	 */
-	public function register_menu(): void {
-		add_submenu_page(
-			DiagnosticsPage::SLUG,
-			__( 'Event Catalog', 'universal-telegram' ),
-			__( 'Events', 'universal-telegram' ),
-			CapabilityRegistrar::MANAGE_AUTOMATIONS,
-			self::SLUG,
-			array( $this, 'render' )
-		);
-	}
-
-	/**
-	 * Renders the page.
-	 */
-	public function render(): void {
+	public function render_tab_content(): void {
 		if ( ! current_user_can( CapabilityRegistrar::MANAGE_AUTOMATIONS ) ) {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'universal-telegram' ) );
 		}
 
-		echo '<div class="wrap">';
-		echo '<h1>' . esc_html__( 'Event Catalog', 'universal-telegram' ) . '</h1>';
 		echo '<table class="widefat striped"><thead><tr><th>' .
 			esc_html__( 'Event type', 'universal-telegram' ) . '</th><th>' .
 			esc_html__( 'Schema version', 'universal-telegram' ) . '</th><th>' .
@@ -72,6 +56,5 @@ final class EventCatalogPage {
 		}
 
 		echo '</tbody></table>';
-		echo '</div>';
 	}
 }

@@ -36,7 +36,7 @@ final class EventHistoryPageTest extends WP_UnitTestCase {
 		$page = new EventHistoryPage( new SchemaHealth() );
 
 		ob_start();
-		$page->render();
+		$page->render_tab_content();
 		$output = ob_get_clean();
 
 		$this->assertStringContainsString( 'wordpress.user_registered', $output );
@@ -51,6 +51,6 @@ final class EventHistoryPageTest extends WP_UnitTestCase {
 		$page = new EventHistoryPage( new SchemaHealth() );
 
 		$this->expectException( \WPDieException::class );
-		$page->render();
+		$page->render_tab_content();
 	}
 }

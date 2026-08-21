@@ -355,7 +355,7 @@ wp eval '
 	}
 
 	ob_start();
-	$plugin->bot_management_page()->render();
+	$plugin->bot_management_page()->render_tab_content();
 	$html = ob_get_clean();
 
 	if ( false !== strpos( $html, $known_synthetic_token ) ) {

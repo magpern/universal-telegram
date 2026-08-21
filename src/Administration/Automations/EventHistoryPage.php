@@ -9,7 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Automations;
 
-use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
+use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
@@ -23,7 +23,8 @@ use UniversalTelegram\Persistence\SchemaHealth;
  */
 final class EventHistoryPage {
 
-	public const SLUG = 'universal-telegram-event-history';
+	public const SLUG   = 'universal-telegram-event-history';
+	public const TAB_ID = 'event-history';
 
 	private const PER_PAGE = 20;
 
@@ -35,29 +36,13 @@ final class EventHistoryPage {
 	public function __construct( private readonly SchemaHealth $schema_health ) {}
 
 	/**
-	 * Registers the admin menu entry.
+	 * Renders this tab's content only (no outer .wrap/<h1> — owned by
+	 * HubPage).
 	 */
-	public function register_menu(): void {
-		add_submenu_page(
-			DiagnosticsPage::SLUG,
-			__( 'Event History', 'universal-telegram' ),
-			__( 'Event History', 'universal-telegram' ),
-			CapabilityRegistrar::MANAGE_AUTOMATIONS,
-			self::SLUG,
-			array( $this, 'render' )
-		);
-	}
-
-	/**
-	 * Renders the page.
-	 */
-	public function render(): void {
+	public function render_tab_content(): void {
 		if ( ! current_user_can( CapabilityRegistrar::MANAGE_AUTOMATIONS ) ) {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'universal-telegram' ) );
 		}
-
-		echo '<div class="wrap">';
-		echo '<h1>' . esc_html__( 'Event History', 'universal-telegram' ) . '</h1>';
 
 		if ( ! $this->schema_health->is_available() ) {
 			$failure_code = $this->schema_health->failure_code();
@@ -71,12 +56,10 @@ final class EventHistoryPage {
 					)
 				)
 			);
-			echo '</div>';
 			return;
 		}
 
 		$this->render_rows();
-		echo '</div>';
 	}
 
 	/**
@@ -104,7 +87,8 @@ final class EventHistoryPage {
 		}
 
 		echo '<form method="get">';
-		echo '<input type="hidden" name="page" value="' . esc_attr( self::SLUG ) . '" />';
+		echo '<input type="hidden" name="page" value="' . esc_attr( HubPage::SLUG ) . '" />';
+		echo '<input type="hidden" name="tab" value="' . esc_attr( self::TAB_ID ) . '" />';
 		echo '<input type="text" name="event_type" value="' . esc_attr( $event_type ) . '" placeholder="' . esc_attr__( 'Filter by event type', 'universal-telegram' ) . '" />';
 		submit_button( __( 'Filter', 'universal-telegram' ), '', '', false );
 		echo '</form>';

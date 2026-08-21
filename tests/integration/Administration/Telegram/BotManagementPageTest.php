@@ -40,7 +40,7 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		$page = new BotManagementPage( $bots, $destinations, $updates, $messages );
 
 		ob_start();
-		$page->render();
+		$page->render_tab_content();
 		$html = ob_get_clean();
 
 		$this->assertStringContainsString( 'My Bot', $html );
@@ -63,6 +63,6 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		);
 
 		$this->expectException( \WPDieException::class );
-		$page->render();
+		$page->render_tab_content();
 	}
 }
