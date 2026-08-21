@@ -2,7 +2,18 @@
 
 ## Status
 
-Not Started
+Resolved via ADR-0018. The frozen implementation plan
+(`docs/plans/m03-woocommerce-event-coverage-plan-v1.md`) and ADR-0018
+(`docs/adr/0018-woocommerce-event-catalog-and-hook-binding.md`) are the
+governing documents for this milestone's event catalog, hook bindings, and
+idempotency policy.
+
+Per ADR-0011, M00–M09 (including M03) are exempt from Vlad's separate manual
+acceptance session; this milestone's "Vlad's independent test focus" and
+"Vlad's completed acceptance report" evidence requirements below are
+satisfied by the automated-evidence substitute ADR-0011 already defines
+(frozen plan, code review, mandatory automated validation, and green CI) —
+not by a literal separate Vlad session.
 
 ## Dependencies
 

@@ -251,7 +251,7 @@ High-volume events such as page views should be aggregated or sampled by default
 
 * Product viewed
 * Product added to or removed from cart
-* Cart value crosses a threshold
+* Cart value crosses a threshold — deferred, see ADR-0018
 * Coupon applied or rejected
 * Checkout viewed
 * Checkout started
@@ -260,10 +260,18 @@ High-volume events such as page views should be aggregated or sampled by default
 * Shipping unavailable
 * Payment failed
 * Order created
-* Order paid
+* Order paid — deferred, see ADR-0018
 * Order status changed
 * Refund created
 * Product low or out of stock
+
+M03 (`docs/adr/0018-woocommerce-event-catalog-and-hook-binding.md`) selects
+and implements a final subset of eleven `woocommerce.*` event types from
+this candidate list, with explicit justification for each exclusion,
+renaming ("payment failed" implemented as `woocommerce.order_failed`,
+documented as "order entered failed status" rather than a guaranteed
+gateway-verified failure signal), and bounded-coalescing idempotency
+policy. See ADR-0018 for the authoritative decision record.
 
 Server-authoritative events should be preferred whenever available.
 
