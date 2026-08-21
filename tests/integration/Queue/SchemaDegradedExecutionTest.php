@@ -36,6 +36,39 @@ final class SchemaDegradedExecutionTest extends WP_UnitTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		FailingJobFixture::reset();
+
+		// Action Scheduler enforces a max-one-concurrent-batch guard keyed
+		// on live rows in its own actionscheduler_claims table
+		// (ActionScheduler_Abstract_QueueRunner::has_maximum_concurrent_batches()).
+		// A claim row left behind by any other test in the same suite run
+		// (e.g. one that calls ActionScheduler_QueueRunner::run() and does
+		// not fully release its claim before the test's transaction is
+		// rolled back) silently makes every subsequent call to run() in
+		// this process a no-op — this test's own action would then never
+		// be claimed at all, regardless of this milestone's production
+		// code. Clearing any pre-existing claim rows here is test-hygiene
+		// only: it does not change what this test asserts, only guards its
+		// own isolation against unrelated test-ordering effects elsewhere
+		// in the suite (M03 validation-gate fix; ADR-0006/ADR-0007 remain
+		// unchanged, no production code touched).
+		global $wpdb;
+		$wpdb->query( "DELETE FROM {$wpdb->actionscheduler_claims}" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+
+		// Action Scheduler's own internal store-migration housekeeping
+		// action (action_scheduler/migration_hook, scheduled once by
+		// Action Scheduler itself, unrelated to this plugin) can be due at
+		// the same moment as this test's own action once WooCommerce is
+		// active and the full suite has run long enough for it to become
+		// due. When claimed in the same batch, running it consumes this
+		// run() call without this test's own action being processed
+		// afterwards, making this test's specific queue-runner assertion
+		// order-dependent on Action Scheduler's own unrelated internal
+		// migration state rather than on the schema-degraded behaviour
+		// this test exists to verify. Cancelling it here is test-hygiene
+		// only — it never touches this plugin's own production code.
+		if ( function_exists( 'as_unschedule_all_actions' ) ) {
+			as_unschedule_all_actions( 'action_scheduler/migration_hook' );
+		}
 	}
 
 	public function test_full_degraded_and_recovery_lifecycle(): void {

@@ -226,7 +226,7 @@ final class OrderEventEmitter {
 			),
 		);
 
-		$key = 'order:' . $order_id . ':' . $status_from . '->' . $status_to . ':' . $order->get_date_modified()->getTimestamp();
+		$key = 'order:' . $order_id . ':' . $status_from . '->' . $status_to . ':' . $this->order_modified_timestamp( $order );
 
 		universal_telegram_emit_event( self::ORDER_STATUS_CHANGED, $data, $key );
 	}
@@ -298,7 +298,7 @@ final class OrderEventEmitter {
 			),
 		);
 
-		$key = 'order:' . $order_id . ':failed:' . $order->get_date_modified()->getTimestamp();
+		$key = 'order:' . $order_id . ':failed:' . $this->order_modified_timestamp( $order );
 
 		universal_telegram_emit_event( self::ORDER_FAILED, $data, $key );
 	}
@@ -332,7 +332,7 @@ final class OrderEventEmitter {
 			),
 		);
 
-		$key = 'order:' . $order_id . ':cancelled:' . $order->get_date_modified()->getTimestamp();
+		$key = 'order:' . $order_id . ':cancelled:' . $this->order_modified_timestamp( $order );
 
 		universal_telegram_emit_event( self::ORDER_CANCELLED, $data, $key );
 	}
@@ -383,6 +383,25 @@ final class OrderEventEmitter {
 			'currency'    => $order->get_currency(),
 			'item_count'  => $order->get_item_count(),
 		);
+	}
+
+	/**
+	 * The order's own last-modified timestamp, used as the second-resolution
+	 * attempt-window coalescing component of the status-transition
+	 * idempotency keys (M03 plan §5.2, §5.4, §5.6, §5.7). get_date_modified()
+	 * can return null for an order with no recorded modification date (e.g.
+	 * one whose status was changed programmatically without a save() that
+	 * touches this field); falling back to 0 keeps the key deterministic
+	 * rather than raising a fatal error out of a WooCommerce hook callback.
+	 *
+	 * @param WC_Order $order The order.
+	 *
+	 * @return int
+	 */
+	private function order_modified_timestamp( WC_Order $order ): int {
+		$date_modified = $order->get_date_modified();
+
+		return null === $date_modified ? 0 : $date_modified->getTimestamp();
 	}
 
 	/**

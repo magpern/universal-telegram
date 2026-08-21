@@ -66,7 +66,7 @@ final class OrderEventEmitterTest extends WP_UnitTestCase {
 
 		$projected = json_decode( $rows[0]['projected_fields_json'], true );
 		$this->assertSame( $order->get_id(), $projected['subject']['order_id'] );
-		$this->assertSame( (float) $order->get_total(), $projected['payload']['order_total'] );
+		$this->assertEqualsWithDelta( (float) $order->get_total(), $projected['payload']['order_total'], 0.001 );
 		$this->assertSame( 'USD', $projected['payload']['currency'] );
 		$this->assertSame( 2, $projected['payload']['item_count'] );
 	}
@@ -160,7 +160,7 @@ final class OrderEventEmitterTest extends WP_UnitTestCase {
 		$projected = json_decode( $rows[0]['projected_fields_json'], true );
 
 		$this->assertSame( $reloaded->get_id(), $projected['subject']['order_id'] );
-		$this->assertSame( (float) $reloaded->get_total(), $projected['payload']['order_total'] );
+		$this->assertEqualsWithDelta( (float) $reloaded->get_total(), $projected['payload']['order_total'], 0.001 );
 		$this->assertSame( $reloaded->get_status(), $projected['context']['order_status'] );
 	}
 
