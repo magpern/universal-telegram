@@ -39,6 +39,7 @@ use UniversalTelegram\Conversations\ConversationOutboundHandler;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\Rest\ConversationsController;
+use UniversalTelegram\Conversations\RetentionCleanupHandler as ConversationRetentionCleanupHandler;
 use UniversalTelegram\Conversations\TopicCreationDispatcher;
 use UniversalTelegram\Conversations\TopicCreationHandler;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
@@ -342,6 +343,13 @@ final class Plugin {
 	private ?RetentionCleanupHandler $retention_cleanup_handler = null;
 
 	/**
+	 * The conversation retention cleanup handler, constructed by init().
+	 *
+	 * @var ConversationRetentionCleanupHandler|null
+	 */
+	private ?ConversationRetentionCleanupHandler $conversation_retention_cleanup_handler = null;
+
+	/**
 	 * The webhook registration/rotation coordinator, constructed by init().
 	 *
 	 * @var WebhookRegistrationCoordinator|null
@@ -608,6 +616,24 @@ final class Plugin {
 			static function () {
 				if ( ! as_has_scheduled_action( RetentionCleanupHandler::HOOK, array(), WorkerRunner::GROUP ) ) {
 					as_schedule_recurring_action( time() + DAY_IN_SECONDS, DAY_IN_SECONDS, RetentionCleanupHandler::HOOK, array(), WorkerRunner::GROUP );
+				}
+			}
+		);
+
+		$this->conversation_retention_cleanup_handler = new ConversationRetentionCleanupHandler(
+			$this->conversation_repository,
+			$this->message_repository,
+			$this->destination_repository
+		);
+		add_action( ConversationRetentionCleanupHandler::HOOK, array( $this->conversation_retention_cleanup_handler, 'run' ) );
+
+		// Fixed defaults, no settings UI in M05 (M05 plan §9); scheduled the
+		// same deferred way as the Telegram outbound retention action above.
+		add_action(
+			'init',
+			static function () {
+				if ( ! as_has_scheduled_action( ConversationRetentionCleanupHandler::HOOK, array(), WorkerRunner::GROUP ) ) {
+					as_schedule_recurring_action( time() + DAY_IN_SECONDS, DAY_IN_SECONDS, ConversationRetentionCleanupHandler::HOOK, array(), WorkerRunner::GROUP );
 				}
 			}
 		);
@@ -1150,6 +1176,13 @@ final class Plugin {
 	 */
 	public function retention_cleanup_handler(): ?RetentionCleanupHandler {
 		return $this->retention_cleanup_handler;
+	}
+
+	/**
+	 * The conversation retention cleanup handler. Available only after init() has run.
+	 */
+	public function conversation_retention_cleanup_handler(): ?ConversationRetentionCleanupHandler {
+		return $this->conversation_retention_cleanup_handler;
 	}
 
 	/**

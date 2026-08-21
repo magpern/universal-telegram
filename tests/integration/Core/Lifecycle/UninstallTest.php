@@ -48,6 +48,11 @@ final class UninstallTest extends WP_UnitTestCase {
 		Migrator::DISPATCH_LOG_TABLE,
 	);
 
+	private const M05_TABLES = array(
+		Migrator::CONVERSATIONS_TABLE,
+		Migrator::CONVERSATION_MESSAGES_TABLE,
+	);
+
 	protected function setUp(): void {
 		parent::setUp();
 		( new CapabilityRegistrar() )->grant_to_administrator();
@@ -103,7 +108,7 @@ final class UninstallTest extends WP_UnitTestCase {
 		// Retention-gated: the tables, settings, and schema version remain.
 		$table = $wpdb->prefix . Migrator::AUDIT_LOG_TABLE;
 		$this->assertTrue( $this->table_exists( $table ) );
-		foreach ( array_merge( self::M01_TABLES, self::M02_TABLES ) as $table_name ) {
+		foreach ( array_merge( self::M01_TABLES, self::M02_TABLES, self::M05_TABLES ) as $table_name ) {
 			$this->assertTrue( $this->table_exists( $wpdb->prefix . $table_name ), "Expected {$table_name} to still exist." );
 		}
 		$this->assertNotFalse( get_option( 'universal_telegram_db_version' ) );
@@ -169,7 +174,7 @@ final class UninstallTest extends WP_UnitTestCase {
 			$table = $wpdb->prefix . Migrator::AUDIT_LOG_TABLE;
 			$this->assertFalse( $this->table_exists( $table ) );
 
-			foreach ( array_merge( self::M01_TABLES, self::M02_TABLES ) as $table_name ) {
+			foreach ( array_merge( self::M01_TABLES, self::M02_TABLES, self::M05_TABLES ) as $table_name ) {
 				$this->assertFalse( $this->table_exists( $wpdb->prefix . $table_name ), "Expected {$table_name} to have been dropped." );
 			}
 
@@ -399,8 +404,56 @@ final class UninstallTest extends WP_UnitTestCase {
 				UNIQUE KEY rule_event (rule_id, event_id)
 			) {$charset_collate}"
 		);
+		$conversations_table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$conversations_table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				conversation_uuid CHAR(36) NOT NULL,
+				secret_hash VARCHAR(255) NULL,
+				bot_id BIGINT UNSIGNED NOT NULL,
+				destination_id BIGINT UNSIGNED NULL,
+				chat_profile VARCHAR(64) NULL,
+				status VARCHAR(20) NOT NULL DEFAULT 'new',
+				assigned_operator_id BIGINT UNSIGNED NULL,
+				topic_creation_state VARCHAR(16) NOT NULL DEFAULT 'none',
+				telegram_topic_id BIGINT NULL,
+				ai_participation_state VARCHAR(16) NOT NULL DEFAULT 'none',
+				consent_state VARCHAR(16) NOT NULL DEFAULT 'unknown',
+				session_ref VARCHAR(191) NULL,
+				created_at DATETIME NOT NULL,
+				updated_at DATETIME NOT NULL,
+				resolved_at DATETIME NULL,
+				expires_at DATETIME NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY conversation_uuid (conversation_uuid),
+				KEY status (status),
+				KEY telegram_topic_id (telegram_topic_id),
+				KEY topic_creation_state (topic_creation_state),
+				KEY created_at (created_at)
+			) {$charset_collate}"
+		);
+
+		$conversation_messages_table = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$conversation_messages_table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				conversation_id BIGINT UNSIGNED NOT NULL,
+				message_uuid CHAR(36) NOT NULL,
+				direction VARCHAR(8) NOT NULL,
+				body_ciphertext LONGTEXT NULL,
+				outbound_message_uuid CHAR(36) NULL,
+				telegram_message_id BIGINT NULL,
+				delivery_state VARCHAR(16) NOT NULL DEFAULT 'stored',
+				created_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY message_uuid (message_uuid),
+				KEY conversation_created (conversation_id, created_at),
+				KEY outbound_message_uuid (outbound_message_uuid)
+			) {$charset_collate}"
+		);
 		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 
-		update_option( 'universal_telegram_db_version', 10 );
+		update_option( 'universal_telegram_db_version', 12 );
 	}
 }

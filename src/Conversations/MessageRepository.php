@@ -170,6 +170,56 @@ class MessageRepository {
 	}
 
 	/**
+	 * Nulls every message's own body_ciphertext for one conversation —
+	 * retention cleanup's 30-day-from-archival step (M05 plan §9). Already-
+	 * null rows are left untouched, making a rerun a safe no-op.
+	 *
+	 * @param int $conversation_id The owning conversation.
+	 *
+	 * @return bool
+	 */
+	public function null_bodies_for_conversation( int $conversation_id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array( 'body_ciphertext' => null ),
+			array( 'conversation_id' => $conversation_id ),
+			array( '%s' ),
+			array( '%d' )
+		);
+
+		return false !== $updated;
+	}
+
+	/**
+	 * Permanently deletes every message row for one conversation —
+	 * retention cleanup's 90-day-from-archival step, always run in the same
+	 * pass as deleting the conversation row itself (M05 plan §9).
+	 *
+	 * @param int $conversation_id The owning conversation.
+	 *
+	 * @return bool
+	 */
+	public function delete_for_conversation( int $conversation_id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
+
+		return false !== $wpdb->delete( $table, array( 'conversation_id' => $conversation_id ), array( '%d' ) );
+	}
+
+	/**
 	 * Finds a message by primary key.
 	 *
 	 * @param int $id The message's primary key.

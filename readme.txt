@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.3.1
+Stable tag: 0.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -24,8 +24,11 @@ WooCommerce order/payment/refund/stock/cart/coupon/checkout event coverage and a
 privacy-minimal visitor/browser events (page views, navigation, search, clicks, JavaScript errors,
 and, when WooCommerce is active, product views and classic add-to-cart intent), collected only with
 tracking explicitly enabled and delivered through the same event/rule/queue pipeline — no cookies,
-fingerprinting, persistent visitor identity, or raw IP/user-agent transmission. Conversations, the
-chat widget, and AI assistance are not part of this release; they arrive in later milestones.
+fingerprinting, persistent visitor identity, or raw IP/user-agent transmission. This release also
+adds the conversation backend: persistent, encrypted-at-rest conversations with a bearer-secret
+visitor credential, a minimal public REST contract, and Telegram forum-topic-scoped bidirectional
+routing. The chat widget UI, operator workflow, and AI assistance are not part of this release; they
+arrive in later milestones.
 
 == Delivery guarantees ==
 
@@ -38,6 +41,21 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.4.0 =
+* Conversation backend (M05, ADR-0021): a persistent conversation and message store, a two-part
+  visitor credential (public conversation_uuid plus a bearer secret verified only by
+  password_verify(), never used as a lookup key), and a minimal, unauthenticated-at-the-WP-REST-layer
+  contract for starting a conversation, posting a visitor message, and short-polling for replies —
+  every response no-store, same-origin only, protected by independent per-client and site-wide rate
+  limits. A Telegram forum topic is created only after a conversation's first accepted message,
+  idempotently; visitor messages route into it through the existing outbound pipeline, and operator
+  replies in that topic route back to the conversation only once dedup, chat-identity, and
+  known-topic-mapping all hold — every other inbound update remains exactly as metadata-only as
+  before. Message bodies are encrypted at rest via the existing credential vault; fixed-default
+  retention nulls message bodies 30 days after a conversation is archived and permanently deletes an
+  archived conversation 90 days after archival. Backend only: no chat widget UI, no operator workflow
+  UI, no new administration tab or capability; those arrive in later milestones.
 
 = 0.3.1 =
 * Administration hub (M04.1, ADR-0020): the WordPress admin left menu now shows one entry,

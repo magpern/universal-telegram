@@ -415,6 +415,81 @@ class ConversationRepository {
 	}
 
 	/**
+	 * Every conversation currently `resolved` — retention cleanup's own
+	 * source list for the `resolved -> archived` transition, the sole
+	 * code path in this plugin ever permitted to perform it (M05 plan §7).
+	 *
+	 * @return array<int, Conversation>
+	 */
+	public function resolved(): array {
+		if ( ! $this->schema_health->is_available() ) {
+			return array();
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$rows  = $wpdb->get_results(
+			$wpdb->prepare( "SELECT * FROM {$table} WHERE status = %s", ConversationStatus::RESOLVED ), // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			ARRAY_A
+		);
+
+		return array_map( array( $this, 'hydrate' ), null === $rows ? array() : $rows );
+	}
+
+	/**
+	 * Every `archived` conversation whose own `updated_at` — frozen at the
+	 * moment of archival, since `archived` is a terminal status no further
+	 * transition ever touches — is older than the given number of days
+	 * (M05 plan §9).
+	 *
+	 * @param int $days The retention threshold, in days.
+	 *
+	 * @return array<int, Conversation>
+	 */
+	public function archived_older_than( int $days ): array {
+		if ( ! $this->schema_health->is_available() ) {
+			return array();
+		}
+
+		global $wpdb;
+
+		$table     = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$threshold = gmdate( 'Y-m-d H:i:s', time() - ( $days * DAY_IN_SECONDS ) );
+		$rows      = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM {$table} WHERE status = %s AND updated_at < %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				ConversationStatus::ARCHIVED,
+				$threshold
+			),
+			ARRAY_A
+		);
+
+		return array_map( array( $this, 'hydrate' ), null === $rows ? array() : $rows );
+	}
+
+	/**
+	 * Permanently deletes a conversation row. Retention cleanup's own final
+	 * step, always preceded by deleting the conversation's own messages and
+	 * destination row in the same pass (M05 plan §9).
+	 *
+	 * @param int $id The conversation's primary key.
+	 *
+	 * @return bool
+	 */
+	public function delete( int $id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		return false !== $wpdb->delete( $table, array( 'id' => $id ), array( '%d' ) );
+	}
+
+	/**
 	 * Hydrates one database row into a Conversation.
 	 *
 	 * @param array<string, mixed> $row The raw database row.
