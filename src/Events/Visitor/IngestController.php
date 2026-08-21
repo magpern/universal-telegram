@@ -138,6 +138,10 @@ final class IngestController {
 			return new WP_REST_Response( null, 400 );
 		}
 
+		if ( ! $this->every_product_id_is_real( $validated['events'] ) ) {
+			return new WP_REST_Response( null, 400 );
+		}
+
 		$settings_values = $this->settings->get();
 
 		if ( ! $settings_values['visitor_tracking_enabled'] ) {
@@ -157,6 +161,36 @@ final class IngestController {
 		}
 
 		return new WP_REST_Response( null, 202 );
+	}
+
+	/**
+	 * Rejects the whole batch (400) if any product_id-bearing event
+	 * references a product that does not actually exist — a
+	 * forged/nonexistent id is never recorded (M04 plan §4.6). When
+	 * WooCommerce is inactive, `wc_get_product()` does not exist and
+	 * these types are unregistered anyway, so they are simply skipped
+	 * here and later silently suppressed by the registry check.
+	 *
+	 * @param array<int, array{uuid: string, event_type: string, fields: array<string, mixed>}> $events Validated events.
+	 *
+	 * @return bool
+	 */
+	private function every_product_id_is_real( array $events ): bool {
+		if ( ! function_exists( 'wc_get_product' ) ) {
+			return true;
+		}
+
+		foreach ( $events as $event ) {
+			if ( ! isset( $event['fields']['product_id'] ) ) {
+				continue;
+			}
+
+			if ( ! wc_get_product( $event['fields']['product_id'] ) ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**

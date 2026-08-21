@@ -1,10 +1,9 @@
 /**
  * Dependency-free visitor/browser event tracking client (M04 plan §4.4,
- * §4.6, docs/adr/0019). No third-party library, no build step. Collects
- * only the bounded, PII-free fields documented in the M04 plan; never
- * reads cookies, local/session storage contents beyond its own visit_ref
- * key, query strings, form values, or raw error text. Every network call is wrapped in try/catch and never blocks
- * rendering, navigation, or checkout.
+ * §4.6, docs/adr/0019). No third-party library, no build step. Never
+ * reads cookies, local/session storage beyond its own visit_ref key,
+ * query strings, form values, or raw error text. Every network call is
+ * wrapped in try/catch and never blocks rendering, navigation, or checkout.
  */
 ( function ( global ) {
 	'use strict';
@@ -13,11 +12,7 @@
 	var MAX_ERRORS_PER_SESSION = 5;
 	var ENDPOINT_PATH = '/wp-json/universal-telegram/v1/visitor-events';
 
-	/**
-	 * Generates a 16-byte random hex string via crypto.getRandomValues().
-	 *
-	 * @return {string}
-	 */
+	// A 16-byte random hex string via crypto.getRandomValues().
 	function randomHex16() {
 		var bytes = new Uint8Array( 16 );
 		global.crypto.getRandomValues( bytes );
@@ -28,11 +23,7 @@
 		return out;
 	}
 
-	/**
-	 * Generates a UUIDv4 string.
-	 *
-	 * @return {string}
-	 */
+	// A UUIDv4 string.
 	function uuid4() {
 		if ( global.crypto && typeof global.crypto.randomUUID === 'function' ) {
 			return global.crypto.randomUUID();
@@ -54,27 +45,17 @@
 		);
 	}
 
-	/**
-	 * Tracker instance factory — a plain object, no class needed. Kept as a
-	 * factory (rather than one shared module-level singleton) so the
-	 * behavioural test suite can construct fresh, isolated instances.
-	 *
-	 * @return {object}
-	 */
+	// A factory, not a singleton, so the behavioural test suite can
+	// construct fresh, isolated instances.
 	function createTracker() {
-		var config       = null;
-		var visitRef     = null;
-		var lastPath     = null;
-		var errorCount   = 0;
-		var queue        = [];
+		var config     = null;
+		var visitRef   = null;
+		var lastPath   = null;
+		var errorCount = 0;
+		var queue      = [];
 
-		/**
-		 * Reads (or creates) this tab session's visit_ref. Stable across
-		 * reloads because sessionStorage survives them by design; cleared
-		 * only when the tab/browser session ends (M04 plan §4.3).
-		 *
-		 * @return {{ref: string, isNew: boolean}}
-		 */
+		// Stable across reloads (sessionStorage survives them); cleared
+		// only when the tab/browser session ends (M04 plan §4.3).
 		function getOrCreateVisitRef() {
 			var existing = null;
 			try {
@@ -91,22 +72,14 @@
 			try {
 				global.sessionStorage.setItem( STORAGE_KEY, fresh );
 			} catch ( e ) {
-				// sessionStorage unavailable (private mode, etc.) — the
-				// tracker degrades to a single in-memory visit_ref rather
-				// than throwing.
+				// sessionStorage unavailable (private mode) — degrade to
+				// an in-memory-only visit_ref rather than throwing.
 			}
 			return { ref: fresh, isNew: true };
 		}
 
-		/**
-		 * Whether collection is currently permitted: the master switch,
-		 * at least one family toggle already enforced server-side, and
-		 * the client-side consent suppression gate (M04 plan §4.3 — this
-		 * is a suppression mechanism only, never a server-verifiable
-		 * guarantee).
-		 *
-		 * @return {boolean}
-		 */
+		// Client-side suppression only (M04 plan §4.3) — never a
+		// server-verifiable guarantee.
 		function consentGranted() {
 			if ( ! config || ! config.enabled ) {
 				return false;
@@ -117,14 +90,8 @@
 			return true === global.universalTelegramConsent;
 		}
 
-		/**
-		 * Enqueues one event. No-op (nothing enqueued, nothing sent) when
-		 * consent is not granted — the tracker never contacts the endpoint
-		 * at all in that case.
-		 *
-		 * @param {string} shortType Short event-type code (e.g. "pv").
-		 * @param {object} data      Flat, allow-listed field object.
-		 */
+		// No-op when consent is not granted — the endpoint is never
+		// contacted at all in that case.
 		function trackEvent( shortType, data ) {
 			if ( ! consentGranted() ) {
 				return;
@@ -132,13 +99,7 @@
 			queue.push( { uuid: uuid4(), type: shortType, data: data || {} } );
 		}
 
-		/**
-		 * Records a same-tab navigation: emits one "nv" event pairing the
-		 * previously known path with the new one, then updates the
-		 * tracked path (M04 plan §4.2).
-		 *
-		 * @param {string} toPath The new path.
-		 */
+		// One "nv" event per same-tab transition (M04 plan §4.2).
 		function onNavigate( toPath ) {
 			if ( null !== lastPath && lastPath !== toPath ) {
 				trackEvent( 'nv', { from_path: lastPath, to_path: toPath } );
@@ -146,14 +107,8 @@
 			lastPath = toPath;
 		}
 
-		/**
-		 * Records one client-side error, capped at MAX_ERRORS_PER_SESSION
-		 * per tab session — a flat volume bound, not deduplication
-		 * (M04 plan §4.5). No location, message, or stack data is ever
-		 * read or transmitted.
-		 *
-		 * @param {string} category One of "runtime"|"promise_rejection"|"resource_load".
-		 */
+		// Capped at MAX_ERRORS_PER_SESSION — a flat volume bound, not
+		// deduplication (M04 plan §4.5). No location/message/stack ever read.
 		function onError( category ) {
 			if ( errorCount >= MAX_ERRORS_PER_SESSION ) {
 				return;
@@ -162,15 +117,8 @@
 			trackEvent( 'je', { error_category: category } );
 		}
 
-		/**
-		 * Sends every currently queued event as one batch. On failure, the
-		 * queue is left intact — a retry reuses the same event objects,
-		 * and therefore the same client-generated uuid, rather than
-		 * regenerating one (M04 plan §4.5's idempotency-key reuse
-		 * guarantee).
-		 *
-		 * @return {Promise<boolean>} Resolves true if the batch was handed off successfully.
-		 */
+		// On failure the queue is left intact, so a retry reuses the same
+		// uuid rather than regenerating one (M04 plan §4.5).
 		function flush() {
 			if ( 0 === queue.length || ! config ) {
 				return Promise.resolve( true );
@@ -207,13 +155,36 @@
 			return Promise.resolve( false );
 		}
 
-		/**
-		 * Initializes the tracker: resolves visit_ref, records the initial
-		 * page view (and session_started if this is a new tab session),
-		 * and wires the beacon-on-unload delivery strategy.
-		 *
-		 * @param {object} trackerConfig Static, cache-safe config injected by TrackerAssets.
-		 */
+		// Classic (shortcode-rendered) add-to-cart markup only — no
+		// block-checkout API is used or inferred (M04 plan §4.6). Fails
+		// silently if a theme replaces even this markup.
+		function bindClassicAddToCart() {
+			if ( ! global.document || typeof global.document.addEventListener !== 'function' ) {
+				return;
+			}
+
+			global.document.addEventListener( 'click', function ( event ) {
+				var target = event && event.target ? event.target : null;
+				var matchEl = target && typeof target.closest === 'function'
+					? target.closest( '.single_add_to_cart_button, .add_to_cart_button' )
+					: null;
+
+				if ( ! matchEl ) {
+					return;
+				}
+
+				var raw = matchEl.getAttribute ? matchEl.getAttribute( 'data-product_id' ) : null;
+				var productId = raw ? parseInt( raw, 10 ) : NaN;
+
+				if ( ! isNaN( productId ) && productId > 0 ) {
+					trackEvent( 'ac', { product_id: productId } );
+					flush();
+				}
+			} );
+		}
+
+		// Resolves visit_ref, records the initial page view (and
+		// session_started for a new tab session), and wires beacon-on-unload.
 		function init( trackerConfig ) {
 			config = trackerConfig || {};
 
@@ -231,6 +202,16 @@
 			lastPath = config.initialPath || null;
 			if ( lastPath ) {
 				trackEvent( 'pv', { path: config.initialPath, page_type: config.initialPageType || 'other' } );
+			}
+
+			if ( config.commerce ) {
+				if ( config.productId ) {
+					trackEvent( 'pd', { product_id: config.productId } );
+				}
+				if ( config.isCheckout ) {
+					trackEvent( 'cs', {} );
+				}
+				bindClassicAddToCart();
 			}
 
 			var deliver = function () {
@@ -262,8 +243,7 @@
 	}
 
 	global.UniversalTelegramVisitorTracker = global.UniversalTelegramVisitorTracker || createTracker();
-	// Exposed for the dependency-free behavioural test suite only
-	// (tests/js/visitor-tracker.test.mjs); not used by the tracker itself.
+	// Exposed only for tests/js/visitor-tracker.test.mjs.
 	global.__UT_VISITOR_TRACKER_FACTORY__ = createTracker;
 
 	if ( global.UniversalTelegramVisitorConfig ) {

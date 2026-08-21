@@ -54,6 +54,7 @@ use UniversalTelegram\Integrations\WooCommerce\Events\CheckoutEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Events\CouponEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Events\OrderEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Events\StockEventEmitter;
+use UniversalTelegram\Integrations\WooCommerce\Visitor\VisitorCommerceEventCatalog;
 use UniversalTelegram\Events\Registry;
 use UniversalTelegram\Events\RetentionCleanup;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
@@ -649,6 +650,13 @@ final class Plugin {
 			$cart_event_emitter->register_hooks();
 			$coupon_event_emitter->register_hooks();
 			$checkout_event_emitter->register_hooks();
+
+			// Visitor/browser commerce-gated event types (M04 plan §4.6):
+			// registered only here, alongside the rest of M03's WooCommerce
+			// wiring — no hook binding of their own, since both types are
+			// entirely driven by IngestController via the tracker client.
+			$visitor_commerce_event_catalog = new VisitorCommerceEventCatalog();
+			add_action( 'universal_telegram_register_event_types', array( $visitor_commerce_event_catalog, 'register_event_types' ), 20 );
 		}
 
 		// Fired once, at priority 20, after WooCommerce presence detection

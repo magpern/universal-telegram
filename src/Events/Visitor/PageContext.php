@@ -75,6 +75,22 @@ final class PageContext {
 	}
 
 	/**
+	 * The current product's ID, when on a single product page; null
+	 * otherwise.
+	 *
+	 * @return int|null
+	 */
+	public function product_id(): ?int {
+		if ( ! $this->is_product() ) {
+			return null;
+		}
+
+		$id = get_the_ID();
+
+		return false === $id || 0 === $id ? null : (int) $id;
+	}
+
+	/**
 	 * Whether the current request is the WooCommerce checkout page —
 	 * true for both classic and block checkout equally, since it is a
 	 * server-rendered conditional (M04 plan §4.6).

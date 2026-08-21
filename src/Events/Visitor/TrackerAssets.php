@@ -64,13 +64,17 @@ final class TrackerAssets {
 		$url = plugins_url( 'assets/js/visitor-tracker.js', UNIVERSAL_TELEGRAM_PLUGIN_FILE );
 		wp_enqueue_script( 'universal-telegram-visitor-tracker', $url, array(), UNIVERSAL_TELEGRAM_VERSION, true );
 
+		$commerce_active = $settings_values['visitor_family_commerce'] && $this->woocommerce_support->is_active();
+
 		$config = array(
 			'enabled'         => true,
 			'consentMode'     => $settings_values['visitor_consent_mode'],
 			'endpoint'        => rest_url( 'universal-telegram/v1/visitor-events' ),
 			'initialPath'     => $this->page_context->path(),
 			'initialPageType' => $this->page_context->page_type(),
-			'commerce'        => $settings_values['visitor_family_commerce'] && $this->woocommerce_support->is_active(),
+			'commerce'        => $commerce_active,
+			'productId'       => $commerce_active ? $this->page_context->product_id() : null,
+			'isCheckout'      => $commerce_active && $this->page_context->is_checkout_page(),
 		);
 
 		wp_add_inline_script(
