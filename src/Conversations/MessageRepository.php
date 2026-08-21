@@ -54,21 +54,25 @@ class MessageRepository {
 	 * Creates a message row, encrypting the plaintext body immediately. The
 	 * plaintext is never retained by this method beyond the encrypt() call.
 	 *
-	 * @param int      $conversation_id The owning conversation.
-	 * @param string   $direction       'visitor' or 'operator'.
-	 * @param string   $plaintext_body  The message text.
-	 * @param string   $delivery_state  stored|sent|failed.
-	 * @param int|null $telegram_message_id The Telegram message id, if already known.
+	 * @param int         $conversation_id The owning conversation.
+	 * @param string      $direction       'visitor' or 'operator'.
+	 * @param string      $plaintext_body  The message text.
+	 * @param string      $delivery_state  stored|sent|failed.
+	 * @param int|null    $telegram_message_id The Telegram message id, if already known.
+	 * @param string|null $idempotency_key     Client-supplied per-message idempotency key, if any (M06 plan §0).
 	 *
 	 * @return ConversationMessage|null Null if the schema is unavailable, the
-	 *                                  key is unavailable, or the write failed.
+	 *                                  key is unavailable, or the write failed
+	 *                                  (including a unique-constraint collision
+	 *                                  on (conversation_id, idempotency_key)).
 	 */
 	public function create(
 		int $conversation_id,
 		string $direction,
 		string $plaintext_body,
 		string $delivery_state = 'stored',
-		?int $telegram_message_id = null
+		?int $telegram_message_id = null,
+		?string $idempotency_key = null
 	): ?ConversationMessage {
 		if ( ! $this->schema_health->is_available() ) {
 			return null;
@@ -95,9 +99,10 @@ class MessageRepository {
 				'body_ciphertext'     => $ciphertext,
 				'telegram_message_id' => $telegram_message_id,
 				'delivery_state'      => $delivery_state,
+				'idempotency_key'     => $idempotency_key,
 				'created_at'          => current_time( 'mysql', true ),
 			),
-			array( '%d', '%s', '%s', '%s', '%d', '%s', '%s' )
+			array( '%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s' )
 		);
 
 		if ( false === $inserted ) {
@@ -105,6 +110,36 @@ class MessageRepository {
 		}
 
 		return $this->find( (int) $wpdb->insert_id );
+	}
+
+	/**
+	 * Finds a message by its owning conversation and per-message
+	 * idempotency key — the sole lookup path a message-post replay ever
+	 * uses (M06 plan §0, ADR-0021 amendment).
+	 *
+	 * @param int    $conversation_id The owning conversation.
+	 * @param string $idempotency_key The client-supplied per-message idempotency key.
+	 *
+	 * @return ConversationMessage|null
+	 */
+	public function find_by_idempotency_key( int $conversation_id, string $idempotency_key ): ?ConversationMessage {
+		if ( ! $this->schema_health->is_available() ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
+		$row   = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT * FROM {$table} WHERE conversation_id = %d AND idempotency_key = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$conversation_id,
+				$idempotency_key
+			),
+			ARRAY_A
+		);
+
+		return null === $row ? null : $this->hydrate( $row );
 	}
 
 	/**
@@ -305,7 +340,8 @@ class MessageRepository {
 			null === $row['outbound_message_uuid'] ? null : (string) $row['outbound_message_uuid'],
 			null === $row['telegram_message_id'] ? null : (int) $row['telegram_message_id'],
 			(string) $row['delivery_state'],
-			(string) $row['created_at']
+			(string) $row['created_at'],
+			null === $row['idempotency_key'] ? null : (string) $row['idempotency_key']
 		);
 	}
 }

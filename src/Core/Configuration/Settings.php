@@ -67,6 +67,7 @@ final class Settings {
 			'visitor_sampling_percent'                    => 100,
 			'visitor_click_target_allowlist'              => array(),
 			'visitor_exclude_administrators'              => true,
+			'chat_widget_enabled'                         => false,
 		);
 	}
 
@@ -97,6 +98,7 @@ final class Settings {
 			'visitor_family_errors',
 			'visitor_family_commerce',
 			'visitor_exclude_administrators',
+			'chat_widget_enabled',
 		);
 
 		foreach ( $boolean_fields as $field ) {

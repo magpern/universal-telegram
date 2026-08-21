@@ -38,14 +38,16 @@ class ConversationRepository {
 	 * and secret_hash (VisitorTokenGenerator) — this method never generates
 	 * or sees the plaintext secret.
 	 *
-	 * @param string      $conversation_uuid Public, opaque identifier.
-	 * @param string      $secret_hash       password_hash() of the bearer secret.
-	 * @param int         $bot_id            The Telegram bot this conversation belongs to.
-	 * @param string|null $chat_profile      The configured profile requested at start, if any.
+	 * @param string      $conversation_uuid     Public, opaque identifier.
+	 * @param string      $secret_hash           password_hash() of the bearer secret.
+	 * @param int         $bot_id                The Telegram bot this conversation belongs to.
+	 * @param string|null $chat_profile          The configured profile requested at start, if any.
+	 * @param string|null $start_idempotency_key The client-supplied start idempotency key, if any (M06 plan §0).
 	 *
-	 * @return Conversation|null Null if the schema is unavailable or the write failed.
+	 * @return Conversation|null Null if the schema is unavailable or the write failed
+	 *                           (including a unique-constraint collision on start_idempotency_key).
 	 */
-	public function create( string $conversation_uuid, string $secret_hash, int $bot_id, ?string $chat_profile ): ?Conversation {
+	public function create( string $conversation_uuid, string $secret_hash, int $bot_id, ?string $chat_profile, ?string $start_idempotency_key = null ): ?Conversation {
 		if ( ! $this->schema_health->is_available() ) {
 			return null;
 		}
@@ -66,10 +68,11 @@ class ConversationRepository {
 				'topic_creation_state'   => 'none',
 				'ai_participation_state' => 'none',
 				'consent_state'          => 'unknown',
+				'start_idempotency_key'  => $start_idempotency_key,
 				'created_at'             => $now,
 				'updated_at'             => $now,
 			),
-			array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
+			array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
 		);
 
 		if ( false === $inserted ) {
@@ -117,6 +120,29 @@ class ConversationRepository {
 		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE conversation_uuid = %s", $conversation_uuid ), ARRAY_A );
+
+		return null === $row ? null : $this->hydrate( $row );
+	}
+
+	/**
+	 * Finds the conversation created by a given start idempotency key — the
+	 * sole lookup path a start-replay ever uses (M06 plan §0, ADR-0021
+	 * amendment). Never falls back to any other lookup.
+	 *
+	 * @param string $start_idempotency_key The client-supplied start idempotency key.
+	 *
+	 * @return Conversation|null
+	 */
+	public function find_by_start_idempotency_key( string $start_idempotency_key ): ?Conversation {
+		if ( ! $this->schema_health->is_available() ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE start_idempotency_key = %s", $start_idempotency_key ), ARRAY_A );
 
 		return null === $row ? null : $this->hydrate( $row );
 	}
@@ -514,7 +540,8 @@ class ConversationRepository {
 			(string) $row['created_at'],
 			(string) $row['updated_at'],
 			null === $row['resolved_at'] ? null : (string) $row['resolved_at'],
-			null === $row['expires_at'] ? null : (string) $row['expires_at']
+			null === $row['expires_at'] ? null : (string) $row['expires_at'],
+			null === $row['start_idempotency_key'] ? null : (string) $row['start_idempotency_key']
 		);
 	}
 }

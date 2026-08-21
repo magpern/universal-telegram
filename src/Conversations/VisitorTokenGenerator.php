@@ -49,4 +49,42 @@ final class VisitorTokenGenerator {
 	public function verify( string $presented_secret, string $secret_hash ): bool {
 		return password_verify( $presented_secret, $secret_hash );
 	}
+
+	/**
+	 * Generates a fresh conversation_uuid, independent of the caller's
+	 * secret. Used by the start protocol's client-generated-secret path
+	 * (M06 plan §0, ADR-0021 amendment), where the secret itself never
+	 * originates here.
+	 *
+	 * @return string
+	 */
+	public function generate_uuid(): string {
+		return wp_generate_uuid4();
+	}
+
+	/**
+	 * Validates that a client-supplied secret matches the 256-bit,
+	 * 64-lowercase-hex-character format this boundary has always produced
+	 * server-side — required before the client-generated-secret start
+	 * protocol accepts it (M06 plan §0, ADR-0021 amendment).
+	 *
+	 * @param string $secret The candidate secret.
+	 *
+	 * @return bool
+	 */
+	public function is_valid_secret_format( string $secret ): bool {
+		return 1 === preg_match( '/^[0-9a-f]{64}$/', $secret );
+	}
+
+	/**
+	 * Hashes a client-supplied secret for storage. The plaintext is never
+	 * retained by this class (M06 plan §0, ADR-0021 amendment).
+	 *
+	 * @param string $secret The secret to hash.
+	 *
+	 * @return string
+	 */
+	public function hash( string $secret ): string {
+		return password_hash( $secret, PASSWORD_DEFAULT );
+	}
 }

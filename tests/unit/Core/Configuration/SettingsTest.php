@@ -36,6 +36,19 @@ final class SettingsTest extends TestCase {
 		$this->assertFalse( $settings->defaults()['remove_data_on_uninstall'] );
 	}
 
+	public function test_defaults_disables_the_chat_widget(): void {
+		$settings = new Settings();
+
+		$this->assertFalse( $settings->defaults()['chat_widget_enabled'] );
+	}
+
+	public function test_sanitize_recognizes_chat_widget_enabled(): void {
+		$settings = new Settings();
+
+		$this->assertTrue( $settings->sanitize( array( 'chat_widget_enabled' => true ) )['chat_widget_enabled'] );
+		$this->assertFalse( $settings->sanitize( array( 'chat_widget_enabled' => '' ) )['chat_widget_enabled'] );
+	}
+
 	public function test_defaults_include_the_frozen_m01_numeric_defaults(): void {
 		$settings = new Settings();
 		$defaults = $settings->defaults();
