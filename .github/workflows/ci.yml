@@ -64,6 +64,13 @@ jobs:
       - name: Integration tests (WordPress 7.1, WooCommerce 11.0.1)
         run: bin/docker/test-integration-wc-present.sh --wp-version=7.1 --wc-version=11.0.1
 
+  js-behavioural:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: JS behavioural tests (visitor tracker, M04)
+        run: bin/docker/test-js.sh
+
   build:
     runs-on: ubuntu-latest
     steps:
