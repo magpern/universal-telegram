@@ -61,12 +61,34 @@ final class BotManagementPage {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'universal-telegram' ) );
 		}
 
-		if ( $this->wizard_view_requested() || ! $this->wizard_state->is_complete() ) {
+		$default_bot    = $this->wizard_state->default_bot();
+		$setup_complete = null !== $default_bot && $this->wizard_state->is_complete( $default_bot );
+
+		if ( $this->wizard_view_requested() || ! $setup_complete ) {
 			// Wizard-only render: the manual bot list and "Add a bot" form are
 			// deliberately not appended here. Showing both at once duplicated
 			// the sensitive token-entry form and made multi-bot management
 			// unclear (M06.1 wizard-manual-view hotfix).
-			$this->wizard_renderer->render( $this->resolve_step(), $this->resolve_bot_mode() );
+			$bot_id   = $this->resolve_bot_id();
+			$bot_mode = $this->resolve_bot_mode();
+
+			// Bare-URL auto-resume: when the wizard wasn't explicitly
+			// requested (this is only the default-view fallback because the
+			// default bot's own setup is incomplete) and no bot/mode was
+			// explicitly chosen, continue that default bot's own checklist
+			// directly rather than the top-level landing choice — preserving
+			// the original guided-continuation behaviour for the common
+			// single-bot case. An explicit "Setup wizard" click (?view=wizard
+			// with nothing else) always shows the landing choice, even when
+			// the default bot is already fully configured (M06.1 addendum:
+			// new-user guided setup).
+			if ( ! $this->wizard_view_requested() && null === $bot_id && null === $bot_mode && null !== $default_bot ) {
+				$bot_id = $default_bot->id();
+			}
+
+			$selected_bot = null !== $bot_id ? $this->bots->find( $bot_id ) : null;
+
+			$this->wizard_renderer->render( $this->resolve_step( $selected_bot ), $bot_mode, $bot_id );
 		} else {
 			$this->render_bot_list();
 			printf(
@@ -97,12 +119,16 @@ final class BotManagementPage {
 	/**
 	 * Resolves the wizard step to display: `?step=` only when it is an
 	 * integer in the inclusive range 1-5; any other value (non-numeric,
-	 * out of range, or absent) falls back to the derived current step —
-	 * never clamped, never an error.
+	 * out of range, or absent) falls back to the derived current step for
+	 * the selected bot — never clamped, never an error. Meaningless (and
+	 * ignored by the renderer) until a bot is actually selected; defaults
+	 * to 1 in that case since there is no bot to derive a current step from.
+	 *
+	 * @param \UniversalTelegram\Telegram\Configuration\BotProfile|null $selected_bot The bot resolved from `?bot_id=`, if any.
 	 *
 	 * @return int
 	 */
-	private function resolve_step(): int {
+	private function resolve_step( ?\UniversalTelegram\Telegram\Configuration\BotProfile $selected_bot ): int {
 		$raw = isset( $_GET['step'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['step'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
 		if ( '' !== $raw && ctype_digit( $raw ) ) {
@@ -113,7 +139,7 @@ final class BotManagementPage {
 			}
 		}
 
-		return $this->wizard_state->current_step();
+		return null !== $selected_bot ? $this->wizard_state->current_step( $selected_bot ) : 1;
 	}
 
 	/**
@@ -128,6 +154,38 @@ final class BotManagementPage {
 		$raw = isset( $_GET['bot_mode'] ) ? sanitize_key( wp_unslash( (string) $_GET['bot_mode'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
 		return in_array( $raw, array( 'new', 'existing' ), true ) ? $raw : null;
+	}
+
+	/**
+	 * Resolves which bot the wizard is configuring: `?bot_id=` as a numeric
+	 * id (only if it matches an existing bot), or the literal `latest`
+	 * (the most recently created bot — used to return into the wizard right
+	 * after creating one there). Any other value, a numeric id matching no
+	 * bot, or its absence all resolve to null (no bot selected yet — the
+	 * wizard's landing choice or bot picker is shown instead). Never an error.
+	 *
+	 * @return int|null
+	 */
+	private function resolve_bot_id(): ?int {
+		$raw = isset( $_GET['bot_id'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['bot_id'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+		if ( '' === $raw ) {
+			return null;
+		}
+
+		if ( 'latest' === $raw ) {
+			$all = $this->bots->all();
+
+			return array() === $all ? null : end( $all )->id();
+		}
+
+		if ( ! ctype_digit( $raw ) ) {
+			return null;
+		}
+
+		$id = (int) $raw;
+
+		return null !== $this->bots->find( $id ) ? $id : null;
 	}
 
 	/**

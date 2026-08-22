@@ -183,4 +183,78 @@ final class BotManagementControllerTest extends WP_UnitTestCase {
 
 		$this->assertCount( 0, $this->bots->all() );
 	}
+
+	/**
+	 * A controller subclass that captures the redirect URL instead of
+	 * discarding it, for tests that need to assert on it.
+	 *
+	 * @return BotManagementController
+	 */
+	private function controller_capturing_redirect(): BotManagementController {
+		$destinations = new DestinationRepository( $this->schema_health );
+		$messages     = new OutboundMessageRepository( $this->schema_health, new CredentialVault() );
+		$client       = new TelegramApiClient();
+
+		return new class(
+			$this->bots,
+			$destinations,
+			$messages,
+			$client,
+			new WebhookRegistrationCoordinator(
+				$this->bots,
+				$client,
+				new AuditLogger( $this->schema_health, new Redactor() ),
+				static function (): string {
+					return 'https://example.com/webhook/';
+				}
+			),
+			new MessageDispatcher( $messages, new Dispatcher( $this->schema_health ) ),
+			new Dispatcher( $this->schema_health )
+		) extends BotManagementController {
+			public ?string $captured_url = null;
+
+			protected function redirect_and_exit( string $url ): void {
+				$this->captured_url = $url;
+			}
+		};
+	}
+
+	public function test_create_bot_from_the_wizard_redirects_back_into_it_with_the_new_bot_selected(): void {
+		$this->fake_get_me( true );
+
+		$nonce                = wp_create_nonce( BotManagementController::NONCE_ACTION );
+		$_POST                = array(
+			'op'          => 'create_bot',
+			'name'        => 'Wizard Bot',
+			'token'       => 'good-token',
+			'from_wizard' => '1',
+			'_wpnonce'    => $nonce,
+		);
+		$_REQUEST['_wpnonce'] = $nonce;
+
+		$controller = $this->controller_capturing_redirect();
+		$controller->handle_request();
+
+		$this->assertCount( 1, $this->bots->all() );
+		$this->assertStringContainsString( 'view=wizard', (string) $controller->captured_url );
+		$this->assertStringContainsString( 'bot_id=latest', (string) $controller->captured_url );
+	}
+
+	public function test_create_bot_without_the_wizard_marker_redirects_to_the_plain_bots_tab(): void {
+		$this->fake_get_me( true );
+
+		$nonce                = wp_create_nonce( BotManagementController::NONCE_ACTION );
+		$_POST                = array(
+			'op'       => 'create_bot',
+			'name'     => 'Manual Bot',
+			'token'    => 'good-token',
+			'_wpnonce' => $nonce,
+		);
+		$_REQUEST['_wpnonce'] = $nonce;
+
+		$controller = $this->controller_capturing_redirect();
+		$controller->handle_request();
+
+		$this->assertStringNotContainsString( 'view=wizard', (string) $controller->captured_url );
+	}
 }

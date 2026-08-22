@@ -113,7 +113,18 @@ class BotManagementController {
 				break;
 		}
 
-		$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . BotManagementPage::TAB_ID ) );
+		$redirect_url = admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . BotManagementPage::TAB_ID );
+
+		// A bot created via the setup wizard's own create-bot form returns to
+		// the wizard, continuing that same bot's checklist, instead of the
+		// plain Bots tab (M06.1 corrective addendum: new-user guided setup).
+		if ( 'create_bot' === $op
+			&& isset( $_POST['from_wizard'] )
+			&& '1' === sanitize_text_field( wp_unslash( $_POST['from_wizard'] ) ) ) {
+			$redirect_url .= '&view=wizard&bot_id=latest';
+		}
+
+		$this->redirect_and_exit( $redirect_url );
 	}
 
 	/**

@@ -37,136 +37,167 @@ final class BotSetupWizardStateTest extends WP_UnitTestCase {
 		$this->state       = new BotSetupWizardState( $chat_profiles, $chat_widget_avail, $this->destinations );
 	}
 
-	public function test_no_bot_configured_is_entirely_incomplete(): void {
+	public function test_no_bot_configured_has_no_default_bot(): void {
 		$this->assertNull( $this->state->default_bot() );
-		$this->assertFalse( $this->state->step_one_complete() );
-		$this->assertFalse( $this->state->step_four_complete() );
-		$this->assertFalse( $this->state->step_five_complete() );
-		$this->assertSame( 1, $this->state->current_step() );
-		$this->assertFalse( $this->state->is_complete() );
 	}
 
 	public function test_bot_created_but_token_never_validated_is_step_one_incomplete(): void {
-		$this->bots->create( 'My Bot', '123456789:unvalidated-token' );
+		$bot = $this->bots->create( 'My Bot', '123456789:unvalidated-token' );
 
-		$this->assertFalse( $this->state->step_one_complete() );
-		$this->assertSame( 1, $this->state->current_step() );
+		$this->assertFalse( $this->state->step_one_complete( $bot ) );
+		$this->assertSame( 1, $this->state->current_step( $bot ) );
 	}
 
 	public function test_bot_validated_with_no_destination_is_step_four_incomplete(): void {
 		$bot = $this->bots->create( 'My Bot', '123456789:validated-token' );
 		$this->bots->update_telegram_identity( $bot->id(), 111, 'my_bot' );
+		$bot = $this->bots->find( $bot->id() );
 
-		$this->assertTrue( $this->state->step_one_complete() );
-		$this->assertFalse( $this->state->step_four_complete() );
-		$this->assertSame( 4, $this->state->current_step() );
+		$this->assertTrue( $this->state->step_one_complete( $bot ) );
+		$this->assertFalse( $this->state->step_four_complete( $bot ) );
+		$this->assertSame( 4, $this->state->current_step( $bot ) );
 	}
 
 	public function test_destination_wrong_kind_is_step_four_incomplete(): void {
 		$bot = $this->bots->create( 'My Bot', '123456789:validated-token' );
 		$this->bots->update_telegram_identity( $bot->id(), 111, 'my_bot' );
+		$bot = $this->bots->find( $bot->id() );
 		$this->destinations->create( $bot->id(), DestinationKind::PRIVATE, '12345', null, 'Website Support' );
 
-		$this->assertFalse( $this->state->step_four_complete() );
+		$this->assertFalse( $this->state->step_four_complete( $bot ) );
 	}
 
 	public function test_destination_with_topic_id_is_step_four_incomplete(): void {
 		$bot = $this->bots->create( 'My Bot', '123456789:validated-token' );
 		$this->bots->update_telegram_identity( $bot->id(), 111, 'my_bot' );
+		$bot = $this->bots->find( $bot->id() );
 		$this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-1001234567890', 42, 'Website Support' );
 
-		$this->assertFalse( $this->state->step_four_complete() );
+		$this->assertFalse( $this->state->step_four_complete( $bot ) );
 	}
 
 	public function test_destination_correct_but_webhook_unregistered_is_step_five_incomplete(): void {
 		$bot = $this->bots->create( 'My Bot', '123456789:validated-token' );
 		$this->bots->update_telegram_identity( $bot->id(), 111, 'my_bot' );
+		$bot = $this->bots->find( $bot->id() );
 		$this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-1001234567890', null, 'Website Support' );
 
-		$this->assertTrue( $this->state->step_four_complete() );
-		$this->assertFalse( $this->state->step_five_complete() );
-		$this->assertSame( 5, $this->state->current_step() );
+		$this->assertTrue( $this->state->step_four_complete( $bot ) );
+		$this->assertFalse( $this->state->step_five_complete( $bot ) );
+		$this->assertSame( 5, $this->state->current_step( $bot ) );
 	}
 
 	public function test_webhook_uncertain_is_step_five_incomplete(): void {
 		$bot = $this->bots->create( 'My Bot', '123456789:validated-token' );
 		$this->bots->update_telegram_identity( $bot->id(), 111, 'my_bot' );
+		$bot = $this->bots->find( $bot->id() );
 		$this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-1001234567890', null, 'Website Support' );
 		$this->bots->mark_uncertain( $bot->id() );
+		$bot = $this->bots->find( $bot->id() );
 
-		$this->assertFalse( $this->state->step_five_complete() );
+		$this->assertFalse( $this->state->step_five_complete( $bot ) );
 	}
 
-	public function test_webhook_registered_but_widget_disabled_is_step_five_incomplete(): void {
+	public function test_webhook_registered_but_widget_disabled_is_step_five_incomplete_for_the_default_bot(): void {
 		$bot = $this->bots->create( 'My Bot', '123456789:validated-token' );
 		$this->bots->update_telegram_identity( $bot->id(), 111, 'my_bot' );
+		$bot = $this->bots->find( $bot->id() );
 		$this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-1001234567890', null, 'Website Support' );
 		$this->bots->mark_registered( $bot->id() );
+		$bot = $this->bots->find( $bot->id() );
 
-		// chat_widget_enabled left at its default (false).
-		$this->assertFalse( $this->state->step_five_complete() );
+		// chat_widget_enabled left at its default (false). This bot is the
+		// only (and therefore default) bot, so the widget check applies.
+		$this->assertTrue( $this->state->is_default_bot( $bot ) );
+		$this->assertSame( 'registered', $bot->webhook_registration_state() );
+		$this->assertFalse( $this->state->step_five_complete( $bot ) );
+	}
+
+	public function test_webhook_registered_is_step_five_complete_for_a_non_default_bot_regardless_of_the_widget(): void {
+		$default = $this->bots->create( 'Default Bot', '111:token' );
+		$this->bots->update_telegram_identity( $default->id(), 1, 'default_bot' );
+		$default = $this->bots->find( $default->id() );
+
+		$other = $this->bots->create( 'Other Bot', '222:token' );
+		$this->bots->update_telegram_identity( $other->id(), 2, 'other_bot' );
+		$other = $this->bots->find( $other->id() );
+		$this->destinations->create( $other->id(), DestinationKind::SUPERGROUP, '-1002345678901', null, 'Website Support' );
+		$this->bots->mark_registered( $other->id() );
+		$other = $this->bots->find( $other->id() );
+
+		// chat_widget_enabled left at its default (false), and the widget is
+		// wired only to $default — neither ever applies to $other, so its
+		// step 5 depends only on its own webhook registration.
+		$this->assertFalse( $this->state->is_default_bot( $other ) );
+		$this->assertTrue( $this->state->step_five_complete( $other ) );
 	}
 
 	public function test_fully_complete_setup_reports_complete(): void {
 		$bot = $this->bots->create( 'My Bot', '123456789:validated-token' );
 		$this->bots->update_telegram_identity( $bot->id(), 111, 'my_bot' );
+		$bot = $this->bots->find( $bot->id() );
 		$this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-1001234567890', null, 'Website Support' );
 		$this->bots->mark_registered( $bot->id() );
+		$bot = $this->bots->find( $bot->id() );
 		update_option( Settings::OPTION_NAME, $this->settings->sanitize( array_merge( $this->settings->get(), array( 'chat_widget_enabled' => true ) ) ) );
 
-		$this->assertTrue( $this->state->step_one_complete() );
-		$this->assertTrue( $this->state->step_four_complete() );
-		$this->assertTrue( $this->state->step_five_complete() );
-		$this->assertSame( 5, $this->state->current_step() );
-		$this->assertTrue( $this->state->is_complete() );
+		$this->assertTrue( $this->state->step_one_complete( $bot ) );
+		$this->assertTrue( $this->state->step_four_complete( $bot ) );
+		$this->assertTrue( $this->state->step_five_complete( $bot ) );
+		$this->assertSame( 5, $this->state->current_step( $bot ) );
+		$this->assertTrue( $this->state->is_complete( $bot ) );
 	}
 
-	public function test_multiple_bots_always_reads_the_first_created_bot(): void {
+	public function test_default_bot_is_the_first_created_bot_and_is_unaffected_by_which_bot_is_configured(): void {
 		$first  = $this->bots->create( 'First Bot', '111:token' );
 		$second = $this->bots->create( 'Second Bot', '222:token' );
 		$this->bots->update_telegram_identity( $second->id(), 222, 'second_bot' );
+		$second = $this->bots->find( $second->id() );
 
-		// Only the second bot is validated, but the wizard must still be
-		// evaluated against the first (default) bot, so step 1 stays incomplete.
 		$this->assertSame( $first->id(), $this->state->default_bot()->id() );
-		$this->assertFalse( $this->state->step_one_complete() );
+		$this->assertTrue( $this->state->is_default_bot( $first ) );
+		$this->assertFalse( $this->state->is_default_bot( $second ) );
+
+		// Configuring the second (non-default) bot through the wizard's own
+		// completion checks never changes which bot is the default one.
+		$this->state->step_one_complete( $second );
+		$this->assertSame( $first->id(), $this->state->default_bot()->id() );
 	}
 
 	public function test_connected_destination_resolves_the_eligible_destination_row(): void {
 		$bot = $this->bots->create( 'My Bot', '123456789:validated-token' );
 		$this->bots->update_telegram_identity( $bot->id(), 111, 'my_bot' );
+		$bot         = $this->bots->find( $bot->id() );
 		$destination = $this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-1001234567890', null, 'Website Support' );
 
-		$connected = $this->state->connected_destination();
+		$connected = $this->state->connected_destination( $bot );
 
 		$this->assertNotNull( $connected );
 		$this->assertSame( $destination->id(), $connected->id() );
 	}
 
-	public function test_connected_destination_is_null_when_no_bot_or_no_eligible_destination(): void {
-		$this->assertNull( $this->state->connected_destination() );
-
+	public function test_connected_destination_is_null_when_no_eligible_destination(): void {
 		$bot = $this->bots->create( 'My Bot', '123456789:validated-token' );
 		$this->bots->update_telegram_identity( $bot->id(), 111, 'my_bot' );
+		$bot = $this->bots->find( $bot->id() );
 		$this->destinations->create( $bot->id(), DestinationKind::PRIVATE, '12345', null, 'Website Support' );
 
-		$this->assertNull( $this->state->connected_destination() );
+		$this->assertNull( $this->state->connected_destination( $bot ) );
 	}
 
 	public function test_derivation_never_writes_any_state(): void {
-		global $wpdb;
-
 		$bot = $this->bots->create( 'My Bot', '123456789:validated-token' );
 		$this->bots->update_telegram_identity( $bot->id(), 111, 'my_bot' );
+		$bot = $this->bots->find( $bot->id() );
 
 		$before_bot_row      = $this->bots->find( $bot->id() );
 		$destinations_before = count( $this->destinations->for_bot( $bot->id() ) );
 
-		$this->state->step_one_complete();
-		$this->state->step_four_complete();
-		$this->state->step_five_complete();
-		$this->state->current_step();
-		$this->state->is_complete();
+		$this->state->step_one_complete( $bot );
+		$this->state->step_four_complete( $bot );
+		$this->state->step_five_complete( $bot );
+		$this->state->current_step( $bot );
+		$this->state->is_complete( $bot );
 
 		$after_bot_row      = $this->bots->find( $bot->id() );
 		$destinations_after = count( $this->destinations->for_bot( $bot->id() ) );
