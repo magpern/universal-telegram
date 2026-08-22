@@ -11,6 +11,7 @@ namespace UniversalTelegram\Conversations\Rest;
 
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\Conversation;
+use UniversalTelegram\Conversations\ConversationDisplay;
 use UniversalTelegram\Conversations\ConversationOutboundDispatcher;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\ConversationStatus;
@@ -250,9 +251,10 @@ final class ConversationsController {
 
 			return $this->respond(
 				array(
-					'ok'                => true,
-					'conversation_uuid' => $existing->conversation_uuid(),
-					'secret'            => $presented_secret,
+					'ok'                     => true,
+					'conversation_uuid'      => $existing->conversation_uuid(),
+					'secret'                 => $presented_secret,
+					'display_name_required' => $existing->display_name_required(),
 				),
 				200
 			);
@@ -303,9 +305,10 @@ final class ConversationsController {
 
 		return $this->respond(
 			array(
-				'ok'                => true,
-				'conversation_uuid' => $conversation->conversation_uuid(),
-				'secret'            => $presented_secret,
+				'ok'                     => true,
+				'conversation_uuid'      => $conversation->conversation_uuid(),
+				'secret'                 => $presented_secret,
+				'display_name_required' => $conversation->display_name_required(),
 			),
 			200
 		);
@@ -394,9 +397,64 @@ final class ConversationsController {
 			}
 		}
 
+		// Reload-safe required-name contract (M06.3, ADR-0024): while no
+		// encrypted name is stored yet, every POST /messages call for this
+		// conversation must supply one — a missing or invalid name is
+		// rejected here, before any message is persisted or routed. Since
+		// an invalid/missing name blocks persistence entirely, this
+		// condition is always equivalent to "this is the conversation's
+		// first accepted message" — there is no separate name endpoint.
+		$display_name_required = $conversation->display_name_required();
+		$display_name          = null;
+
+		if ( $display_name_required ) {
+			if ( ! isset( $decoded['display_name'] ) || ! is_string( $decoded['display_name'] ) ) {
+				return $this->respond(
+					array(
+						'ok'     => false,
+						'reason' => ResponseReason::REQUEST_FAILED->value,
+					),
+					400
+				);
+			}
+
+			$trimmed_display_name = trim( $decoded['display_name'] );
+
+			if ( ! ConversationDisplay::is_valid_display_name( $trimmed_display_name ) ) {
+				return $this->respond(
+					array(
+						'ok'     => false,
+						'reason' => ResponseReason::REQUEST_FAILED->value,
+					),
+					400
+				);
+			}
+
+			$display_name = $trimmed_display_name;
+		}
+
 		$message = $this->messages->create( $conversation->id(), 'visitor', $text, 'stored', null, '' === $idempotency_key ? null : $idempotency_key );
 
 		if ( null === $message ) {
+			return $this->respond(
+				array(
+					'ok'     => false,
+					'reason' => ResponseReason::REQUEST_FAILED->value,
+				),
+				503
+			);
+		}
+
+		// Name storage happens immediately after the message insert and
+		// before any status transition, topic creation, or outbound
+		// routing — both writes commit before this conversation is ever
+		// dispatched toward Telegram. A storage failure here compensates
+		// by removing the just-inserted message (this is definitionally
+		// the conversation's only message so far, since $display_name_required
+		// was true) rather than leaving an orphaned, unnamed first message.
+		if ( null !== $display_name && ! $this->conversations->store_display_name( $conversation, $display_name ) ) {
+			$this->messages->delete_for_conversation( $conversation->id() );
+
 			return $this->respond(
 				array(
 					'ok'     => false,
@@ -498,9 +556,10 @@ final class ConversationsController {
 
 		return $this->respond(
 			array(
-				'ok'       => true,
-				'status'   => $conversation->status(),
-				'messages' => $messages,
+				'ok'                     => true,
+				'status'                 => $conversation->status(),
+				'messages'               => $messages,
+				'display_name_required' => $conversation->display_name_required(),
 			),
 			200
 		);
