@@ -144,6 +144,66 @@ final class ConversationOutboundHandlerTest extends WP_UnitTestCase {
 		$this->assertNotNull( $updated->body_ciphertext() );
 	}
 
+	public function test_first_message_gets_a_one_time_display_name_context_header(): void {
+		$bot         = $this->bots->create( 'Bot', 'token' );
+		$destination = $this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100123', 55, 'Topic' );
+
+		$conversation = $this->conversations->create( 'abcdef01-2345-4678-9abc-def012345678', 'hash', $bot->id(), null );
+		$this->conversations->store_display_name( $conversation, 'Alice' );
+		$conversation = $this->conversations->find( $conversation->id() );
+		$this->conversations->mark_topic_created( $conversation->id(), 55, $destination->id() );
+
+		$message = $this->messages->create( $conversation->id(), 'visitor', 'Hello there' );
+
+		$this->handler->handle_job( $this->job( $message->id(), $conversation->id() ) );
+
+		$updated  = $this->messages->find( $message->id() );
+		$outbound = $this->outbound_messages->find_by_uuid( $updated->outbound_message_uuid() );
+		$body     = $this->outbound_messages->decrypt_body( $outbound )->plaintext();
+
+		$this->assertSame( "[Alice · abcdef01]\nHello there", $body );
+	}
+
+	public function test_a_later_message_never_repeats_the_context_header(): void {
+		$bot         = $this->bots->create( 'Bot', 'token' );
+		$destination = $this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100123', 55, 'Topic' );
+
+		$conversation = $this->conversations->create( 'abcdef02-2345-4678-9abc-def012345678', 'hash', $bot->id(), null );
+		$this->conversations->store_display_name( $conversation, 'Bob' );
+		$conversation = $this->conversations->find( $conversation->id() );
+		$this->conversations->mark_topic_created( $conversation->id(), 55, $destination->id() );
+
+		$first  = $this->messages->create( $conversation->id(), 'visitor', 'First' );
+		$second = $this->messages->create( $conversation->id(), 'visitor', 'Second' );
+
+		$this->handler->handle_job( $this->job( $first->id(), $conversation->id() ) );
+		$this->handler->handle_job( $this->job( $second->id(), $conversation->id() ) );
+
+		$second_updated  = $this->messages->find( $second->id() );
+		$second_outbound = $this->outbound_messages->find_by_uuid( $second_updated->outbound_message_uuid() );
+		$second_body     = $this->outbound_messages->decrypt_body( $second_outbound )->plaintext();
+
+		$this->assertSame( 'Second', $second_body );
+	}
+
+	public function test_first_message_with_no_stored_display_name_carries_no_header(): void {
+		$bot         = $this->bots->create( 'Bot', 'token' );
+		$destination = $this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100123', 55, 'Topic' );
+
+		$conversation = $this->conversations->create( 'uuid-no-name-header', 'hash', $bot->id(), null );
+		$this->conversations->mark_topic_created( $conversation->id(), 55, $destination->id() );
+
+		$message = $this->messages->create( $conversation->id(), 'visitor', 'Hello' );
+
+		$this->handler->handle_job( $this->job( $message->id(), $conversation->id() ) );
+
+		$updated  = $this->messages->find( $message->id() );
+		$outbound = $this->outbound_messages->find_by_uuid( $updated->outbound_message_uuid() );
+		$body     = $this->outbound_messages->decrypt_body( $outbound )->plaintext();
+
+		$this->assertSame( 'Hello', $body );
+	}
+
 	public function test_handle_job_on_an_already_resolved_message_is_a_noop(): void {
 		$bot          = $this->bots->create( 'Bot', 'token' );
 		$conversation = $this->conversations->create( 'uuid-resolved', 'hash', $bot->id(), null );

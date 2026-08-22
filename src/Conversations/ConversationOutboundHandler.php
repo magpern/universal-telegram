@@ -115,6 +115,21 @@ class ConversationOutboundHandler {
 			return null;
 		}
 
+		// One-time Telegram context header (M06.3, ADR-0024): added only to
+		// the conversation's first accepted message, identified
+		// deterministically by insertion sequence — never a request-scoped
+		// flag, so a retried or fallback-routed first message is still
+		// correctly recognized. Carries only the display name and the
+		// short, non-secret reference; never the bearer secret, the
+		// internal numeric conversation id, or raw ciphertext.
+		if ( $this->messages->is_first_message( $message ) ) {
+			$display_name = $this->conversations->decrypt_display_name( $conversation );
+
+			if ( null !== $display_name && '' !== $display_name ) {
+				$plaintext = ConversationDisplay::first_message_context_header( $display_name, $conversation->conversation_uuid() ) . "\n" . $plaintext;
+			}
+		}
+
 		$outbound = $this->outbound_messages->create( $conversation->bot_id(), (int) $conversation->destination_id(), $plaintext, null );
 
 		if ( null === $outbound ) {

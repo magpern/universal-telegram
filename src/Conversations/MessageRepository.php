@@ -255,6 +255,37 @@ class MessageRepository {
 	}
 
 	/**
+	 * Whether $message is the conversation's first accepted message,
+	 * determined deterministically by insertion sequence (the lowest id
+	 * for the owning conversation), never a request-scoped flag — so it
+	 * survives retries and idempotency replay correctly (M06.3, ADR-0024).
+	 * The sole gate for whether the one-time Telegram context header is
+	 * ever added.
+	 *
+	 * @param ConversationMessage $message The message to check.
+	 *
+	 * @return bool
+	 */
+	public function is_first_message( ConversationMessage $message ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
+
+		$min_id = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT MIN(id) FROM {$table} WHERE conversation_id = %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$message->conversation_id()
+			)
+		);
+
+		return null !== $min_id && (int) $min_id === $message->id();
+	}
+
+	/**
 	 * Finds a message by primary key.
 	 *
 	 * @param int $id The message's primary key.
