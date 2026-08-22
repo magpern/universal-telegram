@@ -1,0 +1,258 @@
+/*
+ * M06.3 chat widget style preset: minimal (docs/adr/0024).
+ *
+ * Public, documented selector contract: `.ut-chat-widget` and its
+ * `__toggle`/`__panel`/`__header`/`__log`/`__message`/`__form`/`__input`/
+ * `__send`/`__restart` descendants, plus the CSS custom properties defined
+ * on `.ut-chat-widget` below, are stable and safe to override from a site
+ * owner's own (child-)theme stylesheet. Fixed, compiled CSS only -- no
+ * live-preview editor, no scoped custom-CSS layer, no external stylesheet
+ * URL (M06.3 charter).
+ */
+
+.ut-chat-widget {
+	--ut-chat-bg: #ffffff;
+	--ut-chat-fg: #1f1f1f;
+	--ut-chat-accent: #1f1f1f;
+	--ut-chat-accent-fg: #ffffff;
+	--ut-chat-border: #cfcfcf;
+	--ut-chat-log-bg: #ffffff;
+	--ut-chat-radius: 0.25rem;
+	--ut-chat-radius-full: 0.25rem;
+
+	position: fixed;
+	right: 1rem;
+	bottom: 1rem;
+	z-index: 999999;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.ut-chat-widget[data-geometry="round"] {
+	--ut-chat-radius: 0.5rem;
+	--ut-chat-radius-full: 999px;
+}
+
+.ut-chat-widget__toggle {
+	background: var( --ut-chat-bg );
+	color: var( --ut-chat-fg );
+	border: 1px solid var( --ut-chat-border );
+	border-radius: var( --ut-chat-radius-full );
+	padding: 0.625rem 1.125rem;
+	font-size: 0.9375rem;
+	cursor: pointer;
+}
+
+.ut-chat-widget__toggle:focus-visible {
+	outline: 2px solid var( --ut-chat-accent );
+	outline-offset: 2px;
+}
+
+.ut-chat-widget__panel {
+	position: fixed;
+	right: 1rem;
+	bottom: 4.75rem;
+	width: min( 21rem, calc( 100vw - 2rem ) );
+	max-height: min( 68vh, calc( 100% - 4rem ) );
+	display: flex;
+	flex-direction: column;
+	background: var( --ut-chat-bg );
+	color: var( --ut-chat-fg );
+	border: 1px solid var( --ut-chat-border );
+	border-radius: var( --ut-chat-radius );
+	overflow: hidden;
+}
+
+.ut-chat-widget__panel[hidden] {
+	display: none;
+}
+
+.ut-chat-widget__header {
+	position: sticky;
+	top: 0;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.625rem 0.875rem;
+	border-bottom: 1px solid var( --ut-chat-border );
+	background: var( --ut-chat-bg );
+}
+
+.ut-chat-widget__heading {
+	margin: 0;
+	font-size: 0.9375rem;
+	font-weight: 500;
+}
+
+.ut-chat-widget__close {
+	background: none;
+	border: none;
+	color: var( --ut-chat-fg );
+	font-size: 0.9375rem;
+	cursor: pointer;
+	padding: 0.25rem 0.5rem;
+}
+
+.ut-chat-widget__close:focus-visible,
+.ut-chat-widget__send:focus-visible,
+.ut-chat-widget__restart:focus-visible,
+.ut-chat-widget__input:focus-visible {
+	outline: 2px solid var( --ut-chat-accent );
+	outline-offset: 2px;
+}
+
+.ut-chat-widget__log {
+	flex: 1;
+	overflow-y: auto;
+	padding: 0.625rem 0.875rem;
+	background: var( --ut-chat-log-bg );
+}
+
+.ut-chat-widget__date-separator {
+	text-align: center;
+	font-size: 0.6875rem;
+	color: var( --ut-chat-fg );
+	opacity: 0.55;
+	margin: 0.625rem 0 0.375rem;
+}
+
+.ut-chat-widget__message {
+	margin-bottom: 0.375rem;
+	padding: 0.4375rem 0.625rem;
+	border: 1px solid var( --ut-chat-border );
+	border-radius: var( --ut-chat-radius );
+	max-width: 85%;
+	word-wrap: break-word;
+}
+
+.ut-chat-widget__message--visitor {
+	margin-left: auto;
+	background: var( --ut-chat-accent );
+	color: var( --ut-chat-accent-fg );
+	border-color: var( --ut-chat-accent );
+}
+
+.ut-chat-widget__message--operator {
+	margin-right: auto;
+	background: var( --ut-chat-bg );
+}
+
+.ut-chat-widget__message-meta {
+	display: block;
+	font-size: 0.65rem;
+	opacity: 0.6;
+	margin-top: 0.3rem;
+}
+
+.ut-chat-widget__message--visitor .ut-chat-widget__meta-label,
+.ut-chat-widget__message--visitor .ut-chat-widget__meta-time {
+	text-align: right;
+}
+
+.ut-chat-widget__status {
+	padding: 0 0.875rem;
+	font-size: 0.8125rem;
+	min-height: 1.125rem;
+}
+
+.ut-chat-widget__status--pending,
+.ut-chat-widget__status--queued {
+	color: #6b5300;
+}
+
+.ut-chat-widget__status--failed,
+.ut-chat-widget__status--rate-limited {
+	color: #9b241e;
+}
+
+.ut-chat-widget__form {
+	display: flex;
+	gap: 0.4375rem;
+	padding: 0.625rem 0.875rem;
+	border-top: 1px solid var( --ut-chat-border );
+}
+
+.ut-chat-widget__input {
+	flex: 1;
+	resize: none;
+	min-height: 2.125rem;
+	max-height: 5.5rem;
+	border: 1px solid var( --ut-chat-border );
+	border-radius: var( --ut-chat-radius );
+	padding: 0.4375rem;
+	font: inherit;
+}
+
+.ut-chat-widget__send {
+	background: var( --ut-chat-accent );
+	color: var( --ut-chat-accent-fg );
+	border: none;
+	border-radius: var( --ut-chat-radius );
+	padding: 0.4375rem 0.875rem;
+	cursor: pointer;
+}
+
+.ut-chat-widget__input:disabled,
+.ut-chat-widget__send:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.ut-chat-widget__restart {
+	display: block;
+	margin: 0.25rem 0 0.5rem;
+	background: none;
+	border: 1px solid var( --ut-chat-border );
+	color: var( --ut-chat-fg );
+	border-radius: var( --ut-chat-radius );
+	padding: 0.3125rem 0.625rem;
+	cursor: pointer;
+}
+
+.ut-chat-widget__name-form {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	padding: 0.625rem 0.875rem;
+}
+
+.ut-chat-widget__name-disclosure {
+	font-size: 0.75rem;
+	opacity: 0.7;
+	margin: 0 0 0.25rem;
+}
+
+.ut-chat-widget__name-error {
+	color: #9b241e;
+	font-size: 0.75rem;
+	min-height: 1rem;
+}
+
+/* Mobile bottom sheet: below 600px, the panel becomes a full-width sheet
+ * anchored to the bottom, safe-area aware, with a sticky (always
+ * reachable, never scrolls away) close control in the header above. */
+@media ( max-width: 600px ) {
+	.ut-chat-widget__panel {
+		left: 0.5rem;
+		right: 0.5rem;
+		bottom: 0.5rem;
+		width: auto;
+		max-height: min( 68vh, calc( 100% - 4rem ) );
+		padding-bottom: env( safe-area-inset-bottom );
+	}
+}
+
+/* Motion: the visitor's own prefers-reduced-motion is always honoured and
+ * is never overridable by the admin's chat_widget_motion_default setting
+ * (data-motion="reduced") -- that setting can only additionally restrict
+ * motion when the OS expresses no preference, never restore it. */
+@media ( prefers-reduced-motion: no-preference ) {
+	.ut-chat-widget:not( [data-motion="reduced"] ) .ut-chat-widget__panel {
+		transition: opacity 120ms ease;
+	}
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	.ut-chat-widget__panel {
+		transition: none;
+	}
+}

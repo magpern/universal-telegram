@@ -845,7 +845,8 @@ final class Plugin {
 			new ChatWidgetAvailability(
 				$settings,
 				new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository )
-			)
+			),
+			$settings
 		);
 		add_action( 'wp_enqueue_scripts', array( $chat_widget_assets, 'enqueue' ) );
 		add_action( 'wp_footer', array( $chat_widget_assets, 'print_config' ), 5 );
