@@ -52,7 +52,6 @@ class BotManagementController {
 	 * @param OutboundMessageRepository      $messages     Outbound messages.
 	 * @param TelegramApiClient              $client       Used for synchronous getMe validation/testing.
 	 * @param WebhookRegistrationCoordinator $coordinator  The registration/rotation protocol.
-	 * @param MessageDispatcher              $message_dispatcher Queues a test message send.
 	 * @param Dispatcher                     $dispatcher   Re-enqueues a requeued dead-lettered message.
 	 * @param TelegramApiClient              $test_message_client Bounded (≤8s) synchronous client for the Test Message diagnostic action only (docs/adr/0023).
 	 * @param TelegramFailureClassifier      $failure_classifier  Classifies a failed Test Message send, mirroring SendMessageHandler's own classification.
@@ -64,7 +63,6 @@ class BotManagementController {
 		private readonly OutboundMessageRepository $messages,
 		private readonly TelegramApiClient $client,
 		private readonly WebhookRegistrationCoordinator $coordinator,
-		private readonly MessageDispatcher $message_dispatcher,
 		private readonly Dispatcher $dispatcher,
 		private readonly TelegramApiClient $test_message_client,
 		private readonly TelegramFailureClassifier $failure_classifier,
@@ -329,7 +327,7 @@ class BotManagementController {
 			return;
 		}
 
-		$classification             = $this->failure_classifier->classify( $result );
+		$classification            = $this->failure_classifier->classify( $result );
 		$this->test_message_result = 'failed_' . strtolower( $classification->name );
 		$this->record_test_message_audit( 'test_message_failed', $bot_id, $destination_id, $classification->name );
 	}

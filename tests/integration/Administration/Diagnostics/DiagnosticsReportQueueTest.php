@@ -5,6 +5,7 @@
 
 namespace UniversalTelegram\Tests\Integration\Administration\Diagnostics;
 
+use ActionScheduler;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
@@ -20,6 +21,7 @@ use UniversalTelegram\Privacy\Classification;
 use UniversalTelegram\Privacy\Redactor;
 use UniversalTelegram\Queue\QueueHealth;
 use UniversalTelegram\Queue\RetryPolicy;
+use UniversalTelegram\Queue\WorkerRunner;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
@@ -34,6 +36,16 @@ final class DiagnosticsReportQueueTest extends WP_UnitTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		$this->schema_health = new SchemaHealth();
+
+		// Action Scheduler's own tables are not wrapped by
+		// WP_UnitTestCase's per-test transaction rollback, so a pending
+		// action enqueued by an earlier test in the same run can otherwise
+		// leak into this class' own "nothing pending" assertion.
+		$ids = ActionScheduler::store()->query_actions( array( 'group' => WorkerRunner::GROUP ) );
+
+		foreach ( (array) $ids as $id ) {
+			ActionScheduler::store()->delete_action( (int) $id );
+		}
 	}
 
 	private function report(): DiagnosticsReport {

@@ -101,12 +101,12 @@ final class BotManagementPage {
 		}
 
 		$messages = array(
-			'error_not_found'          => __( 'Test message not sent: bot or destination not found.', 'universal-telegram' ),
-			'error_token_unavailable'  => __( 'Test message not sent: bot token unavailable.', 'universal-telegram' ),
-			'failed_rate_limited'      => __( 'Test message not sent: Telegram is rate-limiting this bot right now. Try again shortly.', 'universal-telegram' ),
-			'failed_terminal'          => __( 'Test message not sent: Telegram rejected the destination (e.g. chat not found, or the bot was removed).', 'universal-telegram' ),
-			'failed_token_invalid'     => __( 'Test message not sent: the bot token is invalid.', 'universal-telegram' ),
-			'failed_retryable'         => __( 'Test message not sent: a temporary network or server error occurred. Try again shortly.', 'universal-telegram' ),
+			'error_not_found'         => __( 'Test message not sent: bot or destination not found.', 'universal-telegram' ),
+			'error_token_unavailable' => __( 'Test message not sent: bot token unavailable.', 'universal-telegram' ),
+			'failed_rate_limited'     => __( 'Test message not sent: Telegram is rate-limiting this bot right now. Try again shortly.', 'universal-telegram' ),
+			'failed_terminal'         => __( 'Test message not sent: Telegram rejected the destination (e.g. chat not found, or the bot was removed).', 'universal-telegram' ),
+			'failed_token_invalid'    => __( 'Test message not sent: the bot token is invalid.', 'universal-telegram' ),
+			'failed_retryable'        => __( 'Test message not sent: a temporary network or server error occurred. Try again shortly.', 'universal-telegram' ),
 		);
 
 		$message = $messages[ $result ] ?? __( 'Test message not sent.', 'universal-telegram' );

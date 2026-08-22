@@ -18,7 +18,6 @@ use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationKind;
 use UniversalTelegram\Telegram\Configuration\WebhookRegistrationCoordinator;
-use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
 use WP_UnitTestCase;
 
@@ -160,7 +159,6 @@ final class BotManagementControllerTest extends WP_UnitTestCase {
 					return 'https://example.com/webhook/';
 				}
 			),
-			new MessageDispatcher( $messages, new Dispatcher( $this->schema_health ) ),
 			new Dispatcher( $this->schema_health ),
 			new TelegramApiClient( 8 ),
 			new TelegramFailureClassifier(),
@@ -349,7 +347,6 @@ final class BotManagementControllerTest extends WP_UnitTestCase {
 					return 'https://example.com/webhook/';
 				}
 			),
-			new MessageDispatcher( $messages, $dispatcher ),
 			$dispatcher,
 			new TelegramApiClient( 8 ),
 			new TelegramFailureClassifier(),

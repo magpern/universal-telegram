@@ -122,19 +122,19 @@ final class DiagnosticsReport {
 			);
 
 		return array(
-			'plugin_version'                         => defined( 'UNIVERSAL_TELEGRAM_VERSION' ) ? UNIVERSAL_TELEGRAM_VERSION : 'unknown',
-			'php_version'                            => PHP_VERSION,
-			'wp_version'                             => get_bloginfo( 'version' ),
-			'woocommerce_active'                     => $this->woocommerce_support->is_active(),
-			'woocommerce_hpos_enabled'               => $this->woocommerce_hpos_enabled(),
+			'plugin_version'                           => defined( 'UNIVERSAL_TELEGRAM_VERSION' ) ? UNIVERSAL_TELEGRAM_VERSION : 'unknown',
+			'php_version'                              => PHP_VERSION,
+			'wp_version'                               => get_bloginfo( 'version' ),
+			'woocommerce_active'                       => $this->woocommerce_support->is_active(),
+			'woocommerce_hpos_enabled'                 => $this->woocommerce_hpos_enabled(),
 			// Restates $woocommerce_support->is_active() under an explicit
 			// diagnostics label — M03's WooCommerce event-emitter gating
 			// (Core\Plugin::init()) is exactly 1:1 with WC activity, so
 			// there is no separate state to track (M03 plan §6).
-			'woocommerce_event_emitters_registered'  => $this->woocommerce_support->is_active(),
-			'queue_pending'                          => $this->schema_health->is_available() ? $this->queue_health->pending_count() : 0,
-			'queue_failed'                           => $this->schema_health->is_available() ? $this->queue_health->failed_count() : 0,
-			'queue_oldest_pending_age_seconds'       => $this->schema_health->is_available() ? $this->queue_health->oldest_pending_age_seconds() : 0,
+			'woocommerce_event_emitters_registered'    => $this->woocommerce_support->is_active(),
+			'queue_pending'                            => $this->schema_health->is_available() ? $this->queue_health->pending_count() : 0,
+			'queue_failed'                             => $this->schema_health->is_available() ? $this->queue_health->failed_count() : 0,
+			'queue_oldest_pending_age_seconds'         => $this->schema_health->is_available() ? $this->queue_health->oldest_pending_age_seconds() : 0,
 			// Truthful, non-content signals only (docs/adr/0023 §3): the
 			// routine-success path is never audited, so its absence here is
 			// not itself a signal — combine with queue age and each
@@ -142,29 +142,29 @@ final class DiagnosticsReport {
 			// counts alone.
 			'queue_expedited_dispatch_declined_concurrency_24h' => $this->audit_log_repository->count_by_action_24h( 'expedited_dispatch_declined_concurrency' ),
 			'queue_expedited_dispatch_unavailable_24h' => $this->audit_log_repository->count_by_action_24h( 'expedited_dispatch_unavailable' ),
-			'telegram_bot_count'                     => count( $bots ),
-			'telegram_destination_count'             => $destination_count,
-			'telegram_dead_letter_count'             => $alert_details['dead_letter_count'],
-			'telegram_any_circuit_breaker_open'      => $alert_details['any_circuit_breaker_open'],
-			'telegram_stale_pending_count'           => $alert_details['stale_pending_count'],
+			'telegram_bot_count'                       => count( $bots ),
+			'telegram_destination_count'               => $destination_count,
+			'telegram_dead_letter_count'               => $alert_details['dead_letter_count'],
+			'telegram_any_circuit_breaker_open'        => $alert_details['any_circuit_breaker_open'],
+			'telegram_stale_pending_count'             => $alert_details['stale_pending_count'],
 			'telegram_stale_unresolved_registrations_count' => $alert_details['stale_unresolved_registrations_count'],
-			'telegram_queue_health_alert_active'     => $this->schema_health->is_available()
+			'telegram_queue_health_alert_active'       => $this->schema_health->is_available()
 				? $this->queue_health_alert->is_active( $this->stale_pending_threshold_seconds, $this->stale_registration_threshold_hours )
 				: false,
-			'automations_event_count_24h'            => $this->schema_health->is_available() ? $this->event_history->count_24h() : 0,
-			'automations_rule_count'                 => $this->schema_health->is_available() ? $this->notification_rules->count_all() : 0,
-			'automations_enabled_rule_count'         => $this->schema_health->is_available() ? $this->notification_rules->count_enabled() : 0,
-			'automations_dispatch_failed_count_24h'  => $this->schema_health->is_available() ? $this->dispatch_log->failed_count_24h() : 0,
-			'automations_stuck_claim_count'          => $this->schema_health->is_available() ? $this->dispatch_log->stuck_claim_count() : 0,
+			'automations_event_count_24h'              => $this->schema_health->is_available() ? $this->event_history->count_24h() : 0,
+			'automations_rule_count'                   => $this->schema_health->is_available() ? $this->notification_rules->count_all() : 0,
+			'automations_enabled_rule_count'           => $this->schema_health->is_available() ? $this->notification_rules->count_enabled() : 0,
+			'automations_dispatch_failed_count_24h'    => $this->schema_health->is_available() ? $this->dispatch_log->failed_count_24h() : 0,
+			'automations_stuck_claim_count'            => $this->schema_health->is_available() ? $this->dispatch_log->stuck_claim_count() : 0,
 			'automations_stale_fatal_markers_dropped_count' => (int) get_option( RetentionCleanup::STALE_FATAL_MARKERS_DROPPED_OPTION, 0 ),
-			'automations_last_evaluation_error_code' => (string) get_option( RuleEvaluator::LAST_EVALUATION_ERROR_CODE_OPTION, 'none' ),
-			'visitor_tracking_enabled'               => (bool) $this->settings->get()['visitor_tracking_enabled'],
-			'visitor_tracker_asset_available'        => defined( 'UNIVERSAL_TELEGRAM_PLUGIN_FILE' ) && file_exists( dirname( UNIVERSAL_TELEGRAM_PLUGIN_FILE ) . '/assets/js/visitor-tracker.js' ),
-			'visitor_events_recorded_24h'            => $this->schema_health->is_available() ? $this->event_history->count_24h_by_source( EventSource::VISITOR->value ) : 0,
-			'visitor_events_rejected_24h'            => $this->audit_log_repository->count_by_action_24h( 'visitor_events.rejected' ),
-			'visitor_events_rate_limited_24h'        => $this->audit_log_repository->count_by_action_24h( 'visitor_events.rate_limited' ),
-			'visitor_events_bot_filtered_24h'        => $this->audit_log_repository->count_by_action_24h( 'visitor_events.bot_filtered' ),
-			'recent_audit_entries'                   => $this->audit_log_repository->recent( 20 ),
+			'automations_last_evaluation_error_code'   => (string) get_option( RuleEvaluator::LAST_EVALUATION_ERROR_CODE_OPTION, 'none' ),
+			'visitor_tracking_enabled'                 => (bool) $this->settings->get()['visitor_tracking_enabled'],
+			'visitor_tracker_asset_available'          => defined( 'UNIVERSAL_TELEGRAM_PLUGIN_FILE' ) && file_exists( dirname( UNIVERSAL_TELEGRAM_PLUGIN_FILE ) . '/assets/js/visitor-tracker.js' ),
+			'visitor_events_recorded_24h'              => $this->schema_health->is_available() ? $this->event_history->count_24h_by_source( EventSource::VISITOR->value ) : 0,
+			'visitor_events_rejected_24h'              => $this->audit_log_repository->count_by_action_24h( 'visitor_events.rejected' ),
+			'visitor_events_rate_limited_24h'          => $this->audit_log_repository->count_by_action_24h( 'visitor_events.rate_limited' ),
+			'visitor_events_bot_filtered_24h'          => $this->audit_log_repository->count_by_action_24h( 'visitor_events.bot_filtered' ),
+			'recent_audit_entries'                     => $this->audit_log_repository->recent( 20 ),
 		);
 	}
 

@@ -52,7 +52,7 @@ class ExpeditedDispatchTrigger {
 
 			$runner = $this->create_runner();
 
-			if ( ! is_object( $runner ) || ! method_exists( $runner, 'maybe_dispatch' ) ) {
+			if ( ! method_exists( $runner, 'maybe_dispatch' ) ) {
 				$this->record( 'expedited_dispatch_unavailable' );
 				return;
 			}

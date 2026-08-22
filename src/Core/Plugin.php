@@ -664,7 +664,6 @@ final class Plugin {
 			$this->outbound_message_repository,
 			$this->telegram_api_client,
 			$this->webhook_registration_coordinator,
-			$this->message_dispatcher,
 			$this->dispatcher,
 			new TelegramApiClient( 8 ),
 			new TelegramFailureClassifier(),

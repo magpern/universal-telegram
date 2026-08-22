@@ -17,27 +17,12 @@ use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
 use UniversalTelegram\Queue\Dispatcher;
-use UniversalTelegram\Queue\ExpeditedDispatchTrigger;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
+use UniversalTelegram\Tests\Integration\Support\SpyExpeditedDispatchTrigger;
 use WP_REST_Request;
 use WP_UnitTestCase;
-
-/**
- * Counts calls instead of performing any real dependency check or loopback
- * request — keeps every pre-existing controller test deterministic and
- * network-free, while letting the new expedited-dispatch tests assert on
- * call placement (docs/adr/0023).
- */
-final class SpyExpeditedDispatchTrigger extends ExpeditedDispatchTrigger {
-
-	public int $calls = 0;
-
-	public function trigger(): void {
-		++$this->calls;
-	}
-}
 
 final class ConversationsControllerTest extends WP_UnitTestCase {
 
