@@ -166,11 +166,14 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 
 		$page = $this->make_page( $bots, $destinations );
 
+		// Explicit step 1, where the wizard's own create-bot form is shown —
+		// the step at which the duplicate-form defect could otherwise recur.
 		$_GET['view'] = 'wizard';
+		$_GET['step'] = '1';
 		ob_start();
 		$page->render_tab_content();
 		$html = ob_get_clean();
-		unset( $_GET['view'] );
+		unset( $_GET['view'], $_GET['step'] );
 
 		$this->assertStringContainsString( 'Set up your Telegram bot', $html );
 
