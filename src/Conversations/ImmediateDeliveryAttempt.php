@@ -57,17 +57,17 @@ final class ImmediateDeliveryAttempt {
 	/**
 	 * Constructor.
 	 *
-	 * @param ConversationRepository     $conversations       Conversation persistence.
-	 * @param BotProfileRepository       $bots                Bot profiles, including token decryption.
-	 * @param DestinationRepository      $destinations        Destinations.
-	 * @param OutboundMessageRepository  $outbound_messages   Durable, encrypted outbound message storage.
+	 * @param ConversationRepository      $conversations       Conversation persistence.
+	 * @param BotProfileRepository        $bots                Bot profiles, including token decryption.
+	 * @param DestinationRepository       $destinations        Destinations.
+	 * @param OutboundMessageRepository   $outbound_messages   Durable, encrypted outbound message storage.
 	 * @param ConversationOutboundHandler $outbound_handler   Creates and durably enqueues the outbound row.
-	 * @param MessageRepository          $messages            Conversation message persistence, re-read fresh each sub-attempt.
-	 * @param TelegramFailureClassifier  $classifier          Classifies a failed response.
-	 * @param RateLimiter                $rate_limiter        Per-bot/per-destination token buckets.
-	 * @param CircuitBreaker             $circuit_breaker     Per-bot/per-destination breakers.
-	 * @param AuditLogger                $audit_logger        Records Telegram-specific delivery events.
-	 * @param RetryPolicy                $retry_policy        Consulted only for its own max_attempts().
+	 * @param MessageRepository           $messages            Conversation message persistence, re-read fresh each sub-attempt.
+	 * @param TelegramFailureClassifier   $classifier          Classifies a failed response.
+	 * @param RateLimiter                 $rate_limiter        Per-bot/per-destination token buckets.
+	 * @param CircuitBreaker              $circuit_breaker     Per-bot/per-destination breakers.
+	 * @param AuditLogger                 $audit_logger        Records Telegram-specific delivery events.
+	 * @param RetryPolicy                 $retry_policy        Consulted only for its own max_attempts().
 	 */
 	public function __construct(
 		private readonly ConversationRepository $conversations,
@@ -107,10 +107,13 @@ final class ImmediateDeliveryAttempt {
 	}
 
 	/**
-	 * @param ConversationMessage $message
-	 * @param Conversation        $conversation
-	 * @param bool                $topic_claim_just_won
-	 * @param float               $deadline
+	 * The claim-aware core: topic creation if needed and won by this
+	 * request, then routing and the bounded send attempt.
+	 *
+	 * @param ConversationMessage $message               The just-accepted visitor message.
+	 * @param Conversation        $conversation           The owning conversation.
+	 * @param bool                $topic_claim_just_won   Whether this request's own `maybe_create()` call won the topic-creation claim.
+	 * @param float               $deadline               The absolute microtime(true) deadline for the whole attempt.
 	 *
 	 * @return ImmediateDeliveryResult
 	 */
@@ -204,7 +207,7 @@ final class ImmediateDeliveryAttempt {
 			return ImmediateDeliveryResult::PENDING;
 		}
 
-		$bot = $this->bots->find( $outbound->bot_id() );
+		$bot         = $this->bots->find( $outbound->bot_id() );
 		$destination = $this->destinations->find( $outbound->destination_id() );
 
 		if ( null === $bot || null === $destination ) {

@@ -195,7 +195,7 @@ class TopicCreationHandler {
 	 * `createForumTopic` call (M06.2 corrective plan v2 §3.1, ADR-0023
 	 * amendment).
 	 *
-	 * @param Conversation                                                                        $conversation The conversation, now owned by a different claim window.
+	 * @param Conversation                                                                         $conversation The conversation, now owned by a different claim window.
 	 * @param array{job_id: string, job_type: string, attempt: int, payload: array<string, mixed>} $job          The current job, rescheduled unchanged.
 	 */
 	private function reschedule_after_observed_lease( Conversation $conversation, array $job ): void {

@@ -22,7 +22,6 @@ use UniversalTelegram\Conversations\ResponseReason;
 use UniversalTelegram\Conversations\TopicCreationDispatcher;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Persistence\SchemaHealth;
-use UniversalTelegram\Queue\ExpeditedDispatchTrigger;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -54,9 +53,9 @@ final class ConversationsController {
 	// would be silently truncated on write while read_state()'s own lookup
 	// still queries by the full, untruncated string, so the bucket's state
 	// would never be found and the limiter would never actually limit.
-	private const START_SITE_SCOPE      = 'conv_start_site';
-	private const START_SITE_CAPACITY   = 120.0;
-	private const START_SITE_REFILL     = 2.0;
+	private const START_SITE_SCOPE    = 'conv_start_site';
+	private const START_SITE_CAPACITY = 120.0;
+	private const START_SITE_REFILL   = 2.0;
 
 	// Split into hourly and daily buckets (M06.2 corrective plan v2 §3.6,
 	// ADR-0023 amendment): the prior single 5/day bucket was exhausted by a
@@ -101,9 +100,8 @@ final class ConversationsController {
 	 * @param RateLimiter                    $rate_limiter      The two-tier abuse control, shared with the Telegram outbound boundary.
 	 * @param TopicCreationDispatcher        $topic_creation    Idempotent Telegram forum-topic creation dispatch.
 	 * @param ConversationOutboundDispatcher $outbound          Queue-before-topic visitor-to-Telegram routing dispatch.
-	 * @param ExpeditedDispatchTrigger       $expedited_dispatch Guarded, non-blocking request for prompt queue processing (docs/adr/0023), used only inside PromptDeliveryFallback's own final branch (ADR-0023 amendment).
 	 * @param ImmediateDeliveryAttempt       $immediate_attempt  The bounded, claim-protected primary delivery mechanism (M06.2 corrective plan v2 §3.2, ADR-0023 amendment).
-	 * @param PromptDeliveryFallback         $prompt_fallback     The host-independent bounded second-layer fallback (§3.3).
+	 * @param PromptDeliveryFallback         $prompt_fallback     The host-independent bounded second-layer fallback (§3.3); owns its own ExpeditedDispatchTrigger reference for the final, demoted best-effort nudge (§3.4).
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
@@ -114,7 +112,6 @@ final class ConversationsController {
 		private readonly RateLimiter $rate_limiter,
 		private readonly TopicCreationDispatcher $topic_creation,
 		private readonly ConversationOutboundDispatcher $outbound,
-		private readonly ExpeditedDispatchTrigger $expedited_dispatch,
 		private readonly ImmediateDeliveryAttempt $immediate_attempt,
 		private readonly PromptDeliveryFallback $prompt_fallback
 	) {}
@@ -169,7 +166,13 @@ final class ConversationsController {
 	 */
 	public function handle_start( WP_REST_Request $request ): WP_REST_Response {
 		if ( ! $this->schema_health->is_available() ) {
-			return $this->respond( array( 'ok' => false, 'reason' => ResponseReason::REQUEST_FAILED->value ), 503 );
+			return $this->respond(
+				array(
+					'ok'     => false,
+					'reason' => ResponseReason::REQUEST_FAILED->value,
+				),
+				503
+			);
 		}
 
 		$raw_body     = $request->get_body();
@@ -179,12 +182,24 @@ final class ConversationsController {
 			$decoded = json_decode( $raw_body, true );
 
 			if ( ! is_array( $decoded ) ) {
-				return $this->respond( array( 'ok' => false, 'reason' => ResponseReason::REQUEST_FAILED->value ), 400 );
+				return $this->respond(
+					array(
+						'ok'     => false,
+						'reason' => ResponseReason::REQUEST_FAILED->value,
+					),
+					400
+				);
 			}
 
 			if ( isset( $decoded['chat_profile'] ) ) {
 				if ( ! is_string( $decoded['chat_profile'] ) || '' === $decoded['chat_profile'] ) {
-					return $this->respond( array( 'ok' => false, 'reason' => ResponseReason::REQUEST_FAILED->value ), 400 );
+					return $this->respond(
+						array(
+							'ok'     => false,
+							'reason' => ResponseReason::REQUEST_FAILED->value,
+						),
+						400
+					);
 				}
 
 				$chat_profile = $decoded['chat_profile'];
@@ -201,7 +216,13 @@ final class ConversationsController {
 		$presented_secret = (string) $request->get_header( 'X-Universal-Telegram-Conversation-Secret' );
 
 		if ( '' === $idempotency_key || ! $this->tokens->is_valid_secret_format( $presented_secret ) ) {
-			return $this->respond( array( 'ok' => false, 'reason' => ResponseReason::REQUEST_FAILED->value ), 400 );
+			return $this->respond(
+				array(
+					'ok'     => false,
+					'reason' => ResponseReason::REQUEST_FAILED->value,
+				),
+				400
+			);
 		}
 
 		// Replay check happens FIRST, before any new-conversation rate limit
@@ -218,7 +239,13 @@ final class ConversationsController {
 			if ( null === $existing->secret_hash() || ! $this->tokens->verify( $presented_secret, $existing->secret_hash() ) ) {
 				$this->rate_limiter->try_consume( self::AUTH_FAIL_CLIENT_SCOPE, $this->client_scope_id( 'hour' ), self::AUTH_FAIL_CLIENT_CAPACITY, self::AUTH_FAIL_CLIENT_REFILL );
 
-				return $this->respond( array( 'ok' => false, 'reason' => ResponseReason::REQUEST_FAILED->value ), 400 );
+				return $this->respond(
+					array(
+						'ok'     => false,
+						'reason' => ResponseReason::REQUEST_FAILED->value,
+					),
+					400
+				);
 			}
 
 			return $this->respond(
@@ -247,7 +274,13 @@ final class ConversationsController {
 		$bot = null === $chat_profile ? $this->chat_profiles->default_bot() : $this->chat_profiles->find_by_profile( $chat_profile );
 
 		if ( null === $bot ) {
-			return $this->respond( array( 'ok' => false, 'reason' => ResponseReason::REQUEST_FAILED->value ), null === $chat_profile ? 503 : 400 );
+			return $this->respond(
+				array(
+					'ok'     => false,
+					'reason' => ResponseReason::REQUEST_FAILED->value,
+				),
+				null === $chat_profile ? 503 : 400
+			);
 		}
 
 		$conversation = $this->conversations->create(
@@ -259,7 +292,13 @@ final class ConversationsController {
 		);
 
 		if ( null === $conversation ) {
-			return $this->respond( array( 'ok' => false, 'reason' => ResponseReason::REQUEST_FAILED->value ), 503 );
+			return $this->respond(
+				array(
+					'ok'     => false,
+					'reason' => ResponseReason::REQUEST_FAILED->value,
+				),
+				503
+			);
 		}
 
 		return $this->respond(
@@ -281,7 +320,13 @@ final class ConversationsController {
 	 */
 	public function handle_post_message( WP_REST_Request $request ): WP_REST_Response {
 		if ( ! $this->schema_health->is_available() ) {
-			return $this->respond( array( 'ok' => false, 'reason' => ResponseReason::REQUEST_FAILED->value ), 503 );
+			return $this->respond(
+				array(
+					'ok'     => false,
+					'reason' => ResponseReason::REQUEST_FAILED->value,
+				),
+				503
+			);
 		}
 
 		if ( ! $this->rate_limiter->try_consume( self::POST_SITE_SCOPE, 0, self::POST_SITE_CAPACITY, self::POST_SITE_REFILL ) ) {
@@ -301,19 +346,37 @@ final class ConversationsController {
 		$content_type = (string) $request->get_header( 'Content-Type' );
 
 		if ( ! str_starts_with( $content_type, 'application/json' ) ) {
-			return $this->respond( array( 'ok' => false, 'reason' => ResponseReason::REQUEST_FAILED->value ), 400 );
+			return $this->respond(
+				array(
+					'ok'     => false,
+					'reason' => ResponseReason::REQUEST_FAILED->value,
+				),
+				400
+			);
 		}
 
 		$decoded = json_decode( $request->get_body(), true );
 
 		if ( ! is_array( $decoded ) || ! isset( $decoded['text'] ) || ! is_string( $decoded['text'] ) || '' === $decoded['text'] ) {
-			return $this->respond( array( 'ok' => false, 'reason' => ResponseReason::REQUEST_FAILED->value ), 400 );
+			return $this->respond(
+				array(
+					'ok'     => false,
+					'reason' => ResponseReason::REQUEST_FAILED->value,
+				),
+				400
+			);
 		}
 
 		$text = $decoded['text'];
 
 		if ( mb_strlen( $text, 'UTF-8' ) > self::MAX_TEXT_CHARS ) {
-			return $this->respond( array( 'ok' => false, 'reason' => ResponseReason::REQUEST_FAILED->value ), 400 );
+			return $this->respond(
+				array(
+					'ok'     => false,
+					'reason' => ResponseReason::REQUEST_FAILED->value,
+				),
+				400
+			);
 		}
 
 		// Per-message idempotency (M06 plan §0, ADR-0021 amendment): a
@@ -334,7 +397,13 @@ final class ConversationsController {
 		$message = $this->messages->create( $conversation->id(), 'visitor', $text, 'stored', null, '' === $idempotency_key ? null : $idempotency_key );
 
 		if ( null === $message ) {
-			return $this->respond( array( 'ok' => false, 'reason' => ResponseReason::REQUEST_FAILED->value ), 503 );
+			return $this->respond(
+				array(
+					'ok'     => false,
+					'reason' => ResponseReason::REQUEST_FAILED->value,
+				),
+				503
+			);
 		}
 
 		if ( ConversationStatus::OPEN === $conversation->status() ) {
@@ -359,7 +428,13 @@ final class ConversationsController {
 		}
 
 		if ( ImmediateDeliveryResult::DELIVERED === $result ) {
-			return $this->respond( array( 'ok' => true, 'delivery' => 'delivered' ), 200 );
+			return $this->respond(
+				array(
+					'ok'       => true,
+					'delivery' => 'delivered',
+				),
+				200
+			);
 		}
 
 		return $this->respond(
@@ -381,7 +456,13 @@ final class ConversationsController {
 	 */
 	public function handle_poll( WP_REST_Request $request ): WP_REST_Response {
 		if ( ! $this->schema_health->is_available() ) {
-			return $this->respond( array( 'ok' => false, 'reason' => ResponseReason::REQUEST_FAILED->value ), 503 );
+			return $this->respond(
+				array(
+					'ok'     => false,
+					'reason' => ResponseReason::REQUEST_FAILED->value,
+				),
+				503
+			);
 		}
 
 		if ( ! $this->rate_limiter->try_consume( self::POLL_SITE_SCOPE, 0, self::POLL_SITE_CAPACITY, self::POLL_SITE_REFILL ) ) {
@@ -405,11 +486,11 @@ final class ConversationsController {
 				$plaintext = $this->messages->decrypt( $message );
 
 				return array(
-					'id'              => $message->id(),
-					'direction'       => $message->direction(),
-					'text'            => null === $plaintext ? '[unavailable]' : $plaintext,
-					'created_at'      => $message->created_at(),
-					'delivery_state'  => $message->delivery_state(),
+					'id'             => $message->id(),
+					'direction'      => $message->direction(),
+					'text'           => null === $plaintext ? '[unavailable]' : $plaintext,
+					'created_at'     => $message->created_at(),
+					'delivery_state' => $message->delivery_state(),
 				);
 			},
 			$this->messages->messages_since( $conversation->id(), $since_id )
@@ -470,7 +551,13 @@ final class ConversationsController {
 		// 404 was reached — the body stays byte-for-byte identical across
 		// every distinct failure cause, preserving ADR-0021's
 		// non-enumeration guarantee exactly (M06.2 corrective plan v2 §3.7).
-		return $this->respond( array( 'ok' => false, 'reason' => ResponseReason::CONVERSATION_EXPIRED->value ), 404 );
+		return $this->respond(
+			array(
+				'ok'     => false,
+				'reason' => ResponseReason::CONVERSATION_EXPIRED->value,
+			),
+			404
+		);
 	}
 
 	/**
@@ -479,7 +566,13 @@ final class ConversationsController {
 	 * @return WP_REST_Response
 	 */
 	private function rate_limited(): WP_REST_Response {
-		$response = $this->respond( array( 'ok' => false, 'reason' => ResponseReason::RATE_LIMITED->value ), 429 );
+		$response = $this->respond(
+			array(
+				'ok'     => false,
+				'reason' => ResponseReason::RATE_LIMITED->value,
+			),
+			429
+		);
 		$response->header( 'Retry-After', '1' );
 
 		return $response;

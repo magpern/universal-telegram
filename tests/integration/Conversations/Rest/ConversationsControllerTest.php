@@ -63,8 +63,8 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 	 * amendment) — sharing this test's own repositories so assertions
 	 * against them stay valid.
 	 *
-	 * @param SchemaHealth              $schema_health      Checked before any processing.
-	 * @param RateLimiter               $rate_limiter       The rate limiter this controller and its callers share.
+	 * @param SchemaHealth                $schema_health      Checked before any processing.
+	 * @param RateLimiter                 $rate_limiter       The rate limiter this controller and its callers share.
 	 * @param SpyExpeditedDispatchTrigger $expedited_dispatch The final-fallback nudge spy.
 	 *
 	 * @return ConversationsController
@@ -107,7 +107,6 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 			$rate_limiter,
 			new TopicCreationDispatcher( $this->conversations, $dispatcher ),
 			new ConversationOutboundDispatcher( $dispatcher ),
-			$expedited_dispatch,
 			$immediate_attempt,
 			$prompt_fallback
 		);
@@ -217,7 +216,13 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		);
 
 		$this->assertSame( 404, $response->get_status() );
-		$this->assertSame( array( 'ok' => false, 'reason' => 'conversation_expired' ), $response->get_data() );
+		$this->assertSame(
+			array(
+				'ok'     => false,
+				'reason' => 'conversation_expired',
+			),
+			$response->get_data()
+		);
 	}
 
 	public function test_post_message_with_wrong_secret_returns_the_identical_404(): void {
@@ -228,7 +233,13 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		);
 
 		$this->assertSame( 404, $response->get_status() );
-		$this->assertSame( array( 'ok' => false, 'reason' => 'conversation_expired' ), $response->get_data() );
+		$this->assertSame(
+			array(
+				'ok'     => false,
+				'reason' => 'conversation_expired',
+			),
+			$response->get_data()
+		);
 	}
 
 	public function test_post_message_against_an_unknown_conversation_returns_the_identical_404(): void {
@@ -237,7 +248,13 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		);
 
 		$this->assertSame( 404, $response->get_status() );
-		$this->assertSame( array( 'ok' => false, 'reason' => 'conversation_expired' ), $response->get_data() );
+		$this->assertSame(
+			array(
+				'ok'     => false,
+				'reason' => 'conversation_expired',
+			),
+			$response->get_data()
+		);
 	}
 
 	public function test_post_message_against_a_revoked_secret_returns_the_identical_404(): void {
@@ -405,7 +422,13 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 
 		$this->assertSame( 200, $first->get_status() );
 		$this->assertSame( 400, $second->get_status() );
-		$this->assertSame( array( 'ok' => false, 'reason' => 'request_failed' ), $second->get_data() );
+		$this->assertSame(
+			array(
+				'ok'     => false,
+				'reason' => 'request_failed',
+			),
+			$second->get_data()
+		);
 	}
 
 	public function test_post_message_replay_with_same_key_returns_original_response_without_a_duplicate_row(): void {

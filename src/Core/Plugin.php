@@ -618,7 +618,7 @@ final class Plugin {
 			$this->audit_logger,
 			new RetryPolicy()
 		);
-		$prompt_delivery_fallback = new PromptDeliveryFallback( $immediate_delivery_attempt, $expedited_dispatch_trigger );
+		$prompt_delivery_fallback   = new PromptDeliveryFallback( $immediate_delivery_attempt, $expedited_dispatch_trigger );
 
 		$this->conversations_controller = new ConversationsController(
 			$this->schema_health,
@@ -629,7 +629,6 @@ final class Plugin {
 			$this->rate_limiter,
 			$this->topic_creation_dispatcher,
 			$conversation_outbound_dispatcher,
-			$expedited_dispatch_trigger,
 			$immediate_delivery_attempt,
 			$prompt_delivery_fallback
 		);

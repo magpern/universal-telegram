@@ -240,11 +240,11 @@ class SendMessageHandler {
 	/**
 	 * Dispatches a failed result to its classified handling path.
 	 *
-	 * @param OutboundMessage    $message     The message.
-	 * @param BotProfile         $bot         The bot.
-	 * @param Destination        $destination The destination.
-	 * @param int                $attempt     The current attempt number.
-	 * @param TelegramApiResult  $result      The failed API result.
+	 * @param OutboundMessage   $message     The message.
+	 * @param BotProfile        $bot         The bot.
+	 * @param Destination       $destination The destination.
+	 * @param int               $attempt     The current attempt number.
+	 * @param TelegramApiResult $result      The failed API result.
 	 *
 	 * @return AttemptOutcome
 	 */
@@ -399,7 +399,7 @@ class SendMessageHandler {
 	 * have expired — never busy-polling, never dropping the job silently
 	 * (M06.2 corrective plan v2 §3.1, ADR-0023 amendment).
 	 *
-	 * @param OutboundMessage                                                                     $message The message currently claimed by another caller.
+	 * @param OutboundMessage                                                                      $message The message currently claimed by another caller.
 	 * @param array{job_id: string, job_type: string, attempt: int, payload: array<string, mixed>} $job     The current job, rescheduled unchanged.
 	 */
 	private function reschedule_after_observed_lease( OutboundMessage $message, array $job ): void {

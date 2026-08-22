@@ -33,7 +33,7 @@ use UniversalTelegram\Queue\ExpeditedDispatchTrigger;
  */
 final class PromptDeliveryFallback {
 
-	private const MAX_ATTEMPTS       = 2;
+	private const MAX_ATTEMPTS            = 2;
 	private const ATTEMPT_SPACING_SECONDS = 1;
 	private const TOTAL_BUDGET_SECONDS    = 5.0;
 
