@@ -10,7 +10,9 @@ declare( strict_types=1 );
 namespace UniversalTelegram\Administration\Telegram;
 
 use UniversalTelegram\Administration\Hub\HubPage;
+use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
+use UniversalTelegram\Core\Security\CredentialState;
 use UniversalTelegram\Privacy\Classification;
 use UniversalTelegram\Queue\JobEnvelope;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
@@ -19,6 +21,7 @@ use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Configuration\InvalidDestinationException;
 use UniversalTelegram\Telegram\Configuration\WebhookRegistrationCoordinator;
 use UniversalTelegram\Telegram\Client\TelegramApiClient;
+use UniversalTelegram\Telegram\Client\TelegramFailureClassifier;
 use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
 use UniversalTelegram\Queue\Dispatcher;
@@ -51,6 +54,9 @@ class BotManagementController {
 	 * @param WebhookRegistrationCoordinator $coordinator  The registration/rotation protocol.
 	 * @param MessageDispatcher              $message_dispatcher Queues a test message send.
 	 * @param Dispatcher                     $dispatcher   Re-enqueues a requeued dead-lettered message.
+	 * @param TelegramApiClient              $test_message_client Bounded (≤8s) synchronous client for the Test Message diagnostic action only (docs/adr/0023).
+	 * @param TelegramFailureClassifier      $failure_classifier  Classifies a failed Test Message send, mirroring SendMessageHandler's own classification.
+	 * @param AuditLogger                    $audit_logger        Records the Test Message outcome, same audit posture as a queued send.
 	 */
 	public function __construct(
 		private readonly BotProfileRepository $bots,
@@ -59,8 +65,20 @@ class BotManagementController {
 		private readonly TelegramApiClient $client,
 		private readonly WebhookRegistrationCoordinator $coordinator,
 		private readonly MessageDispatcher $message_dispatcher,
-		private readonly Dispatcher $dispatcher
+		private readonly Dispatcher $dispatcher,
+		private readonly TelegramApiClient $test_message_client,
+		private readonly TelegramFailureClassifier $failure_classifier,
+		private readonly AuditLogger $audit_logger
 	) {}
+
+	/**
+	 * The Test Message action's own outcome, set only by send_test_message()
+	 * and surfaced as a fixed, non-content query argument on the redirect —
+	 * never raw Telegram error text, a token, a secret, or ciphertext.
+	 *
+	 * @var string|null
+	 */
+	private ?string $test_message_result = null;
 
 	/**
 	 * The single admin-post request handler, dispatching on the 'op' field.
@@ -113,7 +131,13 @@ class BotManagementController {
 				break;
 		}
 
-		$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . BotManagementPage::TAB_ID ) );
+		$redirect_url = admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . BotManagementPage::TAB_ID );
+
+		if ( null !== $this->test_message_result ) {
+			$redirect_url = add_query_arg( 'test_message_result', $this->test_message_result, $redirect_url );
+		}
+
+		$this->redirect_and_exit( $redirect_url );
 	}
 
 	/**
@@ -260,7 +284,13 @@ class BotManagementController {
 	}
 
 	/**
-	 * Handles the send_test_message operation.
+	 * Handles the send_test_message operation: one bounded (≤8s) synchronous
+	 * send, never queued, never retried, and never creating an
+	 * outbound_messages row — the one explicitly-authorized exception to
+	 * the "no synchronous Telegram calls from an interactive code path"
+	 * posture, reusing the same client, credential handling, destination
+	 * validation, and failure classifier the queue's own send handler uses
+	 * (docs/adr/0023 §4).
 	 */
 	private function send_test_message(): void {
 		$bot_id         = isset( $_POST['bot_id'] ) ? (int) $_POST['bot_id'] : 0;
@@ -270,7 +300,65 @@ class BotManagementController {
 			return;
 		}
 
-		$this->message_dispatcher->send( $bot_id, $destination_id, __( 'This is a test message from Telegram Operations Hub for WordPress.', 'universal-telegram' ) );
+		$bot         = $this->bots->find( $bot_id );
+		$destination = $this->destinations->find( $destination_id );
+
+		if ( null === $bot || null === $destination ) {
+			$this->test_message_result = 'error_not_found';
+			return;
+		}
+
+		$token_result = $this->bots->decrypt_token( $bot );
+
+		if ( CredentialState::AVAILABLE !== $token_result->state() || null === $token_result->plaintext() ) {
+			$this->test_message_result = 'error_token_unavailable';
+			return;
+		}
+
+		$result = $this->test_message_client->send_message(
+			$token_result->plaintext(),
+			$destination->chat_id(),
+			__( 'This is a test message from Telegram Operations Hub for WordPress.', 'universal-telegram' ),
+			$destination->message_thread_id(),
+			null
+		);
+
+		if ( $result->ok() ) {
+			$this->test_message_result = 'ok';
+			$this->record_test_message_audit( 'test_message_sent', $bot_id, $destination_id, null );
+			return;
+		}
+
+		$classification             = $this->failure_classifier->classify( $result );
+		$this->test_message_result = 'failed_' . strtolower( $classification->name );
+		$this->record_test_message_audit( 'test_message_failed', $bot_id, $destination_id, $classification->name );
+	}
+
+	/**
+	 * Records the Test Message outcome. Only fixed, non-content values —
+	 * never raw Telegram error text, a token, a secret, or ciphertext.
+	 *
+	 * @param string      $action          The fixed audit action code.
+	 * @param int         $bot_id          The bot's primary key.
+	 * @param int         $destination_id  The destination's primary key.
+	 * @param string|null $classification  The fixed FailureClassification case name, or null on success.
+	 */
+	private function record_test_message_audit( string $action, int $bot_id, int $destination_id, ?string $classification ): void {
+		$context = array(
+			'bot_id'         => $bot_id,
+			'destination_id' => $destination_id,
+		);
+		$map     = array(
+			'bot_id'         => Classification::INTERNAL,
+			'destination_id' => Classification::INTERNAL,
+		);
+
+		if ( null !== $classification ) {
+			$context['classification'] = $classification;
+			$map['classification']     = Classification::INTERNAL;
+		}
+
+		$this->audit_logger->record( $action, 'user', get_current_user_id(), $context, $map, Classification::INTERNAL );
 	}
 
 	/**

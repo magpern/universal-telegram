@@ -13,8 +13,10 @@ use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
 use UniversalTelegram\Queue\Dispatcher;
 use UniversalTelegram\Telegram\Client\TelegramApiClient;
+use UniversalTelegram\Telegram\Client\TelegramFailureClassifier;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
+use UniversalTelegram\Telegram\Configuration\DestinationKind;
 use UniversalTelegram\Telegram\Configuration\WebhookRegistrationCoordinator;
 use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
@@ -84,6 +86,62 @@ final class BotManagementControllerTest extends WP_UnitTestCase {
 		$this->filters_to_remove[] = $callback;
 	}
 
+	/**
+	 * Fakes Telegram's sendMessage response. Used only for Test Message
+	 * assertions — never a live call (docs/adr/0023 §4).
+	 *
+	 * @param bool        $ok          Whether the faked response is a success.
+	 * @param int         $http_status Only used when $ok is false.
+	 * @param string|null $description A raw description Telegram would return — must never surface in the admin-visible result.
+	 */
+	private function fake_send_message( bool $ok, int $http_status = 400, ?string $description = 'raw telegram detail, must never leak' ): void {
+		$callback = static function () use ( $ok, $http_status, $description ) {
+			return array(
+				'response' => array( 'code' => $ok ? 200 : $http_status ),
+				'body'     => wp_json_encode(
+					$ok
+						? array(
+							'ok'     => true,
+							'result' => array( 'message_id' => 42 ),
+						)
+						: array(
+							'ok'          => false,
+							'error_code'  => $http_status,
+							'description' => $description,
+						)
+				),
+			);
+		};
+		add_filter( 'pre_http_request', $callback, 10, 0 );
+		$this->filters_to_remove[] = $callback;
+	}
+
+	/**
+	 * @return array{0: \UniversalTelegram\Telegram\Configuration\BotProfile, 1: \UniversalTelegram\Telegram\Configuration\Destination}
+	 */
+	private function bot_with_destination(): array {
+		$bot         = $this->bots->create( 'Bot', 'token' );
+		$destination = ( new DestinationRepository( $this->schema_health ) )->create( $bot->id(), DestinationKind::SUPERGROUP, '-100123', null, 'Test' );
+
+		return array( $bot, $destination );
+	}
+
+	/**
+	 * Asserts no row exists in universal_telegram_outbound_messages for a
+	 * given bot. Auto-increment IDs are not transactional, so `find(1)`
+	 * cannot be relied on across a suite — this mirrors
+	 * MessageDispatcherTest's own direct-query assertion pattern instead.
+	 *
+	 * @param int $bot_id The bot's primary key.
+	 */
+	private function assertNoOutboundMessageRowFor( int $bot_id ): void {
+		global $wpdb;
+		$table = $wpdb->prefix . 'universal_telegram_outbound_messages';
+		$row   = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE bot_id = %d", $bot_id ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		$this->assertNull( $row );
+	}
+
 	private function controller(): BotManagementController {
 		$destinations = new DestinationRepository( $this->schema_health );
 		$messages     = new OutboundMessageRepository( $this->schema_health, new CredentialVault() );
@@ -103,10 +161,16 @@ final class BotManagementControllerTest extends WP_UnitTestCase {
 				}
 			),
 			new MessageDispatcher( $messages, new Dispatcher( $this->schema_health ) ),
-			new Dispatcher( $this->schema_health )
+			new Dispatcher( $this->schema_health ),
+			new TelegramApiClient( 8 ),
+			new TelegramFailureClassifier(),
+			new AuditLogger( $this->schema_health, new Redactor() )
 		) extends BotManagementController {
+			public ?string $last_redirect_url = null;
+
 			protected function redirect_and_exit( string $url ): void {
 				// Overridden so the test process is not terminated.
+				$this->last_redirect_url = $url;
 			}
 		};
 	}
@@ -182,5 +246,121 @@ final class BotManagementControllerTest extends WP_UnitTestCase {
 		$this->controller()->handle_request();
 
 		$this->assertCount( 0, $this->bots->all() );
+	}
+
+	public function test_send_test_message_on_a_faked_success_reports_ok_without_queuing_or_creating_a_message_row(): void {
+		list( $bot, $destination ) = $this->bot_with_destination();
+
+		$this->fake_send_message( true );
+
+		$nonce                = wp_create_nonce( BotManagementController::NONCE_ACTION );
+		$_POST                = array(
+			'op'             => 'send_test_message',
+			'bot_id'         => $bot->id(),
+			'destination_id' => $destination->id(),
+			'_wpnonce'       => $nonce,
+		);
+		$_REQUEST['_wpnonce'] = $nonce;
+
+		$controller = $this->controller();
+		$controller->handle_request();
+
+		$this->assertStringContainsString( 'test_message_result=ok', $controller->last_redirect_url );
+		$this->assertNoOutboundMessageRowFor( $bot->id() );
+	}
+
+	/**
+	 * @return array<string, array{0: int, 1: string}>
+	 */
+	public static function failure_classification_provider(): array {
+		return array(
+			'rate limited'  => array( 429, 'test_message_result=failed_rate_limited' ),
+			'terminal'      => array( 400, 'test_message_result=failed_terminal' ),
+			'token invalid' => array( 401, 'test_message_result=failed_token_invalid' ),
+			'retryable'     => array( 500, 'test_message_result=failed_retryable' ),
+		);
+	}
+
+	/**
+	 * @dataProvider failure_classification_provider
+	 */
+	public function test_send_test_message_on_each_failure_classification_reports_the_fixed_code_never_the_raw_description( int $http_status, string $expected_query_arg ): void {
+		list( $bot, $destination ) = $this->bot_with_destination();
+
+		$this->fake_send_message( false, $http_status, 'raw telegram detail, must never leak' );
+
+		$nonce                = wp_create_nonce( BotManagementController::NONCE_ACTION );
+		$_POST                = array(
+			'op'             => 'send_test_message',
+			'bot_id'         => $bot->id(),
+			'destination_id' => $destination->id(),
+			'_wpnonce'       => $nonce,
+		);
+		$_REQUEST['_wpnonce'] = $nonce;
+
+		$controller = $this->controller();
+		$controller->handle_request();
+
+		$this->assertStringContainsString( $expected_query_arg, $controller->last_redirect_url );
+		$this->assertStringNotContainsString( 'raw+telegram', $controller->last_redirect_url );
+		$this->assertStringNotContainsString( 'raw%20telegram', $controller->last_redirect_url );
+	}
+
+	public function test_send_test_message_never_calls_the_queue_dispatcher(): void {
+		list( $bot, $destination ) = $this->bot_with_destination();
+
+		$this->fake_send_message( true );
+
+		$nonce                = wp_create_nonce( BotManagementController::NONCE_ACTION );
+		$_POST                = array(
+			'op'             => 'send_test_message',
+			'bot_id'         => $bot->id(),
+			'destination_id' => $destination->id(),
+			'_wpnonce'       => $nonce,
+		);
+		$_REQUEST['_wpnonce'] = $nonce;
+
+		// A dedicated Dispatcher subclass recording whether it was ever
+		// asked to schedule anything — the bounded Test Message send must
+		// never enqueue a job (mirrors DispatcherTest's own override
+		// precedent).
+		$dispatcher = new class( $this->schema_health ) extends Dispatcher {
+			public bool $schedule_action_called = false;
+
+			protected function schedule_action( array $args ) {
+				$this->schedule_action_called = true;
+				return 999;
+			}
+		};
+
+		$messages = new OutboundMessageRepository( $this->schema_health, new CredentialVault() );
+		$client   = new TelegramApiClient();
+
+		$controller = new class(
+			$this->bots,
+			new DestinationRepository( $this->schema_health ),
+			$messages,
+			$client,
+			new WebhookRegistrationCoordinator(
+				$this->bots,
+				$client,
+				new AuditLogger( $this->schema_health, new Redactor() ),
+				static function (): string {
+					return 'https://example.com/webhook/';
+				}
+			),
+			new MessageDispatcher( $messages, $dispatcher ),
+			$dispatcher,
+			new TelegramApiClient( 8 ),
+			new TelegramFailureClassifier(),
+			new AuditLogger( $this->schema_health, new Redactor() )
+		) extends BotManagementController {
+			protected function redirect_and_exit( string $url ): void {}
+		};
+
+		$controller->handle_request();
+
+		$this->assertFalse( $dispatcher->schedule_action_called );
+		$this->assertNoOutboundMessageRowFor( $bot->id() );
 	}
 }

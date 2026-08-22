@@ -665,7 +665,10 @@ final class Plugin {
 			$this->telegram_api_client,
 			$this->webhook_registration_coordinator,
 			$this->message_dispatcher,
-			$this->dispatcher
+			$this->dispatcher,
+			new TelegramApiClient( 8 ),
+			new TelegramFailureClassifier(),
+			$this->audit_logger
 		);
 		add_action( 'admin_post_' . BotManagementController::ADMIN_POST_ACTION, array( $this->bot_management_controller, 'handle_request' ) );
 
