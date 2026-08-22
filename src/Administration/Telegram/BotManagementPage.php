@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Telegram;
 
+use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
@@ -61,9 +62,64 @@ final class BotManagementPage {
 		}
 
 		$this->render_bot_list();
-		$this->wizard_renderer->render( $this->wizard_state->current_step() );
+
+		if ( $this->wizard_view_requested() || ! $this->wizard_state->is_complete() ) {
+			$this->wizard_renderer->render( $this->resolve_step() );
+		} else {
+			printf(
+				'<p><a href="%1$s">%2$s</a></p>',
+				esc_url( $this->wizard_url() ),
+				esc_html__( 'Setup wizard', 'universal-telegram' )
+			);
+		}
+
 		$this->render_create_bot_form();
 		$this->render_dead_letter_list();
+	}
+
+	/**
+	 * Whether the wizard view was explicitly requested via `?view=wizard`.
+	 * Any other `view` value — or its absence — is treated identically to
+	 * "not requested," mirroring HubPage::resolve_tab_id()'s own
+	 * unrecognized-input-falls-back-silently convention. Never an error.
+	 *
+	 * @return bool
+	 */
+	private function wizard_view_requested(): bool {
+		$view = isset( $_GET['view'] ) ? sanitize_key( wp_unslash( (string) $_GET['view'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+		return 'wizard' === $view;
+	}
+
+	/**
+	 * Resolves the wizard step to display: `?step=` only when it is an
+	 * integer in the inclusive range 1-5; any other value (non-numeric,
+	 * out of range, or absent) falls back to the derived current step —
+	 * never clamped, never an error.
+	 *
+	 * @return int
+	 */
+	private function resolve_step(): int {
+		$raw = isset( $_GET['step'] ) ? wp_unslash( (string) $_GET['step'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+		if ( '' !== $raw && ctype_digit( $raw ) ) {
+			$step = (int) $raw;
+
+			if ( $step >= 1 && $step <= 5 ) {
+				return $step;
+			}
+		}
+
+		return $this->wizard_state->current_step();
+	}
+
+	/**
+	 * The wizard's own entry URL on this same Bots tab.
+	 *
+	 * @return string
+	 */
+	private function wizard_url(): string {
+		return admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . self::TAB_ID . '&view=wizard' );
 	}
 
 	/**
