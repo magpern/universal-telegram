@@ -12,6 +12,7 @@ use UniversalTelegram\Administration\Automations\EventHistoryPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderRequestHandler;
 use UniversalTelegram\Administration\Automations\RuleSimulatorPage;
+use UniversalTelegram\Administration\Conversations\ConversationActionHandler;
 use UniversalTelegram\Administration\Conversations\OperatorIdentityPage;
 use UniversalTelegram\Administration\Conversations\OperatorIdentityRequestHandler;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
@@ -357,6 +358,13 @@ final class Plugin {
 	 * @var OperatorIdentityRequestHandler|null
 	 */
 	private ?OperatorIdentityRequestHandler $operator_identity_request_handler = null;
+
+	/**
+	 * The operator conversation-workflow action handler, constructed by init() (M07, docs/adr/0026).
+	 *
+	 * @var ConversationActionHandler|null
+	 */
+	private ?ConversationActionHandler $conversation_action_handler = null;
 
 	/**
 	 * The public visitor conversation REST controller, constructed by init().
@@ -1119,6 +1127,17 @@ final class Plugin {
 		);
 		add_action( 'admin_post_' . OperatorIdentityRequestHandler::ADMIN_POST_ACTION, array( $this->operator_identity_request_handler, 'handle_request' ) );
 
+		// Operator conversation-workflow actions (M07, docs/adr/0026):
+		// availability now, assignment/lifecycle/notes/deletion added by
+		// later M07 work packages onto the same single handler. No Hub tab
+		// of its own — reached only via forms on the operator inbox tab.
+		$this->conversation_action_handler = new ConversationActionHandler(
+			$this->operator_availability_repository,
+			$this->operator_identity_repository,
+			$this->audit_logger
+		);
+		add_action( 'admin_post_' . ConversationActionHandler::ADMIN_POST_ACTION, array( $this->conversation_action_handler, 'handle_request' ) );
+
 		$this->hub_tab_registry->register(
 			new Tab( 'diagnostics', __( 'Diagnostics', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->diagnostics_page, 'render_tab_content' ) )
 		);
@@ -1362,6 +1381,13 @@ final class Plugin {
 	 */
 	public function operator_identity_request_handler(): ?OperatorIdentityRequestHandler {
 		return $this->operator_identity_request_handler;
+	}
+
+	/**
+	 * The operator conversation-workflow action handler. Available only after init() has run.
+	 */
+	public function conversation_action_handler(): ?ConversationActionHandler {
+		return $this->conversation_action_handler;
 	}
 
 	/**
