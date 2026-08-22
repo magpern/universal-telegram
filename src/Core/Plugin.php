@@ -718,7 +718,8 @@ final class Plugin {
 			$this->outbound_message_repository,
 			$telegram_form_fields,
 			$bot_setup_wizard_state,
-			$bot_setup_wizard_renderer
+			$bot_setup_wizard_renderer,
+			$this->conversation_repository
 		);
 
 		// Events/Automations (M02) repositories: constructed here, ahead of

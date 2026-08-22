@@ -121,4 +121,80 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 		$this->assertSame( ConversationStatus::NEW, $found->status() );
 		$this->assertNotNull( $found->secret_hash() );
 	}
+
+	public function test_run_auto_resolves_and_archives_an_inactive_open_conversation_in_one_pass(): void {
+		$conversation = $this->conversations->create( 'uuid-inactive-open', 'hash', 1, null );
+		$this->conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+		$this->set_conversation_updated_at( $conversation->id(), 31 );
+
+		$this->handler->run();
+
+		$updated = $this->conversations->find( $conversation->id() );
+		$this->assertSame( ConversationStatus::ARCHIVED, $updated->status() );
+		$this->assertNull( $updated->secret_hash() );
+	}
+
+	public function test_run_leaves_a_recently_active_open_conversation_untouched(): void {
+		$conversation = $this->conversations->create( 'uuid-recent-open', 'hash', 1, null );
+		$this->conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+
+		$this->handler->run();
+
+		$found = $this->conversations->find( $conversation->id() );
+		$this->assertSame( ConversationStatus::OPEN, $found->status() );
+		$this->assertNotNull( $found->secret_hash() );
+	}
+
+	public function test_run_auto_resolves_inactive_waiting_for_visitor_and_waiting_for_operator(): void {
+		$waiting_for_visitor = $this->conversations->create( 'uuid-wfv', 'hash', 1, null );
+		$this->conversations->transition( $waiting_for_visitor->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+		$this->conversations->transition( $waiting_for_visitor->id(), ConversationStatus::OPEN, ConversationStatus::WAITING_FOR_VISITOR );
+		$this->set_conversation_updated_at( $waiting_for_visitor->id(), 31 );
+
+		$waiting_for_operator = $this->conversations->create( 'uuid-wfo', 'hash', 1, null );
+		$this->conversations->transition( $waiting_for_operator->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+		$this->conversations->transition( $waiting_for_operator->id(), ConversationStatus::OPEN, ConversationStatus::WAITING_FOR_OPERATOR );
+		$this->set_conversation_updated_at( $waiting_for_operator->id(), 31 );
+
+		$this->handler->run();
+
+		$this->assertSame( ConversationStatus::ARCHIVED, $this->conversations->find( $waiting_for_visitor->id() )->status() );
+		$this->assertSame( ConversationStatus::ARCHIVED, $this->conversations->find( $waiting_for_operator->id() )->status() );
+	}
+
+	public function test_run_never_reopens_or_reprocesses_an_already_archived_conversation(): void {
+		$conversation = $this->resolved_conversation();
+		$this->handler->run();
+		$this->assertSame( ConversationStatus::ARCHIVED, $this->conversations->find( $conversation->id() )->status() );
+
+		// Make the archived row look "inactive" too — the inactivity step
+		// must never select it, since it is not in (open, waiting_for_visitor,
+		// waiting_for_operator).
+		$this->set_conversation_updated_at( $conversation->id(), 31 );
+
+		$this->handler->run();
+
+		$this->assertSame( ConversationStatus::ARCHIVED, $this->conversations->find( $conversation->id() )->status() );
+	}
+
+	public function test_run_never_touches_a_new_conversation_regardless_of_inactivity(): void {
+		$conversation = $this->conversations->create( 'uuid-new-inactive', 'hash', 1, null );
+		$this->set_conversation_updated_at( $conversation->id(), 31 );
+
+		$this->handler->run();
+
+		$this->assertSame( ConversationStatus::NEW, $this->conversations->find( $conversation->id() )->status() );
+	}
+
+	public function test_custom_inactivity_days_is_honored(): void {
+		$handler = new RetentionCleanupHandler( $this->conversations, $this->messages, $this->destinations, 30, 90, 10 );
+
+		$conversation = $this->conversations->create( 'uuid-custom-inactivity', 'hash', 1, null );
+		$this->conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+		$this->set_conversation_updated_at( $conversation->id(), 11 );
+
+		$handler->run();
+
+		$this->assertSame( ConversationStatus::ARCHIVED, $this->conversations->find( $conversation->id() )->status() );
+	}
 }
