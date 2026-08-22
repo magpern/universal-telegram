@@ -130,10 +130,10 @@ final class SettingsPageTest extends WP_UnitTestCase {
 
 		$_POST['universal_telegram_settings'] = array(
 			'chat_widget_preset'                     => 'minimal',
-			'chat_widget_geometry'                    => 'square',
-			'chat_widget_motion_default'               => 'reduced',
-			'chat_widget_participant_label_visitor'   => 'Me',
-			'chat_widget_participant_label_operator'  => 'Team',
+			'chat_widget_geometry'                   => 'square',
+			'chat_widget_motion_default'             => 'reduced',
+			'chat_widget_participant_label_visitor'  => 'Me',
+			'chat_widget_participant_label_operator' => 'Team',
 		);
 		$nonce                                = wp_create_nonce( SettingsPage::NONCE_ACTION );
 		$_POST['_wpnonce']                    = $nonce;

@@ -203,7 +203,16 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$started = $this->started_conversation();
 
 		$response = $this->controller->handle_post_message(
-			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello', 'display_name' => 'Alice' ) ) )
+			$this->messages_request(
+				$started['conversation_uuid'],
+				$started['secret'],
+				wp_json_encode(
+					array(
+						'text'         => 'Hello',
+						'display_name' => 'Alice',
+					)
+				)
+			)
 		);
 
 		$this->assertSame( 200, $response->get_status() );
@@ -309,7 +318,16 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$started = $this->started_conversation();
 
 		$this->controller->handle_post_message(
-			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'first', 'display_name' => 'Alice' ) ) )
+			$this->messages_request(
+				$started['conversation_uuid'],
+				$started['secret'],
+				wp_json_encode(
+					array(
+						'text'         => 'first',
+						'display_name' => 'Alice',
+					)
+				)
+			)
 		);
 		$this->controller->handle_post_message(
 			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'second' ) ) )
@@ -438,7 +456,16 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 
 		$key = wp_generate_uuid4();
 
-		$request = $this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello', 'display_name' => 'Alice' ) ) );
+		$request = $this->messages_request(
+			$started['conversation_uuid'],
+			$started['secret'],
+			wp_json_encode(
+				array(
+					'text'         => 'Hello',
+					'display_name' => 'Alice',
+				)
+			)
+		);
 		$request->set_header( 'Idempotency-Key', $key );
 		$first = $this->controller->handle_post_message( $request );
 
@@ -455,7 +482,16 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$started = $this->started_conversation();
 
 		$this->controller->handle_post_message(
-			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello', 'display_name' => 'Alice' ) ) )
+			$this->messages_request(
+				$started['conversation_uuid'],
+				$started['secret'],
+				wp_json_encode(
+					array(
+						'text'         => 'Hello',
+						'display_name' => 'Alice',
+					)
+				)
+			)
 		);
 
 		$this->assertSame( 1, $this->expedited_dispatch->calls );
@@ -465,7 +501,16 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$started = $this->started_conversation();
 		$key     = wp_generate_uuid4();
 
-		$request = $this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello', 'display_name' => 'Alice' ) ) );
+		$request = $this->messages_request(
+			$started['conversation_uuid'],
+			$started['secret'],
+			wp_json_encode(
+				array(
+					'text'         => 'Hello',
+					'display_name' => 'Alice',
+				)
+			)
+		);
 		$request->set_header( 'Idempotency-Key', $key );
 		$this->controller->handle_post_message( $request );
 
@@ -518,7 +563,16 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$started = $this->started_conversation();
 
 		$response = $this->controller->handle_post_message(
-			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello', 'display_name' => '   ' ) ) )
+			$this->messages_request(
+				$started['conversation_uuid'],
+				$started['secret'],
+				wp_json_encode(
+					array(
+						'text'         => 'Hello',
+						'display_name' => '   ',
+					)
+				)
+			)
 		);
 
 		$this->assertSame( 400, $response->get_status() );
@@ -528,7 +582,16 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$started = $this->started_conversation();
 
 		$response = $this->controller->handle_post_message(
-			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello', 'display_name' => str_repeat( 'a', 81 ) ) ) )
+			$this->messages_request(
+				$started['conversation_uuid'],
+				$started['secret'],
+				wp_json_encode(
+					array(
+						'text'         => 'Hello',
+						'display_name' => str_repeat( 'a', 81 ),
+					)
+				)
+			)
 		);
 
 		$this->assertSame( 400, $response->get_status() );
@@ -539,7 +602,16 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$found   = $this->conversations->find_by_uuid( $started['conversation_uuid'] );
 
 		$response = $this->controller->handle_post_message(
-			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello', 'display_name' => '  Alice  ' ) ) )
+			$this->messages_request(
+				$started['conversation_uuid'],
+				$started['secret'],
+				wp_json_encode(
+					array(
+						'text'         => 'Hello',
+						'display_name' => '  Alice  ',
+					)
+				)
+			)
 		);
 
 		$this->assertSame( 200, $response->get_status() );
@@ -556,7 +628,16 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$this->assertTrue( $before->get_data()['display_name_required'] );
 
 		$this->controller->handle_post_message(
-			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello', 'display_name' => 'Alice' ) ) )
+			$this->messages_request(
+				$started['conversation_uuid'],
+				$started['secret'],
+				wp_json_encode(
+					array(
+						'text'         => 'Hello',
+						'display_name' => 'Alice',
+					)
+				)
+			)
 		);
 
 		global $wpdb;
@@ -573,11 +654,29 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$found   = $this->conversations->find_by_uuid( $started['conversation_uuid'] );
 
 		$this->controller->handle_post_message(
-			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'first', 'display_name' => 'Alice' ) ) )
+			$this->messages_request(
+				$started['conversation_uuid'],
+				$started['secret'],
+				wp_json_encode(
+					array(
+						'text'         => 'first',
+						'display_name' => 'Alice',
+					)
+				)
+			)
 		);
 
 		$response = $this->controller->handle_post_message(
-			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'second', 'display_name' => 'Bob' ) ) )
+			$this->messages_request(
+				$started['conversation_uuid'],
+				$started['secret'],
+				wp_json_encode(
+					array(
+						'text'         => 'second',
+						'display_name' => 'Bob',
+					)
+				)
+			)
 		);
 
 		$this->assertSame( 200, $response->get_status() );
@@ -591,11 +690,29 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$found   = $this->conversations->find_by_uuid( $started['conversation_uuid'] );
 		$key     = wp_generate_uuid4();
 
-		$request = $this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello', 'display_name' => 'Alice' ) ) );
+		$request = $this->messages_request(
+			$started['conversation_uuid'],
+			$started['secret'],
+			wp_json_encode(
+				array(
+					'text'         => 'Hello',
+					'display_name' => 'Alice',
+				)
+			)
+		);
 		$request->set_header( 'Idempotency-Key', $key );
 		$this->controller->handle_post_message( $request );
 
-		$replay = $this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello', 'display_name' => 'Alice' ) ) );
+		$replay = $this->messages_request(
+			$started['conversation_uuid'],
+			$started['secret'],
+			wp_json_encode(
+				array(
+					'text'         => 'Hello',
+					'display_name' => 'Alice',
+				)
+			)
+		);
 		$replay->set_header( 'Idempotency-Key', $key );
 		$second = $this->controller->handle_post_message( $replay );
 

@@ -7,6 +7,8 @@
 
 declare( strict_types=1 );
 
+namespace UniversalTelegram\ChatWidget;
+
 use UniversalTelegram\Core\Configuration\Settings;
 
 /**
@@ -45,7 +47,7 @@ final class ChatWidgetAssets {
 	 * Constructor.
 	 *
 	 * @param ChatWidgetAvailability $availability Whether the widget should run on this request at all.
-	 * @param Settings                $settings     Reads the current preset/geometry/motion/participant-label configuration.
+	 * @param Settings               $settings     Reads the current preset/geometry/motion/participant-label configuration.
 	 */
 	public function __construct(
 		private readonly ChatWidgetAvailability $availability,
@@ -114,12 +116,12 @@ final class ChatWidgetAssets {
 		$values = $this->settings->get();
 
 		$config = array(
-			'restUrl'            => rest_url( 'universal-telegram/v1' ),
-			'namespace'          => 'universal-telegram/v1',
-			'geometry'           => in_array( $values['chat_widget_geometry'], array( 'round', 'square' ), true ) ? $values['chat_widget_geometry'] : 'round',
-			'motionDefault'      => in_array( $values['chat_widget_motion_default'], array( 'standard', 'reduced' ), true ) ? $values['chat_widget_motion_default'] : 'standard',
-			'labelVisitor'       => (string) $values['chat_widget_participant_label_visitor'],
-			'labelOperator'      => (string) $values['chat_widget_participant_label_operator'],
+			'restUrl'       => rest_url( 'universal-telegram/v1' ),
+			'namespace'     => 'universal-telegram/v1',
+			'geometry'      => in_array( $values['chat_widget_geometry'], array( 'round', 'square' ), true ) ? $values['chat_widget_geometry'] : 'round',
+			'motionDefault' => in_array( $values['chat_widget_motion_default'], array( 'standard', 'reduced' ), true ) ? $values['chat_widget_motion_default'] : 'standard',
+			'labelVisitor'  => (string) $values['chat_widget_participant_label_visitor'],
+			'labelOperator' => (string) $values['chat_widget_participant_label_operator'],
 		);
 
 		printf(

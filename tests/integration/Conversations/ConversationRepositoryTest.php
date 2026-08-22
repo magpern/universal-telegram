@@ -270,8 +270,8 @@ final class ConversationRepositoryTest extends WP_UnitTestCase {
 		$stale_new = $repo->create( 'uuid-inactive-new', 'hash', 1, null );
 
 		global $wpdb;
-		$table   = $wpdb->prefix . \UniversalTelegram\Persistence\Migrator::CONVERSATIONS_TABLE;
-		$old_ts  = gmdate( 'Y-m-d H:i:s', time() - ( 31 * DAY_IN_SECONDS ) );
+		$table  = $wpdb->prefix . \UniversalTelegram\Persistence\Migrator::CONVERSATIONS_TABLE;
+		$old_ts = gmdate( 'Y-m-d H:i:s', time() - ( 31 * DAY_IN_SECONDS ) );
 		$wpdb->update( $table, array( 'updated_at' => $old_ts ), array( 'id' => $stale_open->id() ) );
 		$wpdb->update( $table, array( 'updated_at' => $old_ts ), array( 'id' => $stale_new->id() ) );
 

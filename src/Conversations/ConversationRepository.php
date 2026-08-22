@@ -659,10 +659,10 @@ class ConversationRepository {
 			$table,
 			array(
 				'display_name_ciphertext' => $ciphertext,
-				'updated_at'               => current_time( 'mysql', true ),
+				'updated_at'              => current_time( 'mysql', true ),
 			),
 			array(
-				'id'                       => $conversation->id(),
+				'id'                      => $conversation->id(),
 				'display_name_ciphertext' => null,
 			),
 			array( '%s', '%s' ),

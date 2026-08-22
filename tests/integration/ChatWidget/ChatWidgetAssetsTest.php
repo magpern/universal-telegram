@@ -125,7 +125,16 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 	}
 
 	public function test_enqueue_selects_the_stylesheet_matching_the_stored_preset(): void {
-		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true, 'chat_widget_preset' => 'minimal' ) ) );
+		update_option(
+			Settings::OPTION_NAME,
+			array_merge(
+				( new Settings() )->defaults(),
+				array(
+					'chat_widget_enabled' => true,
+					'chat_widget_preset'  => 'minimal',
+				)
+			)
+		);
 		$this->make_eligible_destination();
 
 		$this->go_to( home_url( '/' ) );
@@ -159,11 +168,11 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 			array_merge(
 				( new Settings() )->defaults(),
 				array(
-					'chat_widget_enabled'                    => true,
-					'chat_widget_geometry'                    => 'square',
-					'chat_widget_motion_default'               => 'reduced',
-					'chat_widget_participant_label_visitor'   => 'Me',
-					'chat_widget_participant_label_operator'  => 'Team',
+					'chat_widget_enabled'        => true,
+					'chat_widget_geometry'       => 'square',
+					'chat_widget_motion_default' => 'reduced',
+					'chat_widget_participant_label_visitor' => 'Me',
+					'chat_widget_participant_label_operator' => 'Team',
 				)
 			)
 		);

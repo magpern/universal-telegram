@@ -100,7 +100,7 @@ final class SettingsTest extends TestCase {
 	/**
 	 * @dataProvider participant_label_field_provider
 	 */
-	public function test_sanitize_trims_and_accepts_a_valid_participant_label( string $field, string $default ): void {
+	public function test_sanitize_trims_and_accepts_a_valid_participant_label( string $field, string $default_value ): void {
 		$settings = new Settings();
 
 		$this->assertSame( 'Hi there', $settings->sanitize( array( $field => '  Hi there  ' ) )[ $field ] );
@@ -109,11 +109,11 @@ final class SettingsTest extends TestCase {
 	/**
 	 * @dataProvider participant_label_field_provider
 	 */
-	public function test_sanitize_falls_back_to_default_for_an_empty_or_oversized_participant_label( string $field, string $default ): void {
+	public function test_sanitize_falls_back_to_default_for_an_empty_or_oversized_participant_label( string $field, string $default_value ): void {
 		$settings = new Settings();
 
-		$this->assertSame( $default, $settings->sanitize( array( $field => '   ' ) )[ $field ] );
-		$this->assertSame( $default, $settings->sanitize( array( $field => str_repeat( 'a', 41 ) ) )[ $field ] );
+		$this->assertSame( $default_value, $settings->sanitize( array( $field => '   ' ) )[ $field ] );
+		$this->assertSame( $default_value, $settings->sanitize( array( $field => str_repeat( 'a', 41 ) ) )[ $field ] );
 	}
 
 	/**

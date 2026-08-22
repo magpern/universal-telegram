@@ -251,9 +251,9 @@ final class ConversationsController {
 
 			return $this->respond(
 				array(
-					'ok'                     => true,
-					'conversation_uuid'      => $existing->conversation_uuid(),
-					'secret'                 => $presented_secret,
+					'ok'                    => true,
+					'conversation_uuid'     => $existing->conversation_uuid(),
+					'secret'                => $presented_secret,
 					'display_name_required' => $existing->display_name_required(),
 				),
 				200
@@ -305,9 +305,9 @@ final class ConversationsController {
 
 		return $this->respond(
 			array(
-				'ok'                     => true,
-				'conversation_uuid'      => $conversation->conversation_uuid(),
-				'secret'                 => $presented_secret,
+				'ok'                    => true,
+				'conversation_uuid'     => $conversation->conversation_uuid(),
+				'secret'                => $presented_secret,
 				'display_name_required' => $conversation->display_name_required(),
 			),
 			200
@@ -556,9 +556,9 @@ final class ConversationsController {
 
 		return $this->respond(
 			array(
-				'ok'                     => true,
-				'status'                 => $conversation->status(),
-				'messages'               => $messages,
+				'ok'                    => true,
+				'status'                => $conversation->status(),
+				'messages'              => $messages,
 				'display_name_required' => $conversation->display_name_required(),
 			),
 			200
