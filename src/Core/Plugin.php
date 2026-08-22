@@ -42,7 +42,9 @@ use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationOutboundDispatcher;
 use UniversalTelegram\Conversations\ConversationOutboundHandler;
 use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\ImmediateDeliveryAttempt;
 use UniversalTelegram\Conversations\MessageRepository;
+use UniversalTelegram\Conversations\PromptDeliveryFallback;
 use UniversalTelegram\Conversations\Rest\ConversationsController;
 use UniversalTelegram\Conversations\RetentionCleanupHandler as ConversationRetentionCleanupHandler;
 use UniversalTelegram\Conversations\TopicCreationDispatcher;
@@ -595,6 +597,29 @@ final class Plugin {
 		);
 		$this->handler_registry->register( ConversationOutboundHandler::JOB_TYPE, array( $conversation_outbound_handler, 'handle_job' ) );
 
+		$expedited_dispatch_trigger = new ExpeditedDispatchTrigger( $this->audit_logger );
+
+		// Primary interactive-latency mechanism (M06.2 corrective plan v2
+		// §3.2–§3.3, ADR-0023 amendment): a bounded, claim-protected
+		// synchronous attempt, shared unmodified with the durable queue
+		// handlers above, plus a host-independent bounded second-layer
+		// fallback. ExpeditedDispatchTrigger is retained but demoted to
+		// only the fallback's own final branch.
+		$immediate_delivery_attempt = new ImmediateDeliveryAttempt(
+			$this->conversation_repository,
+			$this->bot_profile_repository,
+			$this->destination_repository,
+			$this->outbound_message_repository,
+			$conversation_outbound_handler,
+			$this->message_repository,
+			new TelegramFailureClassifier(),
+			$this->rate_limiter,
+			$this->circuit_breaker,
+			$this->audit_logger,
+			new RetryPolicy()
+		);
+		$prompt_delivery_fallback = new PromptDeliveryFallback( $immediate_delivery_attempt, $expedited_dispatch_trigger );
+
 		$this->conversations_controller = new ConversationsController(
 			$this->schema_health,
 			$this->conversation_repository,
@@ -604,7 +629,9 @@ final class Plugin {
 			$this->rate_limiter,
 			$this->topic_creation_dispatcher,
 			$conversation_outbound_dispatcher,
-			new ExpeditedDispatchTrigger( $this->audit_logger )
+			$expedited_dispatch_trigger,
+			$immediate_delivery_attempt,
+			$prompt_delivery_fallback
 		);
 		add_action( 'rest_api_init', array( $this->conversations_controller, 'register_routes' ) );
 

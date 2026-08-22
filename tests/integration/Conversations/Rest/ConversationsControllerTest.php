@@ -7,8 +7,11 @@ namespace UniversalTelegram\Tests\Integration\Conversations\Rest;
 
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationOutboundDispatcher;
+use UniversalTelegram\Conversations\ConversationOutboundHandler;
 use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\ImmediateDeliveryAttempt;
 use UniversalTelegram\Conversations\MessageRepository;
+use UniversalTelegram\Conversations\PromptDeliveryFallback;
 use UniversalTelegram\Conversations\Rest\ConversationsController;
 use UniversalTelegram\Conversations\TopicCreationDispatcher;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
@@ -17,8 +20,12 @@ use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
 use UniversalTelegram\Queue\Dispatcher;
+use UniversalTelegram\Queue\RetryPolicy;
+use UniversalTelegram\Telegram\Client\TelegramFailureClassifier;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
+use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
+use UniversalTelegram\Telegram\Reliability\CircuitBreaker;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
 use UniversalTelegram\Tests\Integration\Support\SpyExpeditedDispatchTrigger;
 use WP_REST_Request;
@@ -47,16 +54,62 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$this->destinations       = new DestinationRepository( $schema_health );
 		$this->expedited_dispatch = new SpyExpeditedDispatchTrigger( new AuditLogger( $schema_health, new Redactor() ) );
 
-		$this->controller = new ConversationsController(
+		$this->controller = $this->build_controller( $schema_health, new RateLimiter( $schema_health ), $this->expedited_dispatch );
+	}
+
+	/**
+	 * Builds a fully wired controller — including the immediate/fallback
+	 * delivery layers (M06.2 corrective plan v2 §3.2–§3.3, ADR-0023
+	 * amendment) — sharing this test's own repositories so assertions
+	 * against them stay valid.
+	 *
+	 * @param SchemaHealth              $schema_health      Checked before any processing.
+	 * @param RateLimiter               $rate_limiter       The rate limiter this controller and its callers share.
+	 * @param SpyExpeditedDispatchTrigger $expedited_dispatch The final-fallback nudge spy.
+	 *
+	 * @return ConversationsController
+	 */
+	private function build_controller( SchemaHealth $schema_health, RateLimiter $rate_limiter, SpyExpeditedDispatchTrigger $expedited_dispatch ): ConversationsController {
+		$dispatcher        = new Dispatcher( $schema_health );
+		$outbound_messages = new OutboundMessageRepository( $schema_health, new CredentialVault() );
+		$circuit_breaker   = new CircuitBreaker( $schema_health, new RetryPolicy() );
+		$audit_logger      = new AuditLogger( $schema_health, new Redactor() );
+
+		$outbound_handler = new ConversationOutboundHandler(
+			$this->messages,
+			$this->conversations,
+			$outbound_messages,
+			$dispatcher
+		);
+
+		$immediate_attempt = new ImmediateDeliveryAttempt(
+			$this->conversations,
+			$this->bots,
+			$this->destinations,
+			$outbound_messages,
+			$outbound_handler,
+			$this->messages,
+			new TelegramFailureClassifier(),
+			$rate_limiter,
+			$circuit_breaker,
+			$audit_logger,
+			new RetryPolicy()
+		);
+
+		$prompt_fallback = new PromptDeliveryFallback( $immediate_attempt, $expedited_dispatch );
+
+		return new ConversationsController(
 			$schema_health,
 			$this->conversations,
 			$this->messages,
 			$this->tokens,
 			new ChatProfileResolver( $this->bots, $this->destinations ),
-			new RateLimiter( $schema_health ),
-			new TopicCreationDispatcher( $this->conversations, new Dispatcher( $schema_health ) ),
-			new ConversationOutboundDispatcher( new Dispatcher( $schema_health ) ),
-			$this->expedited_dispatch
+			$rate_limiter,
+			new TopicCreationDispatcher( $this->conversations, $dispatcher ),
+			new ConversationOutboundDispatcher( $dispatcher ),
+			$expedited_dispatch,
+			$immediate_attempt,
+			$prompt_fallback
 		);
 	}
 
@@ -164,7 +217,7 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		);
 
 		$this->assertSame( 404, $response->get_status() );
-		$this->assertSame( array( 'ok' => false ), $response->get_data() );
+		$this->assertSame( array( 'ok' => false, 'reason' => 'conversation_expired' ), $response->get_data() );
 	}
 
 	public function test_post_message_with_wrong_secret_returns_the_identical_404(): void {
@@ -175,7 +228,7 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		);
 
 		$this->assertSame( 404, $response->get_status() );
-		$this->assertSame( array( 'ok' => false ), $response->get_data() );
+		$this->assertSame( array( 'ok' => false, 'reason' => 'conversation_expired' ), $response->get_data() );
 	}
 
 	public function test_post_message_against_an_unknown_conversation_returns_the_identical_404(): void {
@@ -184,7 +237,7 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		);
 
 		$this->assertSame( 404, $response->get_status() );
-		$this->assertSame( array( 'ok' => false ), $response->get_data() );
+		$this->assertSame( array( 'ok' => false, 'reason' => 'conversation_expired' ), $response->get_data() );
 	}
 
 	public function test_post_message_against_a_revoked_secret_returns_the_identical_404(): void {
@@ -271,18 +324,9 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 	public function test_start_rate_limiting_eventually_trips_before_unbounded_row_creation(): void {
 		$this->bots->create( 'Support Bot', 'token' );
 
-		$limiter    = new RateLimiter( new SchemaHealth() );
-		$controller = new ConversationsController(
-			new SchemaHealth(),
-			$this->conversations,
-			$this->messages,
-			$this->tokens,
-			new ChatProfileResolver( $this->bots, $this->destinations ),
-			$limiter,
-			new TopicCreationDispatcher( $this->conversations, new Dispatcher( new SchemaHealth() ) ),
-			new ConversationOutboundDispatcher( new Dispatcher( new SchemaHealth() ) ),
-			new SpyExpeditedDispatchTrigger( new AuditLogger( new SchemaHealth(), new Redactor() ) )
-		);
+		$schema_health = new SchemaHealth();
+		$limiter       = new RateLimiter( $schema_health );
+		$controller    = $this->build_controller( $schema_health, $limiter, new SpyExpeditedDispatchTrigger( new AuditLogger( $schema_health, new Redactor() ) ) );
 
 		$last_status = 200;
 		for ( $i = 0; $i < 200; $i++ ) {
@@ -361,7 +405,7 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 
 		$this->assertSame( 200, $first->get_status() );
 		$this->assertSame( 400, $second->get_status() );
-		$this->assertSame( array( 'ok' => false ), $second->get_data() );
+		$this->assertSame( array( 'ok' => false, 'reason' => 'request_failed' ), $second->get_data() );
 	}
 
 	public function test_post_message_replay_with_same_key_returns_original_response_without_a_duplicate_row(): void {

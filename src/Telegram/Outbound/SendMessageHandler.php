@@ -155,6 +155,14 @@ class SendMessageHandler {
 	 *                           genuine configuration error, not an ordinary delivery outcome.
 	 */
 	public function try_once( OutboundMessage $message, BotProfile $bot, Destination $destination, int $attempt ): AttemptOutcome {
+		if ( in_array( $message->status(), array( OutboundMessageStatus::SENT, OutboundMessageStatus::DEAD_LETTER, OutboundMessageStatus::PURGED ), true ) ) {
+			// Already resolved by another claimant (or a prior call) — a
+			// terminal status is never re-claimable, so treat this as a
+			// clean no-op rather than repeatedly discovering ALREADY_CLAIMED
+			// against a lease that will never again advance.
+			return OutboundMessageStatus::SENT === $message->status() ? AttemptOutcome::DELIVERED : AttemptOutcome::TERMINAL;
+		}
+
 		$bot_id         = $bot->id();
 		$destination_id = $destination->id();
 
