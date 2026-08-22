@@ -11,7 +11,9 @@ namespace UniversalTelegram\Conversations;
 
 use RuntimeException;
 use UniversalTelegram\Core\Security\CredentialState;
+use UniversalTelegram\Queue\AttemptOutcome;
 use UniversalTelegram\Queue\RetryPolicy;
+use UniversalTelegram\Queue\WorkerRunner;
 use UniversalTelegram\Telegram\Client\TelegramApiClient;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationKind;
@@ -50,7 +52,11 @@ class TopicCreationHandler {
 	) {}
 
 	/**
-	 * The Action Scheduler job handler.
+	 * The Action Scheduler job handler. A thin wrapper around try_once():
+	 * resolves and verifies the conversation still belongs to this job's own
+	 * claim window, then translates the shared AttemptOutcome into this
+	 * queue's own existing scheduling behavior (M06.2 corrective plan v2
+	 * §3.1–§3.2, ADR-0023 amendment).
 	 *
 	 * @param array{job_id: string, job_type: string, attempt: int, payload: array<string, mixed>} $job The job.
 	 *
@@ -73,25 +79,59 @@ class TopicCreationHandler {
 			return;
 		}
 
-		$bot = $this->bots->find( $conversation->bot_id() );
+		// Verifies this specific job still owns the claim window it was
+		// enqueued under: a later caller may have reclaimed after this
+		// job's own lease expired (crash recovery). Payloads enqueued
+		// before this field existed carry no verification data and are
+		// treated as still-owning, preserving prior behavior exactly.
+		$claimed_lease_expires_at = $job['payload']['claimed_lease_expires_at'] ?? null;
+
+		if ( null !== $claimed_lease_expires_at && $claimed_lease_expires_at !== $conversation->topic_claim_expires_at() ) {
+			$this->reschedule_after_observed_lease( $conversation, $job );
+			return;
+		}
+
+		$outcome = $this->try_once( $conversation, (int) $job['attempt'] );
+
+		if ( AttemptOutcome::PENDING_RETRY === $outcome ) {
+			throw new RuntimeException( 'conversation_topic_creation_failed_retry' );
+		}
+
+		// DELIVERED, TERMINAL: already fully handled, no throw.
+	}
+
+	/**
+	 * One non-throwing topic-creation attempt, shared unmodified between
+	 * this queue handler and the in-process immediate attempt layer
+	 * (M06.2 corrective plan v2 §3.1–§3.2, ADR-0023 amendment). Never
+	 * schedules a durable retry itself — that remains the caller's own
+	 * concern (handle_job's throw drives WorkerRunner's generic backoff; an
+	 * in-process caller simply treats anything other than DELIVERED as
+	 * "not delivered yet").
+	 *
+	 * @param Conversation $conversation The conversation, with topic_creation_state already verified 'pending' and this call's own claim window confirmed current.
+	 * @param int          $attempt      The current attempt number, for exhaustion accounting only.
+	 *
+	 * @return AttemptOutcome
+	 */
+	public function try_once( Conversation $conversation, int $attempt ): AttemptOutcome {
+		$conversation_id = $conversation->id();
+		$bot             = $this->bots->find( $conversation->bot_id() );
 
 		if ( null === $bot ) {
-			$this->fail_or_retry( $job, $conversation_id, 'conversation_topic_bot_missing' );
-			return;
+			return $this->fail_or_retry( $conversation_id, $attempt );
 		}
 
 		$chat_id = $this->chat_profiles->conversation_chat_id( $bot->id() );
 
 		if ( null === $chat_id ) {
-			$this->fail_or_retry( $job, $conversation_id, 'conversation_topic_chat_not_configured' );
-			return;
+			return $this->fail_or_retry( $conversation_id, $attempt );
 		}
 
 		$token_result = $this->bots->decrypt_token( $bot );
 
 		if ( CredentialState::AVAILABLE !== $token_result->state() || null === $token_result->plaintext() ) {
-			$this->fail_or_retry( $job, $conversation_id, 'conversation_topic_token_unavailable' );
-			return;
+			return $this->fail_or_retry( $conversation_id, $attempt );
 		}
 
 		$result = $this->client->create_forum_topic(
@@ -101,8 +141,7 @@ class TopicCreationHandler {
 		);
 
 		if ( ! $result->ok() ) {
-			$this->fail_or_retry( $job, $conversation_id, 'conversation_topic_creation_failed' );
-			return;
+			return $this->fail_or_retry( $conversation_id, $attempt );
 		}
 
 		$telegram_topic_id = isset( $result->result()['message_thread_id'] ) && is_int( $result->result()['message_thread_id'] )
@@ -110,8 +149,7 @@ class TopicCreationHandler {
 			: null;
 
 		if ( null === $telegram_topic_id ) {
-			$this->fail_or_retry( $job, $conversation_id, 'conversation_topic_response_malformed' );
-			return;
+			return $this->fail_or_retry( $conversation_id, $attempt );
 		}
 
 		$destination = $this->destinations->create(
@@ -123,30 +161,47 @@ class TopicCreationHandler {
 		);
 
 		if ( null === $destination ) {
-			$this->fail_or_retry( $job, $conversation_id, 'conversation_topic_destination_write_failed' );
-			return;
+			return $this->fail_or_retry( $conversation_id, $attempt );
 		}
 
 		$this->conversations->mark_topic_created( $conversation_id, $telegram_topic_id, $destination->id() );
+
+		return AttemptOutcome::DELIVERED;
 	}
 
 	/**
 	 * Marks the conversation's topic creation 'failed' once the retry
-	 * budget is exhausted; otherwise rethrows so WorkerRunner's generic
-	 * retry sequence runs.
+	 * budget is exhausted; otherwise reports PENDING_RETRY so handle_job's
+	 * own throw drives WorkerRunner's generic retry sequence.
 	 *
-	 * @param array{job_id: string, job_type: string, attempt: int, payload: array<string, mixed>} $job              The job.
-	 * @param int                                                                                  $conversation_id  The conversation's primary key.
-	 * @param string                                                                               $reason_code       A fixed stable code (unused beyond the thrown exception's message).
+	 * @param int $conversation_id The conversation's primary key.
+	 * @param int $attempt         The current attempt number.
 	 *
-	 * @throws RuntimeException If attempts remain.
+	 * @return AttemptOutcome
 	 */
-	private function fail_or_retry( array $job, int $conversation_id, string $reason_code ): void {
-		if ( (int) $job['attempt'] >= $this->retry_policy->max_attempts() ) {
+	private function fail_or_retry( int $conversation_id, int $attempt ): AttemptOutcome {
+		if ( $attempt >= $this->retry_policy->max_attempts() ) {
 			$this->conversations->mark_topic_failed( $conversation_id );
-			return;
+			return AttemptOutcome::TERMINAL;
 		}
 
-		throw new RuntimeException( $reason_code );
+		return AttemptOutcome::PENDING_RETRY;
+	}
+
+	/**
+	 * Reads the current, superseding claimant's observed lease expiry and
+	 * self-reschedules this job to check back exactly once, just after that
+	 * lease should have expired, rather than attempting a second, competing
+	 * `createForumTopic` call (M06.2 corrective plan v2 §3.1, ADR-0023
+	 * amendment).
+	 *
+	 * @param Conversation                                                                        $conversation The conversation, now owned by a different claim window.
+	 * @param array{job_id: string, job_type: string, attempt: int, payload: array<string, mixed>} $job          The current job, rescheduled unchanged.
+	 */
+	private function reschedule_after_observed_lease( Conversation $conversation, array $job ): void {
+		$lease_expiry = $conversation->topic_claim_expires_at();
+		$at           = null !== $lease_expiry ? strtotime( $lease_expiry . ' UTC' ) + 1 : time() + 1;
+
+		as_schedule_single_action( $at, WorkerRunner::HOOK, array( $job ), WorkerRunner::GROUP );
 	}
 }

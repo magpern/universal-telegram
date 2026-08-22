@@ -228,4 +228,57 @@ final class SendMessageHandlerTest extends WP_UnitTestCase {
 		$updated_bot = $this->bots->find( $bot->id() );
 		$this->assertSame( \UniversalTelegram\Telegram\Configuration\BotStatus::INVALID, $updated_bot->status() );
 	}
+
+	public function test_an_unexpired_lease_held_by_another_claimant_reschedules_without_consuming_an_attempt(): void {
+		$bot         = $this->bots->create( 'Bot', 'fake-token' );
+		$destination = $this->destinations->create( $bot->id(), DestinationKind::PRIVATE, '12345', null, 'Chat' );
+		$message     = $this->messages->create( $bot->id(), $destination->id(), 'hello', null );
+
+		// Simulate another claimant currently holding an unexpired lease.
+		$this->messages->try_claim_for_sending( $message->id(), 15 );
+
+		$this->handler()->handle_job( $this->job( $message->message_uuid(), $bot->id(), $destination->id() ) );
+
+		$after = $this->messages->find( $message->id() );
+		$this->assertSame( OutboundMessageStatus::SENDING, $after->status() );
+		$this->assertSame( 1, $after->attempt_count(), 'the non-owning caller must not itself consume an attempt' );
+
+		$scheduled = as_get_scheduled_actions(
+			array(
+				'hook'  => \UniversalTelegram\Queue\WorkerRunner::HOOK,
+				'group' => \UniversalTelegram\Queue\WorkerRunner::GROUP,
+			)
+		);
+		$this->assertNotEmpty( $scheduled, 'the job must be rescheduled, never silently dropped' );
+	}
+
+	public function test_reclaim_succeeds_once_the_other_claimants_lease_has_actually_expired(): void {
+		$this->fake_response(
+			200,
+			array(
+				'ok'     => true,
+				'result' => array( 'message_id' => 555 ),
+			)
+		);
+
+		$bot         = $this->bots->create( 'Bot', 'fake-token' );
+		$destination = $this->destinations->create( $bot->id(), DestinationKind::PRIVATE, '12345', null, 'Chat' );
+		$message     = $this->messages->create( $bot->id(), $destination->id(), 'hello', null );
+
+		$this->messages->try_claim_for_sending( $message->id(), 15 );
+
+		global $wpdb;
+		$table = $wpdb->prefix . \UniversalTelegram\Persistence\Migrator::OUTBOUND_MESSAGES_TABLE;
+		$wpdb->update(
+			$table,
+			array( 'claim_expires_at' => gmdate( 'Y-m-d H:i:s', time() - 1 ) ),
+			array( 'id' => $message->id() )
+		);
+
+		$this->handler()->handle_job( $this->job( $message->message_uuid(), $bot->id(), $destination->id() ) );
+
+		$after = $this->messages->find( $message->id() );
+		$this->assertSame( OutboundMessageStatus::SENT, $after->status() );
+		$this->assertSame( 555, $after->telegram_message_id() );
+	}
 }
