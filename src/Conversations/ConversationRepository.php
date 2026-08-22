@@ -738,11 +738,11 @@ class ConversationRepository {
 			array(
 				'assigned_operator_id'          => $new_operator_id,
 				'assignee_last_seen_message_id' => null,
-				'updated_at'                     => current_time( 'mysql', true ),
+				'updated_at'                    => current_time( 'mysql', true ),
 			),
 			array(
-				'id'                    => $id,
-				'assigned_operator_id'  => $expected_operator_id,
+				'id'                   => $id,
+				'assigned_operator_id' => $expected_operator_id,
 			),
 			array( '%d', '%s', '%s' ),
 			array( '%d', '%d' )
@@ -776,7 +776,7 @@ class ConversationRepository {
 			array(
 				'assigned_operator_id'          => null,
 				'assignee_last_seen_message_id' => null,
-				'updated_at'                     => current_time( 'mysql', true ),
+				'updated_at'                    => current_time( 'mysql', true ),
 			),
 			array( 'assigned_operator_id' => $operator_user_id ),
 			array( '%s', '%s', '%s' ),
@@ -837,11 +837,11 @@ class ConversationRepository {
 		global $wpdb;
 
 		$conversations_table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
-		$messages_table       = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
+		$messages_table      = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
 
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table names, never user input.
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				"SELECT c.* FROM {$conversations_table} c
 					WHERE c.assigned_operator_id = %d
 					AND EXISTS (
@@ -854,6 +854,7 @@ class ConversationRepository {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return array_map( array( $this, 'hydrate' ), null === $rows ? array() : $rows );
 	}

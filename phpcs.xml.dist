@@ -123,6 +123,8 @@
 	<rule ref="WordPress.Security.NonceVerification.Missing">
 		<exclude-pattern>*/src/Administration/Telegram/BotManagementController.php</exclude-pattern>
 		<exclude-pattern>*/src/Administration/Automations/RuleBuilderRequestHandler.php</exclude-pattern>
+		<exclude-pattern>*/src/Administration/Conversations/OperatorIdentityRequestHandler.php</exclude-pattern>
+		<exclude-pattern>*/src/Administration/Conversations/ConversationActionHandler.php</exclude-pattern>
 	</rule>
 
 	<!-- M02's own event_type identifiers are a fixed, lower-case,

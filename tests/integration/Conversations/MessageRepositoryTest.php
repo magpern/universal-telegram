@@ -158,13 +158,13 @@ final class MessageRepositoryTest extends WP_UnitTestCase {
 	}
 
 	public function test_clear_sender_attribution_nulls_the_matching_rows_only(): void {
-		$repo             = $this->repository();
-		$conversation_id  = $this->conversation_id();
+		$repo                  = $this->repository();
+		$conversation_id       = $this->conversation_id();
 		$other_conversation_id = $this->conversation_id();
 
-		$matching     = $repo->create( $conversation_id, 'operator', 'reply one', 'stored', null, null, 999888777 );
+		$matching      = $repo->create( $conversation_id, 'operator', 'reply one', 'stored', null, null, 999888777 );
 		$also_matching = $repo->create( $other_conversation_id, 'operator', 'reply two', 'stored', null, null, 999888777 );
-		$unrelated    = $repo->create( $conversation_id, 'operator', 'reply three', 'stored', null, null, 111222333 );
+		$unrelated     = $repo->create( $conversation_id, 'operator', 'reply three', 'stored', null, null, 111222333 );
 
 		$result = $repo->clear_sender_attribution( 999888777 );
 

@@ -22,11 +22,11 @@ final class ConversationNote {
 	/**
 	 * Constructor.
 	 *
-	 * @param int         $id               Primary key.
-	 * @param int         $conversation_id  The owning conversation.
-	 * @param int|null    $operator_user_id The authoring operator, or null once anonymized.
-	 * @param string      $body_ciphertext  The stored CredentialVault envelope.
-	 * @param string      $created_at       Creation timestamp.
+	 * @param int      $id               Primary key.
+	 * @param int      $conversation_id  The owning conversation.
+	 * @param int|null $operator_user_id The authoring operator, or null once anonymized.
+	 * @param string   $body_ciphertext  The stored CredentialVault envelope.
+	 * @param string   $created_at       Creation timestamp.
 	 */
 	public function __construct(
 		private readonly int $id,

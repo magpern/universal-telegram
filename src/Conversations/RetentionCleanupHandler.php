@@ -42,12 +42,12 @@ final class RetentionCleanupHandler {
 	/**
 	 * Constructor.
 	 *
-	 * @param ConversationRepository  $conversations              Conversation persistence.
-	 * @param MessageRepository       $messages                    Conversation message persistence.
+	 * @param ConversationRepository   $conversations              Conversation persistence.
+	 * @param MessageRepository        $messages                    Conversation message persistence.
 	 * @param ConversationPurgeService $purge_service              Shared permanent-deletion sequence (docs/adr/0026).
-	 * @param int                     $message_retention_days      Days since archival before message bodies are nulled.
-	 * @param int                     $conversation_retention_days Days since archival before the conversation is permanently deleted.
-	 * @param int                     $inactivity_days             Days of no visitor/operator message before an open/waiting conversation auto-resolves (M06.3, ADR-0024).
+	 * @param int                      $message_retention_days      Days since archival before message bodies are nulled.
+	 * @param int                      $conversation_retention_days Days since archival before the conversation is permanently deleted.
+	 * @param int                      $inactivity_days             Days of no visitor/operator message before an open/waiting conversation auto-resolves (M06.3, ADR-0024).
 	 */
 	public function __construct(
 		private readonly ConversationRepository $conversations,

@@ -27,9 +27,9 @@ final class ConversationPurgeServiceTest extends WP_UnitTestCase {
 
 		$schema_health       = new SchemaHealth();
 		$this->conversations = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );
-		$this->messages       = new MessageRepository( $schema_health, new CredentialVault() );
-		$this->destinations   = new DestinationRepository( $schema_health );
-		$this->purge_service  = new ConversationPurgeService( $this->conversations, $this->messages, $this->destinations );
+		$this->messages      = new MessageRepository( $schema_health, new CredentialVault() );
+		$this->destinations  = new DestinationRepository( $schema_health );
+		$this->purge_service = new ConversationPurgeService( $this->conversations, $this->messages, $this->destinations );
 	}
 
 	public function test_purge_deletes_the_conversation_its_messages_and_its_destination(): void {

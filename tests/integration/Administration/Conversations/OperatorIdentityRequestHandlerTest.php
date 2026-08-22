@@ -87,13 +87,13 @@ final class OperatorIdentityRequestHandlerTest extends WP_UnitTestCase {
 
 		$operator = self::factory()->user->create();
 
-		$nonce                       = wp_create_nonce( OperatorIdentityRequestHandler::NONCE_ACTION );
-		$_POST['_wpnonce']           = $nonce;
-		$_REQUEST['_wpnonce']        = $nonce;
-		$_POST['op']                 = 'create_mapping';
-		$_POST['wp_user_id']         = (string) $operator;
-		$_POST['telegram_user_id']   = '999888777';
-		$_POST['telegram_username']  = 'opuser';
+		$nonce                      = wp_create_nonce( OperatorIdentityRequestHandler::NONCE_ACTION );
+		$_POST['_wpnonce']          = $nonce;
+		$_REQUEST['_wpnonce']       = $nonce;
+		$_POST['op']                = 'create_mapping';
+		$_POST['wp_user_id']        = (string) $operator;
+		$_POST['telegram_user_id']  = '999888777';
+		$_POST['telegram_username'] = 'opuser';
 
 		$identities = new OperatorIdentityRepository( new SchemaHealth() );
 		$handler    = $this->handler( $identities );

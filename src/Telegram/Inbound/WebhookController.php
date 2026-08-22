@@ -51,16 +51,16 @@ final class WebhookController {
 	/**
 	 * Constructor.
 	 *
-	 * @param SchemaHealth           $schema_health Checked before any bot lookup or insert.
-	 * @param BotProfileRepository   $bots          Resolves bot_uuid to a bot profile.
-	 * @param WebhookSecretVerifier  $verifier      Proves the request is authentic.
-	 * @param UpdateRepository       $updates       Metadata-only, deduplicated receipt.
-	 * @param ConversationRepository $conversations Resolves the known-topic-mapping gate (docs/adr/0021).
-	 * @param MessageRepository      $messages      Encrypts and persists a captured operator reply.
-	 * @param ChatProfileResolver    $chat_profiles Resolves a bot's conversation-support chat id.
+	 * @param SchemaHealth               $schema_health Checked before any bot lookup or insert.
+	 * @param BotProfileRepository       $bots          Resolves bot_uuid to a bot profile.
+	 * @param WebhookSecretVerifier      $verifier      Proves the request is authentic.
+	 * @param UpdateRepository           $updates       Metadata-only, deduplicated receipt.
+	 * @param ConversationRepository     $conversations Resolves the known-topic-mapping gate (docs/adr/0021).
+	 * @param MessageRepository          $messages      Encrypts and persists a captured operator reply.
+	 * @param ChatProfileResolver        $chat_profiles Resolves a bot's conversation-support chat id.
 	 * @param OperatorIdentityRepository $operator_identities Resolves the inbound sender's mapped WordPress operator (M07, docs/adr/0026) — the inbound Telegram operator-authorization gate.
-	 * @param AuditLogger            $audit         Records a rejected-unmapped-sender attempt.
-	 * @param int                    $max_body_bytes Request body size cap, enforced before JSON decoding.
+	 * @param AuditLogger                $audit         Records a rejected-unmapped-sender attempt.
+	 * @param int                        $max_body_bytes Request body size cap, enforced before JSON decoding.
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,

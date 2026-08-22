@@ -136,9 +136,9 @@ class ConversationActionHandler {
 			return;
 		}
 
-		$target_state    = $this->availability->find_for_operator( $new_operator_id );
-		$target_is_busy  = null !== $target_state && in_array( $target_state->state(), array( OperatorAvailability::BUSY, OperatorAvailability::OFFLINE ), true );
-		$is_override     = false;
+		$target_state   = $this->availability->find_for_operator( $new_operator_id );
+		$target_is_busy = null !== $target_state && in_array( $target_state->state(), array( OperatorAvailability::BUSY, OperatorAvailability::OFFLINE ), true );
+		$is_override    = false;
 
 		if ( $target_is_busy ) {
 			if ( ! $override_requested || ! current_user_can( CapabilityRegistrar::MANAGE ) ) {
@@ -149,7 +149,7 @@ class ConversationActionHandler {
 		}
 
 		$acting_user_id = get_current_user_id();
-		$succeeded       = $this->conversations->assign_with_expected( $conversation_id, $expected_operator_id, $new_operator_id );
+		$succeeded      = $this->conversations->assign_with_expected( $conversation_id, $expected_operator_id, $new_operator_id );
 
 		if ( ! $succeeded ) {
 			// A stale expectation: no change, no audit entry — the acting
@@ -162,11 +162,11 @@ class ConversationActionHandler {
 			'operator',
 			$acting_user_id,
 			array(
-				'conversation_id' => $conversation_id,
+				'conversation_id'  => $conversation_id,
 				'operator_user_id' => $new_operator_id,
 			),
 			array(
-				'conversation_id' => Classification::INTERNAL,
+				'conversation_id'  => Classification::INTERNAL,
 				'operator_user_id' => Classification::INTERNAL,
 			),
 			Classification::INTERNAL
@@ -189,7 +189,7 @@ class ConversationActionHandler {
 		}
 
 		$acting_user_id = get_current_user_id();
-		$succeeded       = $this->conversations->assign_with_expected( $conversation_id, $expected_operator_id, null );
+		$succeeded      = $this->conversations->assign_with_expected( $conversation_id, $expected_operator_id, null );
 
 		if ( ! $succeeded ) {
 			return;
@@ -247,14 +247,14 @@ class ConversationActionHandler {
 		}
 
 		$conversation_id = isset( $_POST['conversation_id'] ) ? (int) $_POST['conversation_id'] : 0;
-		$body             = isset( $_POST['body'] ) ? sanitize_textarea_field( wp_unslash( $_POST['body'] ) ) : '';
+		$body            = isset( $_POST['body'] ) ? sanitize_textarea_field( wp_unslash( $_POST['body'] ) ) : '';
 
 		if ( $conversation_id <= 0 || '' === $body ) {
 			return;
 		}
 
 		$acting_user_id = get_current_user_id();
-		$note            = $this->notes->create( $conversation_id, $acting_user_id, $body );
+		$note           = $this->notes->create( $conversation_id, $acting_user_id, $body );
 
 		if ( null === $note ) {
 			return;

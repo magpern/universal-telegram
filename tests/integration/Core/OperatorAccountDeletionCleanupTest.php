@@ -45,8 +45,8 @@ final class OperatorAccountDeletionCleanupTest extends WP_UnitTestCase {
 		$this->assertNotNull( $identities );
 		$this->assertNotNull( $availability );
 
-		$operator_wp_user_id  = self::factory()->user->create();
-		$telegram_user_id     = 999444777;
+		$operator_wp_user_id = self::factory()->user->create();
+		$telegram_user_id    = 999444777;
 
 		$identities->create( $operator_wp_user_id, $telegram_user_id, 'opuser', 1 );
 		$availability->set_state( $operator_wp_user_id, OperatorAvailability::AVAILABLE, $operator_wp_user_id );

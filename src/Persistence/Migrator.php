@@ -1083,9 +1083,9 @@ class Migrator {
 
 		$charset_collate = $wpdb->get_charset_collate();
 
-		$identities_table    = $wpdb->prefix . self::OPERATOR_IDENTITIES_TABLE;
-		$notes_table         = $wpdb->prefix . self::CONVERSATION_NOTES_TABLE;
-		$availability_table  = $wpdb->prefix . self::OPERATOR_AVAILABILITY_TABLE;
+		$identities_table   = $wpdb->prefix . self::OPERATOR_IDENTITIES_TABLE;
+		$notes_table        = $wpdb->prefix . self::CONVERSATION_NOTES_TABLE;
+		$availability_table = $wpdb->prefix . self::OPERATOR_AVAILABILITY_TABLE;
 
 		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$wpdb->query(
@@ -1161,7 +1161,7 @@ class Migrator {
 		global $wpdb;
 
 		$conversations_table = $wpdb->prefix . self::CONVERSATIONS_TABLE;
-		$messages_table       = $wpdb->prefix . self::CONVERSATION_MESSAGES_TABLE;
+		$messages_table      = $wpdb->prefix . self::CONVERSATION_MESSAGES_TABLE;
 
 		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		if ( ! $this->table_has_columns( $conversations_table, array( 'assignee_last_seen_message_id' ) ) ) {
@@ -1187,7 +1187,7 @@ class Migrator {
 		global $wpdb;
 
 		$conversations_table = $wpdb->prefix . self::CONVERSATIONS_TABLE;
-		$messages_table       = $wpdb->prefix . self::CONVERSATION_MESSAGES_TABLE;
+		$messages_table      = $wpdb->prefix . self::CONVERSATION_MESSAGES_TABLE;
 
 		return $this->table_has_columns( $conversations_table, array( 'assignee_last_seen_message_id' ) )
 			&& $this->table_has_columns( $messages_table, array( 'telegram_sender_user_id' ) )

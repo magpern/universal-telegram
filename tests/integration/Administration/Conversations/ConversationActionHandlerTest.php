@@ -210,13 +210,13 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$identities->create( $target_operator, 999888777, null, 1 );
 		$conversation = $conversations->create( 'uuid-handler-assign-1', 'hash', 1, null );
 
-		$nonce                          = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
-		$_POST['_wpnonce']              = $nonce;
-		$_REQUEST['_wpnonce']           = $nonce;
-		$_POST['op']                    = 'assign';
-		$_POST['conversation_id']       = (string) $conversation->id();
-		$_POST['new_operator_id']       = (string) $target_operator;
-		$_POST['expected_operator_id']  = '';
+		$nonce                         = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']             = $nonce;
+		$_REQUEST['_wpnonce']          = $nonce;
+		$_POST['op']                   = 'assign';
+		$_POST['conversation_id']      = (string) $conversation->id();
+		$_POST['new_operator_id']      = (string) $target_operator;
+		$_POST['expected_operator_id'] = '';
 
 		try {
 			$handler->handle_request();
@@ -271,13 +271,13 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$availability->set_state( $target_operator, OperatorAvailability::BUSY, $target_operator );
 		$conversation = $conversations->create( 'uuid-handler-assign-3', 'hash', 1, null );
 
-		$nonce                          = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
-		$_POST['_wpnonce']              = $nonce;
-		$_REQUEST['_wpnonce']           = $nonce;
-		$_POST['op']                    = 'assign';
-		$_POST['conversation_id']       = (string) $conversation->id();
-		$_POST['new_operator_id']       = (string) $target_operator;
-		$_POST['expected_operator_id']  = '';
+		$nonce                         = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']             = $nonce;
+		$_REQUEST['_wpnonce']          = $nonce;
+		$_POST['op']                   = 'assign';
+		$_POST['conversation_id']      = (string) $conversation->id();
+		$_POST['new_operator_id']      = (string) $target_operator;
+		$_POST['expected_operator_id'] = '';
 
 		try {
 			$handler->handle_request();
@@ -299,14 +299,14 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$availability->set_state( $target_operator, OperatorAvailability::OFFLINE, $target_operator );
 		$conversation = $conversations->create( 'uuid-handler-assign-4', 'hash', 1, null );
 
-		$nonce                          = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
-		$_POST['_wpnonce']              = $nonce;
-		$_REQUEST['_wpnonce']           = $nonce;
-		$_POST['op']                    = 'assign';
-		$_POST['conversation_id']       = (string) $conversation->id();
-		$_POST['new_operator_id']       = (string) $target_operator;
-		$_POST['expected_operator_id']  = '';
-		$_POST['override']              = '1';
+		$nonce                         = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']             = $nonce;
+		$_REQUEST['_wpnonce']          = $nonce;
+		$_POST['op']                   = 'assign';
+		$_POST['conversation_id']      = (string) $conversation->id();
+		$_POST['new_operator_id']      = (string) $target_operator;
+		$_POST['expected_operator_id'] = '';
+		$_POST['override']             = '1';
 
 		$handler->handle_request();
 
@@ -321,7 +321,7 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		wp_set_current_user( $operator );
 
 		list( $handler, , , $conversations ) = $this->fixture();
-		$conversation = $conversations->create( 'uuid-handler-unassign-1', 'hash', 1, null );
+		$conversation                        = $conversations->create( 'uuid-handler-unassign-1', 'hash', 1, null );
 		$conversations->assign( $conversation->id(), $operator );
 
 		$nonce                         = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
@@ -347,7 +347,7 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		wp_set_current_user( $operator );
 
 		list( $handler, , , $conversations ) = $this->fixture();
-		$conversation = $conversations->create( 'uuid-handler-reopen-1', 'hash', 1, null );
+		$conversation                        = $conversations->create( 'uuid-handler-reopen-1', 'hash', 1, null );
 		$conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
 		$conversations->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::RESOLVED );
 
@@ -373,7 +373,7 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		wp_set_current_user( $operator );
 
 		list( $handler, , , $conversations ) = $this->fixture();
-		$conversation = $conversations->create( 'uuid-handler-reopen-2', 'hash', 1, null );
+		$conversation                        = $conversations->create( 'uuid-handler-reopen-2', 'hash', 1, null );
 		$conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
 		$conversations->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::RESOLVED );
 		$conversations->transition( $conversation->id(), ConversationStatus::RESOLVED, ConversationStatus::ARCHIVED );
@@ -400,7 +400,7 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		wp_set_current_user( $operator );
 
 		list( $handler, , , $conversations, $notes ) = $this->fixture();
-		$conversation = $conversations->create( 'uuid-handler-note-1', 'hash', 1, null );
+		$conversation                                = $conversations->create( 'uuid-handler-note-1', 'hash', 1, null );
 
 		$nonce                    = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
 		$_POST['_wpnonce']        = $nonce;
@@ -428,7 +428,7 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		wp_set_current_user( $operator );
 
 		list( $handler, , , $conversations, , , $messages ) = $this->fixture();
-		$conversation = $conversations->create( 'uuid-handler-delete-1', 'hash', 1, null );
+		$conversation                                       = $conversations->create( 'uuid-handler-delete-1', 'hash', 1, null );
 		$conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
 		$conversations->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::RESOLVED );
 		$conversations->transition( $conversation->id(), ConversationStatus::RESOLVED, ConversationStatus::ARCHIVED );
@@ -458,7 +458,7 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		wp_set_current_user( $operator );
 
 		list( $handler, , , $conversations ) = $this->fixture();
-		$conversation = $conversations->create( 'uuid-handler-delete-2', 'hash', 1, null );
+		$conversation                        = $conversations->create( 'uuid-handler-delete-2', 'hash', 1, null );
 		$conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
 		$conversations->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::RESOLVED );
 
