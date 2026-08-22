@@ -12,14 +12,32 @@ use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\Rest\ConversationsController;
 use UniversalTelegram\Conversations\TopicCreationDispatcher;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
+use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
+use UniversalTelegram\Privacy\Redactor;
 use UniversalTelegram\Queue\Dispatcher;
+use UniversalTelegram\Queue\ExpeditedDispatchTrigger;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
 use WP_REST_Request;
 use WP_UnitTestCase;
+
+/**
+ * Counts calls instead of performing any real dependency check or loopback
+ * request — keeps every pre-existing controller test deterministic and
+ * network-free, while letting the new expedited-dispatch tests assert on
+ * call placement (docs/adr/0023).
+ */
+final class SpyExpeditedDispatchTrigger extends ExpeditedDispatchTrigger {
+
+	public int $calls = 0;
+
+	public function trigger(): void {
+		++$this->calls;
+	}
+}
 
 final class ConversationsControllerTest extends WP_UnitTestCase {
 
@@ -29,6 +47,7 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 	private BotProfileRepository $bots;
 	private DestinationRepository $destinations;
 	private ConversationsController $controller;
+	private SpyExpeditedDispatchTrigger $expedited_dispatch;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -36,11 +55,12 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
 
-		$this->conversations = new ConversationRepository( $schema_health );
-		$this->messages      = new MessageRepository( $schema_health, $vault );
-		$this->tokens        = new VisitorTokenGenerator();
-		$this->bots          = new BotProfileRepository( $schema_health, $vault );
-		$this->destinations  = new DestinationRepository( $schema_health );
+		$this->conversations      = new ConversationRepository( $schema_health );
+		$this->messages           = new MessageRepository( $schema_health, $vault );
+		$this->tokens             = new VisitorTokenGenerator();
+		$this->bots               = new BotProfileRepository( $schema_health, $vault );
+		$this->destinations       = new DestinationRepository( $schema_health );
+		$this->expedited_dispatch = new SpyExpeditedDispatchTrigger( new AuditLogger( $schema_health, new Redactor() ) );
 
 		$this->controller = new ConversationsController(
 			$schema_health,
@@ -50,7 +70,8 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 			new ChatProfileResolver( $this->bots, $this->destinations ),
 			new RateLimiter( $schema_health ),
 			new TopicCreationDispatcher( $this->conversations, new Dispatcher( $schema_health ) ),
-			new ConversationOutboundDispatcher( new Dispatcher( $schema_health ) )
+			new ConversationOutboundDispatcher( new Dispatcher( $schema_health ) ),
+			$this->expedited_dispatch
 		);
 	}
 
@@ -274,7 +295,8 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 			new ChatProfileResolver( $this->bots, $this->destinations ),
 			$limiter,
 			new TopicCreationDispatcher( $this->conversations, new Dispatcher( new SchemaHealth() ) ),
-			new ConversationOutboundDispatcher( new Dispatcher( new SchemaHealth() ) )
+			new ConversationOutboundDispatcher( new Dispatcher( new SchemaHealth() ) ),
+			new SpyExpeditedDispatchTrigger( new AuditLogger( new SchemaHealth(), new Redactor() ) )
 		);
 
 		$last_status = 200;
@@ -374,5 +396,54 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$this->assertSame( 200, $first->get_status() );
 		$this->assertSame( array( 'ok' => true ), $second->get_data() );
 		$this->assertCount( 1, $this->messages->messages_since( $found->id(), 0 ) );
+	}
+
+	public function test_expedited_dispatch_is_triggered_exactly_once_for_a_newly_accepted_message(): void {
+		$started = $this->started_conversation();
+
+		$this->controller->handle_post_message(
+			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello' ) ) )
+		);
+
+		$this->assertSame( 1, $this->expedited_dispatch->calls );
+	}
+
+	public function test_expedited_dispatch_is_not_triggered_on_an_idempotent_replay(): void {
+		$started = $this->started_conversation();
+		$key     = wp_generate_uuid4();
+
+		$request = $this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello' ) ) );
+		$request->set_header( 'Idempotency-Key', $key );
+		$this->controller->handle_post_message( $request );
+
+		$replay = $this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello' ) ) );
+		$replay->set_header( 'Idempotency-Key', $key );
+		$this->controller->handle_post_message( $replay );
+
+		$this->assertSame( 1, $this->expedited_dispatch->calls );
+	}
+
+	public function test_expedited_dispatch_is_not_triggered_on_wrong_secret_or_unknown_conversation(): void {
+		$started = $this->started_conversation();
+
+		$this->controller->handle_post_message(
+			$this->messages_request( $started['conversation_uuid'], 'totally-wrong-secret', wp_json_encode( array( 'text' => 'Hello' ) ) )
+		);
+		$this->controller->handle_post_message(
+			$this->messages_request( 'nonexistent-uuid', 'any-secret', wp_json_encode( array( 'text' => 'Hello' ) ) )
+		);
+
+		$this->assertSame( 0, $this->expedited_dispatch->calls );
+	}
+
+	public function test_expedited_dispatch_is_not_triggered_on_oversized_text_rejection(): void {
+		$started   = $this->started_conversation();
+		$oversized = str_repeat( 'a', 4097 );
+
+		$this->controller->handle_post_message(
+			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => $oversized ) ) )
+		);
+
+		$this->assertSame( 0, $this->expedited_dispatch->calls );
 	}
 }
