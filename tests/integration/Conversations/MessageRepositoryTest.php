@@ -18,7 +18,7 @@ final class MessageRepositoryTest extends WP_UnitTestCase {
 	}
 
 	private function conversation_id(): int {
-		$conversations = new ConversationRepository( new SchemaHealth() );
+		$conversations = new ConversationRepository( new SchemaHealth(), new CredentialVault() );
 
 		return $conversations->create( wp_generate_uuid4(), 'hashed-secret', 1, null )->id();
 	}

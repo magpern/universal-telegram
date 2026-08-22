@@ -45,3 +45,34 @@ configured during automated validation.
       Telegram topic/message.
 - [ ] An operator reply in Telegram surfaces via the widget's poll within
       one polling interval.
+
+## M06.3 — chat identity, lifecycle, and presentation (docs/plans/m06-3-chat-identity-lifecycle-presentation-plan-v1.md §16, ADR-0024)
+
+- [ ] The required-name step (disclosure sentence stating the name is
+      shared with the support team in Telegram) appears before the first
+      send, and blocks an empty submission with an inline error.
+- [ ] Reloading the page mid-conversation, before a name was supplied,
+      shows the required-name step again (not the composer).
+- [ ] Once a conversation has a stored name, reloading shows the composer
+      directly, not the name step.
+- [ ] The resulting Telegram forum topic's title shows the display name
+      and a short reference; the first message in that topic carries the
+      one-line `[name · ref]` context header, and no later message repeats
+      it.
+- [ ] Switching `chat_widget_preset` (Settings tab) changes the widget's
+      visible styling after the site's own page-cache purge/expiry — not
+      claimed instant on a still-cached page.
+- [ ] With `prefers-reduced-motion: reduce` enabled at the OS level, the
+      widget shows no motion regardless of the admin's
+      `chat_widget_motion_default` setting.
+- [ ] Keyboard-only navigation and a screen reader can complete the full
+      name-then-send flow without a mouse.
+- [ ] 375px/414px mobile viewports show no obstruction of the name step or
+      composer.
+- [ ] The Bots tab shows chat-widget-created Telegram topics in a separate,
+      read-only "Conversation topics" section, with no "Send test message"
+      action.
+- [ ] Archival behaviour is confirmed via a safe test fixture or dry-run
+      evidence (e.g. backdating a test conversation's `updated_at` and
+      running the retention cleanup action directly) — not a real 30-day
+      wait.

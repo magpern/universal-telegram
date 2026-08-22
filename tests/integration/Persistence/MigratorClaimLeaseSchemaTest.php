@@ -27,7 +27,11 @@ final class MigratorClaimLeaseSchemaTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 14, (int) get_option( 'universal_telegram_db_version' ) );
+		// Migrator::maybe_migrate() always runs every pending step up to
+		// the current target_version() (15 as of M06.3) — not this step's
+		// own historical target — so this assertion tracks the current
+		// target, not a fixed number frozen at this step's own introduction.
+		$this->assertSame( 15, (int) get_option( 'universal_telegram_db_version' ) );
 
 		$outbound_columns = $wpdb->get_col(
 			$wpdb->prepare(
@@ -55,6 +59,10 @@ final class MigratorClaimLeaseSchemaTest extends WP_UnitTestCase {
 		update_option( 'universal_telegram_db_version', 13 );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 14, (int) get_option( 'universal_telegram_db_version' ) );
+		// Migrator::maybe_migrate() always runs every pending step up to
+		// the current target_version() (15 as of M06.3) — not this step's
+		// own historical target — so this assertion tracks the current
+		// target, not a fixed number frozen at this step's own introduction.
+		$this->assertSame( 15, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 }

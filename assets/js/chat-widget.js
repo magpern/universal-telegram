@@ -113,6 +113,8 @@
 	var POLL_INTERVAL_MS      = 3000;
 	var POLL_BACKOFF_CAP_MS   = 30000;
 	var MAX_TEXT_CHARS        = 4096;
+	var MIN_DISPLAY_NAME_CHARS = 1;
+	var MAX_DISPLAY_NAME_CHARS = 80;
 
 	function randomHex( byteLength ) {
 		var bytes = new Uint8Array( byteLength );
@@ -126,6 +128,20 @@
 
 	function generateSecret() {
 		return randomHex( 32 );
+	}
+
+	/**
+	 * Client-side defense-in-depth mirror of ConversationDisplay::
+	 * is_valid_display_name() (M06.3, ADR-0024) — the server remains
+	 * authoritative; this only avoids an obviously-invalid round trip.
+	 *
+	 * @param {string} trimmedValue
+	 * @return {boolean}
+	 */
+	function isValidDisplayName( trimmedValue ) {
+		return 'string' === typeof trimmedValue &&
+			trimmedValue.length >= MIN_DISPLAY_NAME_CHARS &&
+			trimmedValue.length <= MAX_DISPLAY_NAME_CHARS;
 	}
 
 	function generateUuid() {
@@ -203,6 +219,7 @@
 					if ( 200 === response.status ) {
 						return response.json().then( function ( data ) {
 							state.setConversation( data.conversation_uuid, secret );
+							emit( 'displayNameRequired', ! ( data && false === data.display_name_required ) );
 							return { uuid: data.conversation_uuid, secret: secret };
 						} );
 					}
@@ -266,7 +283,12 @@
 
 		// -- send ----------------------------------------------------------
 
-		function requestSend( conversation, text, idempotencyKey, allowRetry ) {
+		function requestSend( conversation, text, idempotencyKey, allowRetry, displayName ) {
+			var body = { text: text };
+			if ( displayName ) {
+				body.display_name = displayName;
+			}
+
 			return window.fetch(
 				endpoint( '/conversations/' + conversation.uuid + '/messages' ),
 				{
@@ -276,7 +298,7 @@
 						'Authorization': 'Bearer ' + conversation.secret,
 						'Idempotency-Key': idempotencyKey,
 					},
-					body: JSON.stringify( { text: text } ),
+					body: JSON.stringify( body ),
 				}
 			).then(
 				function ( response ) {
@@ -312,14 +334,14 @@
 						throw { terminal: true };
 					}
 					if ( allowRetry ) {
-						return requestSend( conversation, text, idempotencyKey, false );
+						return requestSend( conversation, text, idempotencyKey, false, displayName );
 					}
 					emit( 'state', { status: 'transient-failure' } );
 					throw { terminal: true };
 				},
 				function () {
 					if ( allowRetry ) {
-						return requestSend( conversation, text, idempotencyKey, false );
+						return requestSend( conversation, text, idempotencyKey, false, displayName );
 					}
 					emit( 'state', { status: 'transient-failure' } );
 					throw { terminal: true };
@@ -327,7 +349,7 @@
 			);
 		}
 
-		function sendMessage( text ) {
+		function sendMessage( text, displayName ) {
 			if ( 'string' !== typeof text || '' === text || text.length > MAX_TEXT_CHARS ) {
 				emit( 'state', { status: 'transient-failure' } );
 				return Promise.reject( { terminal: true } );
@@ -337,7 +359,7 @@
 
 			return ensureStarted().then( function ( conversation ) {
 				emit( 'state', { status: 'sending' } );
-				return requestSend( conversation, text, idempotencyKey, true ).then( function ( result ) {
+				return requestSend( conversation, text, idempotencyKey, true, displayName ).then( function ( result ) {
 					emit( 'state', { status: result.pending ? 'pending' : 'active' } );
 					startPolling();
 					return true;
@@ -395,6 +417,13 @@
 					}
 					return response.json().then( function ( data ) {
 						pollBackoffMs = POLL_INTERVAL_MS;
+
+						// Reload-safe required-name contract (M06.3, ADR-0024):
+						// display_name_required is never the name itself, only
+						// whether one is still needed — a page reload re-derives
+						// whether to show the required-name step from this poll
+						// response, never from client-side state alone.
+						emit( 'displayNameRequired', ! ( data && false === data.display_name_required ) );
 
 						( data.messages || [] ).forEach( function ( message ) {
 							if ( renderedIds[ message.id ] ) {
@@ -467,6 +496,7 @@
 			cursor = null;
 			renderedIds = {};
 			emit( 'state', { status: 'ended' } );
+			emit( 'displayNameRequired', true );
 		}
 
 		function open() {
@@ -475,6 +505,7 @@
 				emit( 'state', { status: 'active' } );
 				startPolling();
 			} else {
+				emit( 'displayNameRequired', true );
 				emit( 'state', { status: 'idle' } );
 			}
 		}
@@ -529,13 +560,21 @@
 	 * since this repository has no jsdom/browser test runner.
 	 *
 	 * @param {object} client A REST client instance (see createClient()).
+	 * @param {object} config The static config data island (M06.3 adds
+	 *                        geometry/motionDefault/labelVisitor/labelOperator).
 	 * @return {{root: Node, open: Function, close: Function}}
 	 */
-	function buildWidget( client ) {
+	function buildWidget( client, config ) {
 		var doc = window.document;
+		config = config || {};
+
+		var labelVisitor  = config.labelVisitor || 'You';
+		var labelOperator = config.labelOperator || 'Support';
 
 		var root = doc.createElement( 'div' );
 		root.className = 'ut-chat-widget';
+		root.setAttribute( 'data-geometry', 'square' === config.geometry ? 'square' : 'round' );
+		root.setAttribute( 'data-motion', 'reduced' === config.motionDefault ? 'reduced' : 'standard' );
 
 		var toggleButton = doc.createElement( 'button' );
 		toggleButton.type = 'button';
@@ -599,9 +638,42 @@
 		form.appendChild( input );
 		form.appendChild( sendButton );
 
+		// Required visitor display-name step (M06.3, ADR-0024): shown
+		// instead of the composer until a name is known to be stored
+		// (display_name_required === false) or the visitor has just
+		// supplied one in this tab. The disclosure sentence states plainly
+		// that the name is shared with the support team in Telegram.
+		var nameForm = doc.createElement( 'form' );
+		nameForm.className = 'ut-chat-widget__name-form';
+
+		var nameDisclosure = doc.createElement( 'p' );
+		nameDisclosure.className = 'ut-chat-widget__name-disclosure';
+		nameDisclosure.textContent = 'Enter your name to start. It will be shared with the support team in Telegram.';
+
+		var nameInput = doc.createElement( 'input' );
+		nameInput.type = 'text';
+		nameInput.className = 'ut-chat-widget__input ut-chat-widget__name-input';
+		nameInput.setAttribute( 'aria-label', 'Your name' );
+		nameInput.setAttribute( 'maxlength', String( MAX_DISPLAY_NAME_CHARS ) );
+
+		var nameError = doc.createElement( 'p' );
+		nameError.className = 'ut-chat-widget__name-error';
+		nameError.setAttribute( 'role', 'alert' );
+
+		var nameSubmit = doc.createElement( 'button' );
+		nameSubmit.type = 'submit';
+		nameSubmit.className = 'ut-chat-widget__send';
+		nameSubmit.textContent = 'Start chat';
+
+		nameForm.appendChild( nameDisclosure );
+		nameForm.appendChild( nameInput );
+		nameForm.appendChild( nameError );
+		nameForm.appendChild( nameSubmit );
+
 		panel.appendChild( header );
 		panel.appendChild( log );
 		panel.appendChild( statusRegion );
+		panel.appendChild( nameForm );
 		panel.appendChild( form );
 
 		root.appendChild( toggleButton );
@@ -609,6 +681,78 @@
 
 		var renderedMessageIds  = {};
 		var pendingVisitorTexts = []; // Reconciles an optimistic local bubble with its eventual polled echo (same text, visitor direction) so it is never rendered twice.
+		var pendingDisplayName  = null; // Set once the name form is submitted; sent with the next send only, then cleared.
+		var lastRenderedDateKey = null;
+
+		function localDateKey( date ) {
+			return date.getFullYear() + '-' + date.getMonth() + '-' + date.getDate();
+		}
+
+		function formatLocalTime( isoLikeUtc ) {
+			try {
+				var date = new Date( String( isoLikeUtc ).replace( ' ', 'T' ) + 'Z' );
+				if ( isNaN( date.getTime() ) ) {
+					return '';
+				}
+				return date.toLocaleTimeString( undefined, { hour: 'numeric', minute: '2-digit' } );
+			} catch ( error ) {
+				return '';
+			}
+		}
+
+		function maybeInsertDateSeparator( isoLikeUtc ) {
+			var date = new Date( String( isoLikeUtc ).replace( ' ', 'T' ) + 'Z' );
+			if ( isNaN( date.getTime() ) ) {
+				return;
+			}
+			var key = localDateKey( date );
+			if ( key === lastRenderedDateKey ) {
+				return;
+			}
+			lastRenderedDateKey = key;
+
+			var separator = doc.createElement( 'div' );
+			separator.className = 'ut-chat-widget__date-separator';
+			separator.textContent = date.toLocaleDateString( undefined, { year: 'numeric', month: 'long', day: 'numeric' } );
+			log.appendChild( separator );
+		}
+
+		function showNameForm() {
+			nameForm.hidden = false;
+			form.hidden = true;
+		}
+
+		function showComposer() {
+			nameForm.hidden = true;
+			form.hidden = false;
+		}
+
+		// Default to the name step until the client tells us otherwise —
+		// a brand-new conversation always requires a name (M06.3, ADR-0024).
+		showNameForm();
+
+		client.on( 'displayNameRequired', function ( required ) {
+			if ( required ) {
+				showNameForm();
+			} else {
+				showComposer();
+			}
+		} );
+
+		nameForm.addEventListener( 'submit', function ( event ) {
+			event.preventDefault();
+			var trimmed = ( nameInput.value || '' ).trim();
+
+			if ( ! isValidDisplayName( trimmed ) ) {
+				nameError.textContent = 'Please enter your name (1-80 characters).';
+				return;
+			}
+
+			nameError.textContent = '';
+			pendingDisplayName = trimmed;
+			showComposer();
+			input.focus();
+		} );
 
 		function appendMessage( message ) {
 			if ( renderedMessageIds[ message.id ] ) {
@@ -621,18 +765,37 @@
 				return;
 			}
 
+			if ( message.created_at ) {
+				maybeInsertDateSeparator( message.created_at );
+			}
+
+			var isOperator = 'operator' === message.direction;
+
 			var row = doc.createElement( 'div' );
 			row.className = 'ut-chat-widget__message ut-chat-widget__message--' +
-				( 'operator' === message.direction ? 'operator' : 'visitor' );
+				( isOperator ? 'operator' : 'visitor' );
+			row.setAttribute( 'data-delivery', message.delivery_state || 'sent' );
+
+			var textNode = doc.createElement( 'div' );
 			// Text-only rendering (M06 plan §4): textContent only, never
 			// innerHTML, for visitor- or Telegram-origin text alike.
-			row.textContent = message.text;
+			textNode.textContent = message.text;
+			row.appendChild( textNode );
+
+			if ( message.created_at ) {
+				var meta = doc.createElement( 'span' );
+				meta.className = 'ut-chat-widget__message-meta';
+				meta.textContent = ( isOperator ? labelOperator : labelVisitor ) + ' · ' + formatLocalTime( message.created_at );
+				row.appendChild( meta );
+			}
+
 			log.appendChild( row );
 		}
 
 		function setStatus( status ) {
 			var described = describeUiState( status );
 			statusRegion.textContent = described.announce;
+			statusRegion.className = 'ut-chat-widget__status ut-chat-widget__status--' + described.status;
 			input.disabled = described.inputDisabled;
 			sendButton.disabled = described.inputDisabled;
 
@@ -644,10 +807,14 @@
 				restart.addEventListener( 'click', function () {
 					renderedMessageIds = {};
 					pendingVisitorTexts = [];
+					lastRenderedDateKey = null;
+					pendingDisplayName = null;
 					log.textContent = '';
 					statusRegion.textContent = '';
+					statusRegion.className = 'ut-chat-widget__status';
 					input.disabled = false;
 					sendButton.disabled = false;
+					showNameForm();
 				} );
 				statusRegion.appendChild( restart );
 			}
@@ -656,7 +823,18 @@
 		var lastFocused = null;
 
 		function focusableElements() {
-			return panel.querySelectorAll( 'button, textarea, input, [href], [tabindex]:not([tabindex="-1"])' );
+			var all = panel.querySelectorAll( 'button, textarea, input, [href], [tabindex]:not([tabindex="-1"])' );
+			var visible = [];
+			for ( var i = 0; i < all.length; i++ ) {
+				// Excludes controls inside the currently-hidden name-form or
+				// composer (the `hidden` attribute alone does not stop
+				// querySelectorAll from matching descendants) so Tab never
+				// traps focus on an invisible field.
+				if ( null !== all[ i ].offsetParent || 'BODY' === all[ i ].tagName ) {
+					visible.push( all[ i ] );
+				}
+			}
+			return visible;
 		}
 
 		function trapFocus( event ) {
@@ -691,7 +869,7 @@
 			panel.hidden = false;
 			toggleButton.setAttribute( 'aria-expanded', 'true' );
 			lastFocused = doc.activeElement;
-			input.focus();
+			( nameForm.hidden ? input : nameInput ).focus();
 			panel.addEventListener( 'keydown', onPanelKeydown );
 			client.open();
 		}
@@ -734,10 +912,19 @@
 			}
 
 			pendingVisitorTexts.push( text );
-			appendMessage( { id: 'local-' + Date.now() + '-' + pendingVisitorTexts.length, direction: 'visitor', text: text } );
+			appendMessage( {
+				id: 'local-' + Date.now() + '-' + pendingVisitorTexts.length,
+				direction: 'visitor',
+				text: text,
+				created_at: new Date().toISOString().slice( 0, 19 ).replace( 'T', ' ' ),
+				delivery_state: 'queued',
+			} );
 			input.value = '';
 
-			client.sendMessage( text ).catch( function () {
+			var displayNameForThisSend = pendingDisplayName;
+			pendingDisplayName = null;
+
+			client.sendMessage( text, displayNameForThisSend ).catch( function () {
 				// Failure is already surfaced via the 'state' event above.
 			} );
 		} );
@@ -797,7 +984,7 @@
 
 		var state  = createState();
 		var client = createClient( state, config );
-		var widget = buildWidget( client );
+		var widget = buildWidget( client, config );
 
 		window.document.body.appendChild( widget.root );
 	}

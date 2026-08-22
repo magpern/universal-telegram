@@ -61,7 +61,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 14;
+		return 15;
 	}
 
 	/**
@@ -144,6 +144,7 @@ class Migrator {
 			12 => array( array( $this, 'step_12_create_conversation_messages_table' ), array( $this, 'verify_step_12' ) ),
 			13 => array( array( $this, 'step_13_add_conversation_idempotency_columns' ), array( $this, 'verify_step_13' ) ),
 			14 => array( array( $this, 'step_14_add_claim_lease_columns' ), array( $this, 'verify_step_14' ) ),
+			15 => array( array( $this, 'step_15_add_conversation_display_name_column' ), array( $this, 'verify_step_15' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -953,6 +954,46 @@ class Migrator {
 		) && $this->table_has_columns(
 			$wpdb->prefix . self::CONVERSATIONS_TABLE,
 			array( 'topic_claim_expires_at' )
+		);
+	}
+
+	/**
+	 * Adds the nullable, encrypted visitor display-name column M06.3
+	 * introduces (ADR-0024): `display_name_ciphertext` on the conversations
+	 * table, storing `CredentialVault::encrypt()` output exactly as message
+	 * bodies already do. Additive and nullable, so no backfill is required
+	 * on upgrade — a pre-existing conversation simply has no stored name.
+	 *
+	 * Like steps 13 and 14, a bare `ALTER TABLE ... ADD COLUMN` is not
+	 * itself safely re-runnable, so this step checks the table's own
+	 * information schema first and skips it if already present.
+	 */
+	private function step_15_add_conversation_display_name_column(): void {
+		global $wpdb;
+
+		$conversations_table = $wpdb->prefix . self::CONVERSATIONS_TABLE;
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( ! $this->table_has_columns( $conversations_table, array( 'display_name_ciphertext' ) ) ) {
+			$wpdb->query(
+				"ALTER TABLE {$conversations_table}
+					ADD COLUMN display_name_ciphertext MEDIUMBLOB NULL"
+			);
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_15(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::CONVERSATIONS_TABLE,
+			array( 'display_name_ciphertext' )
 		);
 	}
 }

@@ -128,6 +128,50 @@ class SettingsPage {
 			esc_html__( 'Enable chat widget', 'universal-telegram' ) . '</label></p>';
 
 		echo '<table class="form-table"><tbody>';
+
+		$this->render_select_field(
+			'chat_widget_preset',
+			__( 'Chat widget style preset', 'universal-telegram' ),
+			array(
+				'classic' => __( 'Classic', 'universal-telegram' ),
+				'modern'  => __( 'Modern', 'universal-telegram' ),
+				'minimal' => __( 'Minimal', 'universal-telegram' ),
+			),
+			(string) $values['chat_widget_preset']
+		);
+
+		$this->render_select_field(
+			'chat_widget_geometry',
+			__( 'Chat widget geometry', 'universal-telegram' ),
+			array(
+				'round'  => __( 'Round', 'universal-telegram' ),
+				'square' => __( 'Square', 'universal-telegram' ),
+			),
+			(string) $values['chat_widget_geometry']
+		);
+
+		$this->render_select_field(
+			'chat_widget_motion_default',
+			__( 'Chat widget motion (default, when the visitor expresses no preference)', 'universal-telegram' ),
+			array(
+				'standard' => __( 'Standard', 'universal-telegram' ),
+				'reduced'  => __( 'Reduced', 'universal-telegram' ),
+			),
+			(string) $values['chat_widget_motion_default']
+		);
+
+		printf(
+			'<tr><th><label for="ut-settings-chat_widget_participant_label_visitor">%1$s</label></th><td><input type="text" maxlength="40" id="ut-settings-chat_widget_participant_label_visitor" name="universal_telegram_settings[chat_widget_participant_label_visitor]" value="%2$s" /></td></tr>',
+			esc_html__( 'Visitor participant label', 'universal-telegram' ),
+			esc_attr( (string) $values['chat_widget_participant_label_visitor'] )
+		);
+
+		printf(
+			'<tr><th><label for="ut-settings-chat_widget_participant_label_operator">%1$s</label></th><td><input type="text" maxlength="40" id="ut-settings-chat_widget_participant_label_operator" name="universal_telegram_settings[chat_widget_participant_label_operator]" value="%2$s" /></td></tr>',
+			esc_html__( 'Support participant label', 'universal-telegram' ),
+			esc_attr( (string) $values['chat_widget_participant_label_operator'] )
+		);
+
 		foreach ( self::INTEGER_FIELDS as $field ) {
 			printf(
 				'<tr><th><label for="ut-settings-%1$s">%2$s</label></th><td><input type="number" min="1" id="ut-settings-%1$s" name="universal_telegram_settings[%1$s]" value="%3$s" /></td></tr>',
@@ -140,6 +184,30 @@ class SettingsPage {
 
 		submit_button();
 		echo '</form>';
+	}
+
+	/**
+	 * Renders one enum select field (M06.3): chat_widget_preset,
+	 * chat_widget_geometry, chat_widget_motion_default.
+	 *
+	 * @param string                $field   The settings field name.
+	 * @param string                $label   The visible label.
+	 * @param array<string, string> $options value => visible label.
+	 * @param string                $current The currently stored value.
+	 */
+	private function render_select_field( string $field, string $label, array $options, string $current ): void {
+		printf( '<tr><th><label for="ut-settings-%1$s">%2$s</label></th><td><select id="ut-settings-%1$s" name="universal_telegram_settings[%1$s]">', esc_attr( $field ), esc_html( $label ) );
+
+		foreach ( $options as $value => $option_label ) {
+			printf(
+				'<option value="%1$s" %2$s>%3$s</option>',
+				esc_attr( $value ),
+				selected( $current, $value, false ),
+				esc_html( $option_label )
+			);
+		}
+
+		echo '</select></td></tr>';
 	}
 
 	/**

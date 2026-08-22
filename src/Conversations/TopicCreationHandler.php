@@ -134,10 +134,19 @@ class TopicCreationHandler {
 			return $this->fail_or_retry( $conversation_id, $attempt );
 		}
 
+		// Topic title (M06.3, ADR-0024): a UTF-8-safe truncated display
+		// name plus the short, non-secret reference, or the pre-M06.3
+		// literal when no name is stored — never re-derived once the
+		// topic exists, since a topic's title is set only at creation.
+		$topic_title = ConversationDisplay::topic_title(
+			$this->conversations->decrypt_display_name( $conversation ),
+			$conversation->conversation_uuid()
+		);
+
 		$result = $this->client->create_forum_topic(
 			$token_result->plaintext(),
 			$chat_id,
-			'Conversation ' . $conversation->conversation_uuid()
+			$topic_title
 		);
 
 		if ( ! $result->ok() ) {
@@ -157,7 +166,7 @@ class TopicCreationHandler {
 			DestinationKind::SUPERGROUP,
 			$chat_id,
 			$telegram_topic_id,
-			'Conversation ' . $conversation->conversation_uuid()
+			$topic_title
 		);
 
 		if ( null === $destination ) {

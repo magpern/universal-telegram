@@ -8,6 +8,7 @@ namespace UniversalTelegram\Tests\Integration\Conversations;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\TopicCreationDispatcher;
 use UniversalTelegram\Conversations\TopicCreationHandler;
+use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Queue\DispatchState;
 use UniversalTelegram\Queue\Dispatcher;
@@ -17,7 +18,7 @@ final class TopicCreationDispatcherTest extends WP_UnitTestCase {
 
 	public function test_maybe_create_enqueues_exactly_once_for_repeated_calls(): void {
 		$schema_health = new SchemaHealth();
-		$conversations = new ConversationRepository( $schema_health );
+		$conversations = new ConversationRepository( $schema_health, new CredentialVault() );
 		$dispatcher    = new TopicCreationDispatcher( $conversations, new Dispatcher( $schema_health ) );
 
 		$conversation = $conversations->create( 'uuid-topic-1', 'hash', 1, null );
@@ -59,7 +60,7 @@ final class TopicCreationDispatcherTest extends WP_UnitTestCase {
 
 	public function test_maybe_create_is_a_noop_once_topic_creation_state_is_no_longer_none(): void {
 		$schema_health = new SchemaHealth();
-		$conversations = new ConversationRepository( $schema_health );
+		$conversations = new ConversationRepository( $schema_health, new CredentialVault() );
 		$dispatcher    = new TopicCreationDispatcher( $conversations, new Dispatcher( $schema_health ) );
 
 		$conversation = $conversations->create( 'uuid-topic-2', 'hash', 1, null );

@@ -451,6 +451,89 @@ test( 'a conversation status of resolved ends the conversation and clears state'
 	assert.equal( state.getConversation(), null );
 } );
 
+test( 'sendMessage with a displayName includes display_name in the message post body', async () => {
+	const fetch = makeFakeFetch();
+	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-1', secret: 'irrelevant', display_name_required: true } ) );
+	fetch.queueResponse( jsonResponse( 200, { ok: true } ) );
+
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
+
+	await client.sendMessage( 'hello', 'Alice' );
+
+	const messageCall = fetch.calls[ 1 ];
+	assert.equal( JSON.parse( messageCall.init.body ).display_name, 'Alice' );
+} );
+
+test( 'sendMessage without a displayName omits display_name from the message post body', async () => {
+	const fetch = makeFakeFetch();
+	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-1', secret: 'irrelevant', display_name_required: false } ) );
+	fetch.queueResponse( jsonResponse( 200, { ok: true } ) );
+
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
+
+	await client.sendMessage( 'hello' );
+
+	const messageCall = fetch.calls[ 1 ];
+	assert.equal( 'display_name' in JSON.parse( messageCall.init.body ), false );
+} );
+
+test( 'a successful start emits displayNameRequired from the response, never the name itself', async () => {
+	const fetch = makeFakeFetch();
+	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-1', secret: 'irrelevant', display_name_required: true } ) );
+	fetch.queueResponse( jsonResponse( 200, { ok: true } ) );
+
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
+
+	const seen = [];
+	client.on( 'displayNameRequired', ( required ) => seen.push( required ) );
+
+	await client.sendMessage( 'hello' );
+
+	assert.deepEqual( seen, [ true ] );
+} );
+
+test( 'reload: opening an existing conversation emits displayNameRequired from the hydration poll response', async () => {
+	const fetch = makeFakeFetch();
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	state.setConversation( 'uuid-1', 'a'.repeat( 64 ) );
+
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
+
+	fetch.queueResponse( jsonResponse( 200, { ok: true, status: 'open', messages: [], display_name_required: false } ) );
+
+	const seen = [];
+	client.on( 'displayNameRequired', ( required ) => seen.push( required ) );
+
+	client.open();
+	await flush();
+
+	assert.deepEqual( seen, [ false ] );
+
+	client.stopPolling();
+} );
+
+test( 'opening with no existing conversation emits displayNameRequired true (a fresh conversation always requires a name)', async () => {
+	const fetch = makeFakeFetch();
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
+
+	const seen = [];
+	client.on( 'displayNameRequired', ( required ) => seen.push( required ) );
+
+	client.open();
+
+	assert.deepEqual( seen, [ true ] );
+} );
+
 test( 'poll backoff doubles on transient failure and resets on success', async () => {
 	const fetch = makeFakeFetch();
 	const { sandbox, timers } = makeSandbox( { fetch } );

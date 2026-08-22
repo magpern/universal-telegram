@@ -11,6 +11,7 @@ use UniversalTelegram\Administration\Telegram\BotSetupWizardState;
 use UniversalTelegram\ChatWidget\ChatWidgetAvailability;
 use UniversalTelegram\Administration\Telegram\TelegramFormFields;
 use UniversalTelegram\Conversations\ChatProfileResolver;
+use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Security\CredentialVault;
@@ -67,7 +68,8 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 			new OutboundMessageRepository( $schema_health, $vault ),
 			$forms,
 			$wizard_state,
-			new BotSetupWizardRenderer( $wizard_state, $forms, $bots )
+			new BotSetupWizardRenderer( $wizard_state, $forms, $bots ),
+			new ConversationRepository( $schema_health, $vault )
 		);
 	}
 
@@ -414,6 +416,36 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 
 		$chat_profiles = new ChatProfileResolver( $bots, $destinations );
 		$this->assertSame( $first->id(), $chat_profiles->default_bot()->id() );
+	}
+
+	public function test_a_conversation_created_destination_is_excluded_from_the_manual_table_and_has_no_test_message_action(): void {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+		$bots          = new BotProfileRepository( $schema_health, $vault );
+		$destinations  = new DestinationRepository( $schema_health );
+		$conversations = new ConversationRepository( $schema_health, $vault );
+
+		$bot = $bots->create( 'Bot', 'token' );
+		$this->complete_setup_for( $bots, $destinations, $bot->id(), '-100999' );
+		$settings = new Settings();
+		update_option( Settings::OPTION_NAME, $settings->sanitize( array_merge( $settings->get(), array( 'chat_widget_enabled' => true ) ) ) );
+
+		$conversation_destination = $destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100999', 77, 'Conversation abc123' );
+		$conversation             = $conversations->create( 'abc123', 'hash', $bot->id(), null );
+		$conversations->set_destination( $conversation->id(), $conversation_destination->id() );
+
+		$page = $this->make_page( $bots, $destinations );
+
+		ob_start();
+		$page->render_tab_content();
+		$html = ob_get_clean();
+
+		$this->assertStringContainsString( 'Conversation topics', $html );
+		$this->assertStringContainsString( 'Conversation abc123', $html );
+
+		// The manual "Website Support" destination created by
+		// complete_setup_for() still has its test-message action.
+		$this->assertSame( 1, substr_count( $html, 'Send test message' ) );
 	}
 
 	public function test_an_unauthorized_user_is_denied(): void {

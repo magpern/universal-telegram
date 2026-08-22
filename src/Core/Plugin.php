@@ -560,7 +560,7 @@ final class Plugin {
 		);
 		$this->handler_registry->register( MessageDispatcher::JOB_TYPE, array( $send_message_handler, 'handle_job' ) );
 
-		$this->conversation_repository = new ConversationRepository( $this->schema_health );
+		$this->conversation_repository = new ConversationRepository( $this->schema_health, $this->credential_vault );
 		$this->message_repository      = new MessageRepository( $this->schema_health, $this->credential_vault );
 
 		$this->update_repository       = new UpdateRepository( $this->schema_health );
@@ -718,7 +718,8 @@ final class Plugin {
 			$this->outbound_message_repository,
 			$telegram_form_fields,
 			$bot_setup_wizard_state,
-			$bot_setup_wizard_renderer
+			$bot_setup_wizard_renderer,
+			$this->conversation_repository
 		);
 
 		// Events/Automations (M02) repositories: constructed here, ahead of
@@ -845,7 +846,8 @@ final class Plugin {
 			new ChatWidgetAvailability(
 				$settings,
 				new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository )
-			)
+			),
+			$settings
 		);
 		add_action( 'wp_enqueue_scripts', array( $chat_widget_assets, 'enqueue' ) );
 		add_action( 'wp_footer', array( $chat_widget_assets, 'print_config' ), 5 );

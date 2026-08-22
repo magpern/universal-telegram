@@ -68,6 +68,11 @@ final class Settings {
 			'visitor_click_target_allowlist'              => array(),
 			'visitor_exclude_administrators'              => true,
 			'chat_widget_enabled'                         => false,
+			'chat_widget_preset'                          => 'modern',
+			'chat_widget_geometry'                        => 'round',
+			'chat_widget_motion_default'                  => 'standard',
+			'chat_widget_participant_label_visitor'       => 'You',
+			'chat_widget_participant_label_operator'      => 'Support',
 		);
 	}
 
@@ -109,6 +114,28 @@ final class Settings {
 
 		if ( isset( $input['visitor_consent_mode'] ) && in_array( $input['visitor_consent_mode'], array( 'required', 'disabled' ), true ) ) {
 			$sanitized['visitor_consent_mode'] = $input['visitor_consent_mode'];
+		}
+
+		if ( isset( $input['chat_widget_preset'] ) && in_array( $input['chat_widget_preset'], array( 'classic', 'modern', 'minimal' ), true ) ) {
+			$sanitized['chat_widget_preset'] = $input['chat_widget_preset'];
+		}
+
+		if ( isset( $input['chat_widget_geometry'] ) && in_array( $input['chat_widget_geometry'], array( 'round', 'square' ), true ) ) {
+			$sanitized['chat_widget_geometry'] = $input['chat_widget_geometry'];
+		}
+
+		if ( isset( $input['chat_widget_motion_default'] ) && in_array( $input['chat_widget_motion_default'], array( 'standard', 'reduced' ), true ) ) {
+			$sanitized['chat_widget_motion_default'] = $input['chat_widget_motion_default'];
+		}
+
+		foreach ( array( 'chat_widget_participant_label_visitor', 'chat_widget_participant_label_operator' ) as $label_field ) {
+			if ( isset( $input[ $label_field ] ) && is_string( $input[ $label_field ] ) ) {
+				$trimmed_label = trim( $input[ $label_field ] );
+
+				if ( '' !== $trimmed_label && mb_strlen( $trimmed_label, 'UTF-8' ) <= 40 ) {
+					$sanitized[ $label_field ] = $trimmed_label;
+				}
+			}
 		}
 
 		if ( isset( $input['visitor_sampling_percent'] ) && is_numeric( $input['visitor_sampling_percent'] ) ) {

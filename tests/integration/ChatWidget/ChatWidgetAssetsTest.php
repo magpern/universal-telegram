@@ -43,7 +43,7 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 		$bots          = new BotProfileRepository( $schema_health, new CredentialVault() );
 		$destinations  = new DestinationRepository( $schema_health );
 
-		return new ChatWidgetAssets( new ChatWidgetAvailability( new Settings(), new ChatProfileResolver( $bots, $destinations ) ) );
+		return new ChatWidgetAssets( new ChatWidgetAvailability( new Settings(), new ChatProfileResolver( $bots, $destinations ) ), new Settings() );
 	}
 
 	public function test_disabled_setting_enqueues_nothing_and_prints_nothing(): void {
@@ -122,6 +122,75 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 		$second = ob_get_clean();
 
 		$this->assertSame( $first, $second );
+	}
+
+	public function test_enqueue_selects_the_stylesheet_matching_the_stored_preset(): void {
+		update_option(
+			Settings::OPTION_NAME,
+			array_merge(
+				( new Settings() )->defaults(),
+				array(
+					'chat_widget_enabled' => true,
+					'chat_widget_preset'  => 'minimal',
+				)
+			)
+		);
+		$this->make_eligible_destination();
+
+		$this->go_to( home_url( '/' ) );
+		$assets = $this->assets();
+		$assets->enqueue();
+
+		global $wp_styles;
+		$src = $wp_styles->registered['universal-telegram-chat-widget']->src;
+
+		$this->assertStringContainsString( 'chat-widget-minimal.css', $src );
+	}
+
+	public function test_enqueue_falls_back_to_modern_for_a_corrupted_preset_value(): void {
+		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
+		update_option( Settings::OPTION_NAME, array_merge( get_option( Settings::OPTION_NAME ), array( 'chat_widget_preset' => 'not-a-real-preset' ) ) );
+		$this->make_eligible_destination();
+
+		$this->go_to( home_url( '/' ) );
+		$assets = $this->assets();
+		$assets->enqueue();
+
+		global $wp_styles;
+		$src = $wp_styles->registered['universal-telegram-chat-widget']->src;
+
+		$this->assertStringContainsString( 'chat-widget-modern.css', $src );
+	}
+
+	public function test_config_island_includes_appearance_and_label_fields_with_no_visitor_specific_data(): void {
+		update_option(
+			Settings::OPTION_NAME,
+			array_merge(
+				( new Settings() )->defaults(),
+				array(
+					'chat_widget_enabled'        => true,
+					'chat_widget_geometry'       => 'square',
+					'chat_widget_motion_default' => 'reduced',
+					'chat_widget_participant_label_visitor' => 'Me',
+					'chat_widget_participant_label_operator' => 'Team',
+				)
+			)
+		);
+		$this->make_eligible_destination();
+
+		$this->go_to( home_url( '/' ) );
+		$assets = $this->assets();
+
+		ob_start();
+		$assets->print_config();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'square', $output );
+		$this->assertStringContainsString( 'reduced', $output );
+		$this->assertStringContainsString( 'Me', $output );
+		$this->assertStringContainsString( 'Team', $output );
+		$this->assertStringNotContainsString( 'conversation_uuid', $output );
+		$this->assertStringNotContainsString( 'secret', $output );
 	}
 
 	// A REST_REQUEST-exclusion test is deliberately not repeated here:

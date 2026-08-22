@@ -46,7 +46,7 @@ final class WebhookControllerConversationRoutingTest extends WP_UnitTestCase {
 		$audit_logger        = new AuditLogger( $this->schema_health, new Redactor() );
 
 		$this->bots          = new BotProfileRepository( $this->schema_health, $vault );
-		$this->conversations = new ConversationRepository( $this->schema_health );
+		$this->conversations = new ConversationRepository( $this->schema_health, new CredentialVault() );
 		$this->messages      = new MessageRepository( $this->schema_health, $vault );
 		$this->destinations  = new DestinationRepository( $this->schema_health );
 		$updates             = new UpdateRepository( $this->schema_health );

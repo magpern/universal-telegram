@@ -987,6 +987,8 @@ Validation (deferred, applies once the deferred deliverables above are scheduled
 * Profile-priority tests
 * Closed and minimized state tests beyond open/close
 
+**M6.3 — chat identity, lifecycle, and presentation: delivered** (`docs/plans/m06-3-chat-identity-lifecycle-presentation-plan-v1.md`, `docs/adr/0024-...md`). Adds: a required visitor display name (1-80 chars, encrypted at rest, write-once) collected before the first message, feeding the Telegram topic title and a one-time first-message context header; a reload-safe `display_name_required` REST contract; three compiled static presentation presets (classic/modern/minimal, modern default) with a documented `.ut-chat-widget` CSS custom-property/selector contract, always honouring the visitor's own reduced-motion preference; configurable participant labels (default You/Support); 30-day inactivity auto-archival via the existing status-transition map; and destination-list hygiene separating chat-widget-created Telegram topics from manually configured destinations in the Bots tab. `db_version` 14 → 15. Still explicitly deferred: email collection/transcript delivery (proposed M06.4), logged-in WooCommerce order context (proposed M06.5), operator conversation UI, manual delete, custom-CSS editor, external stylesheet URLs, chat profiles/targeting, business hours, pre-chat form, live preview.
+
 ## M7 — Operator workflow
 
 **Objective:** Make Telegram practical as a support console.
