@@ -27,7 +27,7 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 		parent::setUp();
 
 		$this->schema_health = new SchemaHealth();
-		$this->conversations = new ConversationRepository( $this->schema_health );
+		$this->conversations = new ConversationRepository( $this->schema_health, new CredentialVault() );
 		$this->messages      = new MessageRepository( $this->schema_health, new CredentialVault() );
 		$this->destinations  = new DestinationRepository( $this->schema_health );
 

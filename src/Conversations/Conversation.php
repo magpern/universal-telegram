@@ -38,8 +38,9 @@ final class Conversation {
 	 * @param string      $updated_at             Last-update timestamp.
 	 * @param string|null $resolved_at            Timestamp of the last `* -> resolved` transition.
 	 * @param string|null $expires_at             Reserved retention timestamp.
-	 * @param string|null $start_idempotency_key  Client-supplied idempotency key from the start request that created this row, or null (M06 plan §0, ADR-0021 amendment).
-	 * @param string|null $topic_claim_expires_at When the currently held topic-creation claim/lease expires, or null if unclaimed (M06.2 corrective plan v2, ADR-0023 amendment).
+	 * @param string|null $start_idempotency_key    Client-supplied idempotency key from the start request that created this row, or null (M06 plan §0, ADR-0021 amendment).
+	 * @param string|null $topic_claim_expires_at   When the currently held topic-creation claim/lease expires, or null if unclaimed (M06.2 corrective plan v2, ADR-0023 amendment).
+	 * @param string|null $display_name_ciphertext  Encrypted visitor display name, or null if none is stored yet (M06.3, ADR-0024).
 	 */
 	public function __construct(
 		private readonly int $id,
@@ -60,7 +61,8 @@ final class Conversation {
 		private readonly ?string $resolved_at,
 		private readonly ?string $expires_at,
 		private readonly ?string $start_idempotency_key = null,
-		private readonly ?string $topic_claim_expires_at = null
+		private readonly ?string $topic_claim_expires_at = null,
+		private readonly ?string $display_name_ciphertext = null
 	) {}
 
 	/**
@@ -237,5 +239,31 @@ final class Conversation {
 	 */
 	public function topic_claim_expires_at(): ?string {
 		return $this->topic_claim_expires_at;
+	}
+
+	/**
+	 * The encrypted visitor display name, or null if none is stored yet.
+	 * Never decrypted or exposed by this value object itself — only
+	 * ConversationRepository's own vault-bound methods ever handle the
+	 * plaintext (M06.3, ADR-0024). Callers needing to know only whether a
+	 * name is required should use ConversationRepository's own
+	 * display_name_required() check rather than reading this accessor
+	 * directly.
+	 *
+	 * @return string|null
+	 */
+	public function display_name_ciphertext(): ?string {
+		return $this->display_name_ciphertext;
+	}
+
+	/**
+	 * Whether no display name is stored yet for this conversation — the
+	 * exact condition M06.3's REST contract exposes as
+	 * `display_name_required` (ADR-0024), never the name itself.
+	 *
+	 * @return bool
+	 */
+	public function display_name_required(): bool {
+		return null === $this->display_name_ciphertext;
 	}
 }

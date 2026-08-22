@@ -9,6 +9,9 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Conversations;
 
+use UniversalTelegram\Core\Security\CredentialState;
+use UniversalTelegram\Core\Security\CredentialUnavailableException;
+use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
 
@@ -26,11 +29,27 @@ class ConversationRepository {
 	/**
 	 * Constructor.
 	 *
-	 * @param SchemaHealth $schema_health Checked before every operation.
+	 * @param SchemaHealth    $schema_health Checked before every operation.
+	 * @param CredentialVault $vault         Encrypts/decrypts the visitor display name (M06.3, ADR-0024).
 	 */
 	public function __construct(
-		private readonly SchemaHealth $schema_health
+		private readonly SchemaHealth $schema_health,
+		private readonly CredentialVault $vault
 	) {}
+
+	/**
+	 * The encryption/decryption additional-authenticated-data context for a
+	 * conversation's own display name — distinct from MessageRepository's
+	 * per-message context, so this ciphertext can never be relinked against
+	 * a message body or another conversation's name (M06.3, ADR-0024).
+	 *
+	 * @param string $conversation_uuid The conversation's own public identifier.
+	 *
+	 * @return string
+	 */
+	private function display_name_context( string $conversation_uuid ): string {
+		return 'conversation:' . $conversation_uuid . ':display_name';
+	}
 
 	/**
 	 * Creates a new conversation in status `new`, topic_creation_state
@@ -600,7 +619,150 @@ class ConversationRepository {
 			null === $row['resolved_at'] ? null : (string) $row['resolved_at'],
 			null === $row['expires_at'] ? null : (string) $row['expires_at'],
 			null === $row['start_idempotency_key'] ? null : (string) $row['start_idempotency_key'],
-			null === $row['topic_claim_expires_at'] ? null : (string) $row['topic_claim_expires_at']
+			null === $row['topic_claim_expires_at'] ? null : (string) $row['topic_claim_expires_at'],
+			null === $row['display_name_ciphertext'] ? null : (string) $row['display_name_ciphertext']
 		);
+	}
+
+	/**
+	 * Encrypts and stores a visitor display name — write-once: a no-op
+	 * (returns true without touching the row) if a name is already stored,
+	 * so a caller can never overwrite an established name (M06.3, ADR-0024).
+	 * The plaintext is never retained by this method beyond the encrypt()
+	 * call, and is never itself returned or logged.
+	 *
+	 * @param Conversation $conversation    The conversation, already verified to have no stored name by the caller's own display_name_required() check.
+	 * @param string       $plaintext_name  The trimmed, length-validated display name.
+	 *
+	 * @return bool True on success or on the already-stored no-op case; false only on encryption or write failure.
+	 */
+	public function store_display_name( Conversation $conversation, string $plaintext_name ): bool {
+		if ( ! $conversation->display_name_required() ) {
+			return true;
+		}
+
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		try {
+			$ciphertext = $this->vault->encrypt( $plaintext_name, $this->display_name_context( $conversation->conversation_uuid() ) );
+		} catch ( CredentialUnavailableException $exception ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'display_name_ciphertext' => $ciphertext,
+				'updated_at'               => current_time( 'mysql', true ),
+			),
+			array(
+				'id'                       => $conversation->id(),
+				'display_name_ciphertext' => null,
+			),
+			array( '%s', '%s' ),
+			array( '%d', '%s' )
+		);
+
+		return false !== $updated && $updated > 0;
+	}
+
+	/**
+	 * Decrypts a conversation's stored display name for the one shared
+	 * send path that is ever permitted to disclose it into Telegram (the
+	 * topic title and the first-message context header — M06.3, ADR-0024).
+	 * A decrypt failure never modifies the stored ciphertext and is
+	 * reported here as null, never an exception — callers fall back to the
+	 * pre-M06.3 topic-title literal, never leaking plaintext or throwing.
+	 *
+	 * @param Conversation $conversation The conversation to decrypt the display name for.
+	 *
+	 * @return string|null
+	 */
+	public function decrypt_display_name( Conversation $conversation ): ?string {
+		if ( null === $conversation->display_name_ciphertext() ) {
+			return null;
+		}
+
+		$result = $this->vault->decrypt( $conversation->display_name_ciphertext(), $this->display_name_context( $conversation->conversation_uuid() ) );
+
+		return CredentialState::AVAILABLE === $result->state() ? $result->plaintext() : null;
+	}
+
+	/**
+	 * Every conversation currently open or waiting (never already resolved
+	 * or archived) whose own updated_at — already bumped by every existing
+	 * status/topic-state transition, including the visitor-message and
+	 * operator-webhook-reply transitions — is older than $days. The sole
+	 * eligibility source for M06.3's inactivity auto-archival step
+	 * (ADR-0024): callers must route each match through the existing
+	 * transition() compare-and-set to 'resolved', never a raw status write,
+	 * and this query itself never matches an already-resolved or archived
+	 * row, so this mechanism can never reopen or reprocess one.
+	 *
+	 * @param int $days Inactivity threshold, in days.
+	 *
+	 * @return array<int, Conversation>
+	 */
+	public function inactive_open_conversations( int $days ): array {
+		if ( ! $this->schema_health->is_available() ) {
+			return array();
+		}
+
+		global $wpdb;
+
+		$table    = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$cutoff   = gmdate( 'Y-m-d H:i:s', strtotime( current_time( 'mysql', true ) ) - ( $days * DAY_IN_SECONDS ) );
+		$statuses = array( ConversationStatus::OPEN, ConversationStatus::WAITING_FOR_VISITOR, ConversationStatus::WAITING_FOR_OPERATOR );
+
+		$placeholders = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT * FROM {$table} WHERE status IN ({$placeholders}) AND updated_at < %s",
+				array_merge( $statuses, array( $cutoff ) )
+			),
+			ARRAY_A
+		);
+
+		return array_map( array( $this, 'hydrate' ), $rows );
+	}
+
+	/**
+	 * Every distinct destination id this bot's conversations have ever
+	 * created a topic against — the sole source BotManagementPage uses to
+	 * exclude conversation-created destinations from the manually
+	 * configured destination list and its "Send test message" action
+	 * (M06.3, ADR-0024). No schema change: reuses the existing
+	 * destination_id column already stored on conversations.
+	 *
+	 * @param int $bot_id The bot's primary key.
+	 *
+	 * @return array<int, int>
+	 */
+	public function destination_ids_for_bot( int $bot_id ): array {
+		if ( ! $this->schema_health->is_available() ) {
+			return array();
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$ids = $wpdb->get_col(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT DISTINCT destination_id FROM {$table} WHERE bot_id = %d AND destination_id IS NOT NULL",
+				$bot_id
+			)
+		);
+
+		return array_map( 'intval', $ids );
 	}
 }

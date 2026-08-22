@@ -68,7 +68,7 @@ final class TopicCreationHandlerTest extends WP_UnitTestCase {
 	public function test_success_creates_the_destination_row_marks_the_topic_created_and_opens_the_conversation(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
-		$conversations = new ConversationRepository( $schema_health );
+		$conversations = new ConversationRepository( $schema_health, new CredentialVault() );
 		$bots          = new BotProfileRepository( $schema_health, $vault );
 		$destinations  = new DestinationRepository( $schema_health );
 
@@ -101,7 +101,7 @@ final class TopicCreationHandlerTest extends WP_UnitTestCase {
 	public function test_a_job_for_a_conversation_no_longer_pending_is_a_noop(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
-		$conversations = new ConversationRepository( $schema_health );
+		$conversations = new ConversationRepository( $schema_health, new CredentialVault() );
 		$bots          = new BotProfileRepository( $schema_health, $vault );
 		$destinations  = new DestinationRepository( $schema_health );
 
@@ -119,7 +119,7 @@ final class TopicCreationHandlerTest extends WP_UnitTestCase {
 	public function test_failure_below_the_retry_ceiling_rethrows_and_leaves_state_pending(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
-		$conversations = new ConversationRepository( $schema_health );
+		$conversations = new ConversationRepository( $schema_health, new CredentialVault() );
 		$bots          = new BotProfileRepository( $schema_health, $vault );
 		$destinations  = new DestinationRepository( $schema_health );
 
@@ -150,7 +150,7 @@ final class TopicCreationHandlerTest extends WP_UnitTestCase {
 	public function test_failure_at_the_retry_ceiling_marks_the_topic_failed_without_throwing(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
-		$conversations = new ConversationRepository( $schema_health );
+		$conversations = new ConversationRepository( $schema_health, new CredentialVault() );
 		$bots          = new BotProfileRepository( $schema_health, $vault );
 		$destinations  = new DestinationRepository( $schema_health );
 
@@ -177,7 +177,7 @@ final class TopicCreationHandlerTest extends WP_UnitTestCase {
 	public function test_no_configured_conversation_chat_marks_the_topic_failed_at_the_ceiling(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
-		$conversations = new ConversationRepository( $schema_health );
+		$conversations = new ConversationRepository( $schema_health, new CredentialVault() );
 		$bots          = new BotProfileRepository( $schema_health, $vault );
 		$destinations  = new DestinationRepository( $schema_health );
 

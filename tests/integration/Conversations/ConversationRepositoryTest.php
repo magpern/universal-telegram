@@ -7,13 +7,14 @@ namespace UniversalTelegram\Tests\Integration\Conversations;
 
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\ConversationStatus;
+use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
 use WP_UnitTestCase;
 
 final class ConversationRepositoryTest extends WP_UnitTestCase {
 
 	private function repository(): ConversationRepository {
-		return new ConversationRepository( new SchemaHealth() );
+		return new ConversationRepository( new SchemaHealth(), new CredentialVault() );
 	}
 
 	public function test_create_and_find_round_trip(): void {
@@ -206,5 +207,120 @@ final class ConversationRepositoryTest extends WP_UnitTestCase {
 		);
 
 		$this->assertNull( $repo->try_begin_topic_creation( $conversation->id() ) );
+	}
+
+	public function test_display_name_required_is_true_until_a_name_is_stored(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-name-required', 'hash', 1, null );
+
+		$this->assertTrue( $conversation->display_name_required() );
+		$this->assertNull( $conversation->display_name_ciphertext() );
+
+		$this->assertTrue( $repo->store_display_name( $conversation, 'Alice' ) );
+
+		$stored = $repo->find( $conversation->id() );
+		$this->assertFalse( $stored->display_name_required() );
+		$this->assertNotNull( $stored->display_name_ciphertext() );
+		$this->assertNotSame( 'Alice', $stored->display_name_ciphertext() );
+	}
+
+	public function test_store_display_name_is_write_once(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-name-write-once', 'hash', 1, null );
+
+		$this->assertTrue( $repo->store_display_name( $conversation, 'Alice' ) );
+		$first_ciphertext = $repo->find( $conversation->id() )->display_name_ciphertext();
+
+		// A second call, even against a freshly-fetched (now-named)
+		// Conversation object, must be a no-op: display_name_required()
+		// already reports false, so the write-once guard short-circuits.
+		$named_again = $repo->find( $conversation->id() );
+		$this->assertTrue( $repo->store_display_name( $named_again, 'Bob' ) );
+
+		$final = $repo->find( $conversation->id() );
+		$this->assertSame( $first_ciphertext, $final->display_name_ciphertext() );
+	}
+
+	public function test_decrypt_display_name_round_trips(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-name-decrypt', 'hash', 1, null );
+
+		$repo->store_display_name( $conversation, 'Cee Séamus' );
+		$stored = $repo->find( $conversation->id() );
+
+		$this->assertSame( 'Cee Séamus', $repo->decrypt_display_name( $stored ) );
+	}
+
+	public function test_decrypt_display_name_returns_null_when_none_is_stored(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-name-none', 'hash', 1, null );
+
+		$this->assertNull( $repo->decrypt_display_name( $conversation ) );
+	}
+
+	public function test_inactive_open_conversations_matches_only_eligible_stale_statuses(): void {
+		$repo = $this->repository();
+
+		$stale_open = $repo->create( 'uuid-inactive-open', 'hash', 1, null );
+		$repo->transition( $stale_open->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+
+		$fresh_open = $repo->create( 'uuid-fresh-open', 'hash', 1, null );
+		$repo->transition( $fresh_open->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+
+		$stale_new = $repo->create( 'uuid-inactive-new', 'hash', 1, null );
+
+		global $wpdb;
+		$table   = $wpdb->prefix . \UniversalTelegram\Persistence\Migrator::CONVERSATIONS_TABLE;
+		$old_ts  = gmdate( 'Y-m-d H:i:s', time() - ( 31 * DAY_IN_SECONDS ) );
+		$wpdb->update( $table, array( 'updated_at' => $old_ts ), array( 'id' => $stale_open->id() ) );
+		$wpdb->update( $table, array( 'updated_at' => $old_ts ), array( 'id' => $stale_new->id() ) );
+
+		$inactive = $repo->inactive_open_conversations( 30 );
+		$ids      = array_map( static fn( $c ) => $c->id(), $inactive );
+
+		$this->assertContains( $stale_open->id(), $ids );
+		$this->assertNotContains( $fresh_open->id(), $ids );
+		$this->assertNotContains( $stale_new->id(), $ids, 'NEW is not a valid transition source for RESOLVED and must never be selected.' );
+	}
+
+	public function test_inactive_open_conversations_never_matches_resolved_or_archived(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-inactive-resolved', 'hash', 1, null );
+		$repo->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+		$repo->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::RESOLVED );
+
+		global $wpdb;
+		$table = $wpdb->prefix . \UniversalTelegram\Persistence\Migrator::CONVERSATIONS_TABLE;
+		$wpdb->update(
+			$table,
+			array( 'updated_at' => gmdate( 'Y-m-d H:i:s', time() - ( 31 * DAY_IN_SECONDS ) ) ),
+			array( 'id' => $conversation->id() )
+		);
+
+		$inactive = $repo->inactive_open_conversations( 30 );
+		$ids      = array_map( static fn( $c ) => $c->id(), $inactive );
+
+		$this->assertNotContains( $conversation->id(), $ids );
+	}
+
+	public function test_destination_ids_for_bot_returns_only_this_bots_distinct_destination_ids(): void {
+		$repo = $this->repository();
+
+		$conversation_a = $repo->create( 'uuid-dest-a', 'hash', 1, null );
+		$repo->set_destination( $conversation_a->id(), 501 );
+
+		$conversation_b = $repo->create( 'uuid-dest-b', 'hash', 1, null );
+		$repo->set_destination( $conversation_b->id(), 502 );
+
+		$conversation_other_bot = $repo->create( 'uuid-dest-other-bot', 'hash', 2, null );
+		$repo->set_destination( $conversation_other_bot->id(), 999 );
+
+		$conversation_no_destination = $repo->create( 'uuid-dest-none', 'hash', 1, null );
+
+		$ids = $repo->destination_ids_for_bot( 1 );
+
+		$this->assertContains( 501, $ids );
+		$this->assertContains( 502, $ids );
+		$this->assertNotContains( 999, $ids );
 	}
 }
