@@ -76,3 +76,41 @@ configured during automated validation.
       evidence (e.g. backdating a test conversation's `updated_at` and
       running the retention cleanup action directly) — not a real 30-day
       wait.
+
+## M06.3.1 — authenticated chat access and UX redesign (docs/plans/m06-3-1-authenticated-chat-access-ux-plan-v1.md, ADR-0025)
+
+Supersedes the M06.3 required-name checklist above (that flow no longer exists).
+
+- [ ] Logged out, opening the widget shows only "Sign in to chat" (and
+      "Create account" only when the site allows registration) — no
+      composer, history, name field, or conversation control appears.
+- [ ] After signing in and reopening the widget, the composer is enabled
+      immediately, with no visible "Start chat" control anywhere.
+- [ ] Sending the first message succeeds without any prior visible action
+      having created a conversation (no network activity to `/conversations`
+      until Send is pressed).
+- [ ] The resulting Telegram forum topic's title shows the WordPress
+      account's display name (or the generic fallback, if the account's
+      display name is empty) and a short reference — never the numeric
+      user id, username, or email.
+- [ ] Opening the widget in a second, separate browser (same account,
+      logged in there too) resumes the same conversation and its history.
+- [ ] "Close" only hides the widget; reopening it resumes the same
+      conversation without re-signing-in.
+- [ ] No visible "End conversation" control exists anywhere in the widget.
+- [ ] Scrolling up in the message log while a new message arrives does not
+      force the view back down; a "New messages" control appears and,
+      when clicked, scrolls to the newest message.
+- [ ] With the default `chat_widget_preset` (`theme`), the widget's colors
+      visually follow the active site theme rather than a fixed purple.
+- [ ] Keyboard-only navigation and a screen reader can complete the full
+      sign-in-then-send flow without a mouse.
+- [ ] 375px/414px mobile viewports show no obstruction of the sign-in
+      state or the composer.
+- [ ] Deleting the signed-in WordPress account (as an administrator, on a
+      disposable test account) leaves its prior conversation's messages
+      intact in the database but permanently unreachable through the
+      widget/API.
+- [ ] Archival behaviour (including a conversation stuck in `new`) is
+      confirmed via a safe test fixture or dry-run evidence — not a real
+      30-day wait.

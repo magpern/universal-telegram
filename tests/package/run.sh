@@ -162,13 +162,24 @@ if [ -z "$(m06_column_exists "conversations" "display_name_ciphertext")" ]; then
 fi
 echo "OK: universal_telegram_conversations.display_name_ciphertext column exists."
 
-echo "== Verifying db_version reached 15 =="
-DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "15" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=15, got ${DB_VERSION}" >&2
+echo "== Verifying M06.3.1's ownership columns exist (ADR-0025) =="
+if [ -z "$(m06_column_exists "conversations" "owner_user_id")" ]; then
+	echo "FAIL: universal_telegram_conversations.owner_user_id column was not created on activation" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 15."
+if [ -z "$(m06_column_exists "conversations" "owner_active_slot")" ]; then
+	echo "FAIL: universal_telegram_conversations.owner_active_slot column was not created on activation" >&2
+	exit 1
+fi
+echo "OK: universal_telegram_conversations.owner_user_id and owner_active_slot columns exist."
+
+echo "== Verifying db_version reached 16 =="
+DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
+if [ "16" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=16, got ${DB_VERSION}" >&2
+	exit 1
+fi
+echo "OK: universal_telegram_db_version is 16."
 
 echo "== Verifying M02 event emission projects only PUBLIC fields into event_history =="
 wp eval '
