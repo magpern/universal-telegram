@@ -578,4 +578,52 @@ final class ConversationRepositoryTest extends WP_UnitTestCase {
 
 		$this->assertNotEmpty( $found );
 	}
+
+	public function test_for_inbox_filters_by_uuid_prefix(): void {
+		$repo     = $this->repository();
+		$matching = $repo->create( 'search-target-abc', 'hash', 1, null );
+		$repo->create( 'other-conversation-xyz', 'hash', 1, null );
+
+		$found = $repo->for_inbox( null, 1000, 0, 'search-target' );
+
+		$ids = array_map( static fn( $c ) => $c->id(), $found );
+		$this->assertSame( array( $matching->id() ), $ids );
+	}
+
+	public function test_for_inbox_filters_by_bot_id(): void {
+		$repo     = $this->repository();
+		$matching = $repo->create( 'uuid-bot-filter-1', 'hash', 2, null );
+		$repo->create( 'uuid-bot-filter-2', 'hash', 3, null );
+
+		$found = $repo->for_inbox( null, 1000, 0, null, 2 );
+
+		$ids = array_map( static fn( $c ) => $c->id(), $found );
+		$this->assertContains( $matching->id(), $ids );
+		$this->assertCount( 1, $found );
+	}
+
+	public function test_for_inbox_filters_by_assigned_operator_id(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-assignee-filter-1', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 90 );
+		$repo->create( 'uuid-assignee-filter-2', 'hash', 1, null );
+
+		$found = $repo->for_inbox( null, 1000, 0, null, null, 90 );
+
+		$ids = array_map( static fn( $c ) => $c->id(), $found );
+		$this->assertSame( array( $conversation->id() ), $ids );
+	}
+
+	public function test_for_inbox_never_accepts_a_telegram_id_as_a_filter(): void {
+		// Regression guard: the method signature itself has no
+		// telegram_user_id/telegram_username parameter at all (ADR-0026) —
+		// this test documents that constraint via reflection so a future
+		// change accidentally adding one is caught.
+		$reflection = new \ReflectionMethod( ConversationRepository::class, 'for_inbox' );
+		$names      = array_map( static fn( $p ) => $p->getName(), $reflection->getParameters() );
+
+		foreach ( $names as $name ) {
+			$this->assertStringNotContainsStringIgnoringCase( 'telegram', $name );
+		}
+	}
 }

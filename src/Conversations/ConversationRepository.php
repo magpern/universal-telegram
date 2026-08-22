@@ -862,16 +862,34 @@ class ConversationRepository {
 	 * A page of conversations for the operator inbox (M07, docs/adr/0026),
 	 * newest-activity first, optionally restricted to one status. Bounded,
 	 * indexable metadata only — never a decrypted-body or decrypted-name
-	 * scan (the sole search surface WP9 later adds is over this same set of
-	 * metadata columns).
+	 * scan. WP9 extends the same set of columns with a bounded search: a
+	 * conversation_uuid prefix, bot_id, assigned_operator_id, and a
+	 * created_at date range — every one of them already-indexed or
+	 * cheaply-scanned metadata, never a decrypted-body or decrypted-name
+	 * scan, and never a Telegram sender id or username (both SENSITIVE,
+	 * excluded from this filter set entirely, ADR-0026).
 	 *
-	 * @param string|null $status One of ConversationStatus's constants, or null for every status.
-	 * @param int         $limit  Page size.
-	 * @param int         $offset Page offset.
+	 * @param string|null $status              One of ConversationStatus's constants, or null for every status.
+	 * @param int         $limit               Page size.
+	 * @param int         $offset              Page offset.
+	 * @param string|null $uuid_prefix         Matches the start of conversation_uuid, or null.
+	 * @param int|null    $bot_id              Matches bot_id exactly, or null.
+	 * @param int|null    $assigned_operator_id Matches assigned_operator_id exactly, or null.
+	 * @param string|null $created_from        Matches created_at >= this value (Y-m-d), or null.
+	 * @param string|null $created_to          Matches created_at <= this value (Y-m-d 23:59:59), or null.
 	 *
 	 * @return array<int, Conversation>
 	 */
-	public function for_inbox( ?string $status, int $limit = 50, int $offset = 0 ): array {
+	public function for_inbox(
+		?string $status,
+		int $limit = 50,
+		int $offset = 0,
+		?string $uuid_prefix = null,
+		?int $bot_id = null,
+		?int $assigned_operator_id = null,
+		?string $created_from = null,
+		?string $created_to = null
+	): array {
 		if ( ! $this->schema_health->is_available() ) {
 			return array();
 		}
@@ -880,26 +898,50 @@ class ConversationRepository {
 
 		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
 
-		if ( null === $status ) {
-			$rows = $wpdb->get_results(
-				$wpdb->prepare(
-					"SELECT * FROM {$table} ORDER BY updated_at DESC LIMIT %d OFFSET %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-					$limit,
-					$offset
-				),
-				ARRAY_A
-			);
-		} else {
-			$rows = $wpdb->get_results(
-				$wpdb->prepare(
-					"SELECT * FROM {$table} WHERE status = %s ORDER BY updated_at DESC LIMIT %d OFFSET %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-					$status,
-					$limit,
-					$offset
-				),
-				ARRAY_A
-			);
+		$where  = array();
+		$params = array();
+
+		if ( null !== $status ) {
+			$where[]  = 'status = %s';
+			$params[] = $status;
 		}
+
+		if ( null !== $uuid_prefix && '' !== $uuid_prefix ) {
+			$where[]  = 'conversation_uuid LIKE %s';
+			$params[] = $wpdb->esc_like( $uuid_prefix ) . '%';
+		}
+
+		if ( null !== $bot_id ) {
+			$where[]  = 'bot_id = %d';
+			$params[] = $bot_id;
+		}
+
+		if ( null !== $assigned_operator_id ) {
+			$where[]  = 'assigned_operator_id = %d';
+			$params[] = $assigned_operator_id;
+		}
+
+		if ( null !== $created_from && '' !== $created_from ) {
+			$where[]  = 'created_at >= %s';
+			$params[] = $created_from . ' 00:00:00';
+		}
+
+		if ( null !== $created_to && '' !== $created_to ) {
+			$where[]  = 'created_at <= %s';
+			$params[] = $created_to . ' 23:59:59';
+		}
+
+		$sql = "SELECT * FROM {$table}";
+
+		if ( array() !== $where ) {
+			$sql .= ' WHERE ' . implode( ' AND ', $where );
+		}
+
+		$sql     .= ' ORDER BY updated_at DESC LIMIT %d OFFSET %d';
+		$params[] = $limit;
+		$params[] = $offset;
+
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		return array_map( array( $this, 'hydrate' ), null === $rows ? array() : $rows );
 	}

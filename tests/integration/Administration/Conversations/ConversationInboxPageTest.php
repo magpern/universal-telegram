@@ -38,7 +38,7 @@ final class ConversationInboxPageTest extends WP_UnitTestCase {
 	}
 
 	protected function tearDown(): void {
-		unset( $_GET['conversation_id'], $_GET['status'], $_GET['paged'] );
+		unset( $_GET['conversation_id'], $_GET['status'], $_GET['paged'], $_GET['q'], $_GET['bot_id'], $_GET['assigned_operator_id'], $_GET['created_from'], $_GET['created_to'] );
 		parent::tearDown();
 	}
 
@@ -95,6 +95,40 @@ final class ConversationInboxPageTest extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( '999888777', $output );
 		$this->assertStringNotContainsString( 'robin_tg', $output );
 		$this->assertStringContainsString( 'Robin Operator', $output );
+	}
+
+	public function test_search_filters_by_conversation_uuid_prefix(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		list( $page, $conversations ) = $this->page();
+		$conversations->create( 'search-page-target-abc', 'hash', 1, null );
+		$conversations->create( 'other-page-conversation', 'hash', 1, null );
+
+		$_GET['q'] = 'search-page-target';
+
+		ob_start();
+		$page->render_tab_content();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'search-p', $output );
+		$this->assertStringNotContainsString( 'other-pa', $output );
+	}
+
+	public function test_the_filter_form_never_offers_a_telegram_id_or_username_field(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		list( $page ) = $this->page();
+
+		ob_start();
+		$page->render_tab_content();
+		$output = ob_get_clean();
+
+		$this->assertStringNotContainsString( 'telegram_user_id', $output );
+		$this->assertStringNotContainsString( 'telegram_username', $output );
 	}
 
 	public function test_conversation_id_generated_urls_never_contain_a_raw_telegram_id(): void {

@@ -127,8 +127,9 @@ final class ConversationInboxPage {
 	}
 
 	/**
-	 * Renders the paginated, status-filterable conversation list. Bounded,
-	 * indexable metadata only — no decrypted-body/name scan.
+	 * Renders the paginated, filterable conversation list. Bounded,
+	 * indexable metadata only — no decrypted-body/name scan, and no
+	 * Telegram sender id or username filter (WP9, ADR-0026).
 	 */
 	private function render_list(): void {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only pagination/filter.
@@ -136,7 +137,17 @@ final class ConversationInboxPage {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$status = isset( $_GET['status'] ) ? sanitize_key( wp_unslash( $_GET['status'] ) ) : '';
 		$status = in_array( $status, ConversationStatus::all(), true ) ? $status : null;
-		$offset = ( $page - 1 ) * self::PER_PAGE;
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$uuid_prefix = isset( $_GET['q'] ) ? sanitize_text_field( wp_unslash( $_GET['q'] ) ) : '';
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$bot_id = isset( $_GET['bot_id'] ) && '' !== $_GET['bot_id'] ? (int) $_GET['bot_id'] : null;
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$assigned_operator_id = isset( $_GET['assigned_operator_id'] ) && '' !== $_GET['assigned_operator_id'] ? (int) $_GET['assigned_operator_id'] : null;
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$created_from = isset( $_GET['created_from'] ) ? sanitize_text_field( wp_unslash( $_GET['created_from'] ) ) : '';
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$created_to = isset( $_GET['created_to'] ) ? sanitize_text_field( wp_unslash( $_GET['created_to'] ) ) : '';
+		$offset     = ( $page - 1 ) * self::PER_PAGE;
 
 		echo '<form method="get">';
 		echo '<input type="hidden" name="page" value="' . esc_attr( HubPage::SLUG ) . '" />';
@@ -145,7 +156,12 @@ final class ConversationInboxPage {
 		foreach ( ConversationStatus::all() as $option ) {
 			printf( '<option value="%s"%s>%s</option>', esc_attr( $option ), $option === $status ? ' selected' : '', esc_html( $option ) );
 		}
-		echo '</select>';
+		echo '</select> ';
+		echo '<input type="text" name="q" value="' . esc_attr( $uuid_prefix ) . '" placeholder="' . esc_attr__( 'Conversation id starts with…', 'universal-telegram' ) . '" /> ';
+		echo '<input type="number" name="bot_id" value="' . esc_attr( null === $bot_id ? '' : (string) $bot_id ) . '" placeholder="' . esc_attr__( 'Bot id', 'universal-telegram' ) . '" /> ';
+		echo '<input type="number" name="assigned_operator_id" value="' . esc_attr( null === $assigned_operator_id ? '' : (string) $assigned_operator_id ) . '" placeholder="' . esc_attr__( 'Assigned operator id', 'universal-telegram' ) . '" /> ';
+		echo '<input type="date" name="created_from" value="' . esc_attr( $created_from ) . '" /> ';
+		echo '<input type="date" name="created_to" value="' . esc_attr( $created_to ) . '" /> ';
 		submit_button( __( 'Filter', 'universal-telegram' ), '', '', false );
 		echo '</form>';
 
@@ -155,7 +171,18 @@ final class ConversationInboxPage {
 			esc_html__( 'Assigned to', 'universal-telegram' ) . '</th><th>' .
 			esc_html__( 'Last activity', 'universal-telegram' ) . '</th></tr></thead><tbody>';
 
-		foreach ( $this->conversations->for_inbox( $status, self::PER_PAGE, $offset ) as $conversation ) {
+		foreach (
+			$this->conversations->for_inbox(
+				$status,
+				self::PER_PAGE,
+				$offset,
+				'' === $uuid_prefix ? null : $uuid_prefix,
+				$bot_id,
+				$assigned_operator_id,
+				'' === $created_from ? null : $created_from,
+				'' === $created_to ? null : $created_to
+			) as $conversation
+		) {
 			$assigned_label = '';
 
 			if ( null !== $conversation->assigned_operator_id() ) {
