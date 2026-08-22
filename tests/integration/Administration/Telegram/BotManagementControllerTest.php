@@ -360,4 +360,43 @@ final class BotManagementControllerTest extends WP_UnitTestCase {
 		$this->assertFalse( $dispatcher->schedule_action_called );
 		$this->assertNoOutboundMessageRowFor( $bot->id() );
 	}
+
+	public function test_create_bot_from_the_wizard_redirects_back_into_it_with_the_new_bot_selected(): void {
+		$this->fake_get_me( true );
+
+		$nonce                = wp_create_nonce( BotManagementController::NONCE_ACTION );
+		$_POST                = array(
+			'op'          => 'create_bot',
+			'name'        => 'Wizard Bot',
+			'token'       => 'good-token',
+			'from_wizard' => '1',
+			'_wpnonce'    => $nonce,
+		);
+		$_REQUEST['_wpnonce'] = $nonce;
+
+		$controller = $this->controller();
+		$controller->handle_request();
+
+		$this->assertCount( 1, $this->bots->all() );
+		$this->assertStringContainsString( 'view=wizard', (string) $controller->last_redirect_url );
+		$this->assertStringContainsString( 'bot_id=latest', (string) $controller->last_redirect_url );
+	}
+
+	public function test_create_bot_without_the_wizard_marker_redirects_to_the_plain_bots_tab(): void {
+		$this->fake_get_me( true );
+
+		$nonce                = wp_create_nonce( BotManagementController::NONCE_ACTION );
+		$_POST                = array(
+			'op'       => 'create_bot',
+			'name'     => 'Manual Bot',
+			'token'    => 'good-token',
+			'_wpnonce' => $nonce,
+		);
+		$_REQUEST['_wpnonce'] = $nonce;
+
+		$controller = $this->controller();
+		$controller->handle_request();
+
+		$this->assertStringNotContainsString( 'view=wizard', (string) $controller->last_redirect_url );
+	}
 }

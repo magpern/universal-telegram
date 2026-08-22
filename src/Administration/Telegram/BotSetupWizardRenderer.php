@@ -15,13 +15,18 @@ use UniversalTelegram\Telegram\Configuration\BotProfile;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 
 /**
- * Renders the five-step, progress-driven setup wizard shown on the Bots tab
- * (M06.1 plan §"Rendering") in place of the old static guidance panel. Every
- * step's own form is the shared TelegramFormFields markup — this class never
- * duplicates a form or introduces a new admin-post action. Step 5 only ever
- * links to the existing Settings tab; it never renders, embeds, or
+ * Renders the progress-driven setup wizard shown on the Bots tab (M06.1
+ * plan §"Rendering"; corrective addendum: new-user guided setup + any-bot
+ * configuration) in place of the old static guidance panel. Every step's
+ * own form is the shared TelegramFormFields markup — this class never
+ * duplicates a form or introduces a new admin-post action. Step 5 only
+ * ever links to the existing Settings tab; it never renders, embeds, or
  * cross-posts that tab's own form (doing so would risk silently altering
- * `remove_data_on_uninstall`, per SettingsPage's own combined save handler).
+ * `remove_data_on_uninstall`, per SettingsPage's own combined save
+ * handler). No bot selection made here ever changes which bot the chat
+ * widget is wired to — that stays exactly BotSetupWizardState::default_bot(),
+ * unaffected by this class (docs/adr — ChatWidgetAvailability's own
+ * single-default-bot design is unchanged).
  */
 final class BotSetupWizardRenderer {
 
@@ -30,7 +35,7 @@ final class BotSetupWizardRenderer {
 	 *
 	 * @param BotSetupWizardState  $state Derives each step's completion state.
 	 * @param TelegramFormFields   $forms Shared bot/destination/op form markup.
-	 * @param BotProfileRepository $bots  Used only to detect additional, non-default bots.
+	 * @param BotProfileRepository $bots  Every configured bot, and lookups by id.
 	 */
 	public function __construct(
 		private readonly BotSetupWizardState $state,
@@ -39,46 +44,182 @@ final class BotSetupWizardRenderer {
 	) {}
 
 	/**
-	 * Renders the wizard for one already-validated step (1-5).
+	 * Renders the wizard.
 	 *
-	 * @param int $step The step to display, already validated to the 1-5 range by the caller.
+	 * @param int         $step     The step to display once a bot is selected, already validated to the 1-5 range by the caller.
+	 * @param string|null $bot_mode The top-level landing choice — 'new'|'existing', or null for the landing choice itself.
+	 * @param int|null    $bot_id   The bot being configured, already validated to exist by the caller, or null if none is selected yet.
 	 */
-	public function render( int $step ): void {
-		$bot = $this->state->default_bot();
+	public function render( int $step, ?string $bot_mode = null, ?int $bot_id = null ): void {
+		$selected_bot = null !== $bot_id ? $this->bots->find( $bot_id ) : null;
 
 		echo '<div class="card" style="max-width:none;">';
 		echo '<h2>' . esc_html__( 'Set up your Telegram bot', 'universal-telegram' ) . '</h2>';
 
-		if ( null !== $bot ) {
-			printf(
-				// translators: %s: the bot's own admin-facing name, already escaped.
-				'<p>' . esc_html__( 'Setting up: %s', 'universal-telegram' ) . '</p>', // phpcs:ignore WordPress.WP.I18n.NonSingularStringLiteralText, WordPress.Security.EscapeOutput.OutputNotEscaped
-				'<strong>' . esc_html( $bot->name() ) . '</strong>'
-			);
+		if ( null !== $selected_bot ) {
+			$this->render_selected_bot_wizard( $step, $selected_bot );
+		} elseif ( 'new' === $bot_mode ) {
+			$this->render_new_bot_flow();
+		} elseif ( 'existing' === $bot_mode ) {
+			$this->render_existing_bot_picker();
+		} else {
+			$this->render_landing_choice();
 		}
-
-		if ( count( $this->bots->all() ) > 1 ) {
-			printf(
-				'<p><a href="%1$s">%2$s</a></p>',
-				esc_url( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . BotManagementPage::TAB_ID ) ),
-				esc_html__( 'Manage other bots →', 'universal-telegram' )
-			);
-		}
-
-		echo '<p><a href="#wizard-current-step">' . esc_html__( 'Skip to current step', 'universal-telegram' ) . '</a></p>';
-
-		$this->render_progress_nav( $step );
-		$this->render_step( $step, $bot );
 
 		echo '</div>';
 	}
 
 	/**
-	 * Renders the ordered progress list, one link per step.
-	 *
-	 * @param int $active_step The currently displayed step.
+	 * The top-level landing choice: create a new bot, or configure one that
+	 * already exists (only offered when at least one bot exists).
 	 */
-	private function render_progress_nav( int $active_step ): void {
+	private function render_landing_choice(): void {
+		echo '<p>' . esc_html__( 'How would you like to start?', 'universal-telegram' ) . '</p>';
+
+		echo '<p>';
+		printf(
+			'<a class="button button-primary" href="%1$s">%2$s</a>',
+			esc_url( $this->landing_choice_url( 'new' ) ),
+			esc_html__( 'Create and set up a new bot', 'universal-telegram' )
+		);
+		echo '</p>';
+		echo '<p>' . esc_html__( "I don't have a bot yet — walk me through creating one.", 'universal-telegram' ) . '</p>';
+
+		if ( array() !== $this->bots->all() ) {
+			echo '<p>';
+			printf(
+				'<a class="button" href="%1$s">%2$s</a>',
+				esc_url( $this->landing_choice_url( 'existing' ) ),
+				esc_html__( 'Configure an existing bot', 'universal-telegram' )
+			);
+			echo '</p>';
+			echo '<p>' . esc_html__( 'Continue setting up a bot you already added.', 'universal-telegram' ) . '</p>';
+		}
+	}
+
+	/**
+	 * The "create and set up a new bot" flow: the BotFather walkthrough,
+	 * then the shared create-bot form. On submission, the controller
+	 * returns here with the new bot selected (`?bot_id=latest`), continuing
+	 * straight into its own checklist.
+	 */
+	private function render_new_bot_flow(): void {
+		echo '<p><a href="' . esc_url( $this->wizard_landing_url() ) . '">' .
+			esc_html__( '← Choose a different way to start', 'universal-telegram' ) .
+			'</a></p>';
+
+		echo '<p>' . esc_html__( 'Open BotFather in Telegram, run /newbot, and copy the token it provides.', 'universal-telegram' ) . '</p>';
+		printf(
+			'<p><a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s</a></p>',
+			esc_url( 'https://core.telegram.org/bots#6-botfather' ),
+			esc_html__( 'How to get a bot token', 'universal-telegram' )
+		);
+		echo '<div class="notice notice-warning inline"><p>' .
+			esc_html__( 'Keep your bot token private. Anyone with it can control the bot.', 'universal-telegram' ) .
+			'</p></div>';
+		echo '<p>' . esc_html__( 'Enter the token only in the form below. It is never shown again once saved.', 'universal-telegram' ) . '</p>';
+		$this->forms->create_bot_form( true );
+	}
+
+	/**
+	 * The "configure an existing bot" flow: a picker across every
+	 * configured bot, skipped straight through when there is only one.
+	 */
+	private function render_existing_bot_picker(): void {
+		$all = $this->bots->all();
+
+		if ( array() === $all ) {
+			echo '<p>' . esc_html__( "You don't have any bots yet.", 'universal-telegram' ) . '</p>';
+			printf(
+				'<p><a href="%1$s">%2$s</a></p>',
+				esc_url( $this->landing_choice_url( 'new' ) ),
+				esc_html__( 'Create and set up a new bot', 'universal-telegram' )
+			);
+			return;
+		}
+
+		if ( 1 === count( $all ) ) {
+			$only = $all[0];
+			printf(
+				'<p><a href="%1$s">%2$s</a></p>',
+				esc_url( $this->bot_step_url( $only->id(), $this->state->current_step( $only ) ) ),
+				esc_html(
+					sprintf(
+						/* translators: %s: the bot's own admin-facing name. */
+						__( 'Continue configuring %s →', 'universal-telegram' ),
+						$only->name()
+					)
+				)
+			);
+			return;
+		}
+
+		echo '<p><a href="' . esc_url( $this->wizard_landing_url() ) . '">' .
+			esc_html__( '← Choose a different way to start', 'universal-telegram' ) .
+			'</a></p>';
+		echo '<p>' . esc_html__( 'Choose a bot to configure:', 'universal-telegram' ) . '</p>';
+		echo '<ul>';
+
+		foreach ( $all as $bot ) {
+			printf(
+				'<li><a href="%1$s">%2$s</a> — %3$s</li>',
+				esc_url( $this->bot_step_url( $bot->id(), $this->state->current_step( $bot ) ) ),
+				esc_html( $bot->name() ),
+				$this->state->is_complete( $bot ) ? esc_html__( 'Complete', 'universal-telegram' ) : esc_html__( 'Not yet', 'universal-telegram' )
+			);
+		}
+
+		echo '</ul>';
+	}
+
+	/**
+	 * Renders the five-step checklist for one already-selected bot.
+	 *
+	 * @param int        $step The step to display.
+	 * @param BotProfile $bot  The bot being configured.
+	 */
+	private function render_selected_bot_wizard( int $step, BotProfile $bot ): void {
+		printf(
+			// translators: %s: the bot's own admin-facing name, already escaped.
+			'<p>' . esc_html__( 'Configuring: %s', 'universal-telegram' ) . '</p>', // phpcs:ignore WordPress.WP.I18n.NonSingularStringLiteralText, WordPress.Security.EscapeOutput.OutputNotEscaped
+			'<strong>' . esc_html( $bot->name() ) . '</strong>'
+		);
+
+		if ( ! $this->state->is_default_bot( $bot ) ) {
+			$default = $this->state->default_bot();
+			echo '<p>' . esc_html__( "This is not your website's chat-widget bot.", 'universal-telegram' );
+			if ( null !== $default ) {
+				printf(
+					// translators: %s: the default bot's own admin-facing name, already escaped.
+					' ' . esc_html__( 'Only %s connects to the chat widget.', 'universal-telegram' ), // phpcs:ignore WordPress.WP.I18n.NonSingularStringLiteralText, WordPress.Security.EscapeOutput.OutputNotEscaped
+					esc_html( $default->name() )
+				);
+			}
+			echo '</p>';
+		}
+
+		if ( count( $this->bots->all() ) > 1 ) {
+			printf(
+				'<p><a href="%1$s">%2$s</a></p>',
+				esc_url( $this->landing_choice_url( 'existing' ) ),
+				esc_html__( 'Choose a different bot →', 'universal-telegram' )
+			);
+		}
+
+		echo '<p><a href="#wizard-current-step">' . esc_html__( 'Skip to current step', 'universal-telegram' ) . '</a></p>';
+
+		$this->render_progress_nav( $step, $bot );
+		$this->render_step( $step, $bot );
+	}
+
+	/**
+	 * Renders the ordered progress list, one link per step, scoped to the
+	 * bot being configured.
+	 *
+	 * @param int        $active_step The currently displayed step.
+	 * @param BotProfile $bot         The bot being configured.
+	 */
+	private function render_progress_nav( int $active_step, BotProfile $bot ): void {
 		echo '<nav aria-label="' . esc_attr__( 'Setup progress', 'universal-telegram' ) . '"><ol>';
 
 		for ( $n = 1; $n <= 5; $n++ ) {
@@ -86,10 +227,10 @@ final class BotSetupWizardRenderer {
 
 			printf(
 				'<li><a href="%1$s"%2$s>%3$s</a> — %4$s</li>',
-				esc_url( $this->step_url( $n ) ),
+				esc_url( $this->bot_step_url( $bot->id(), $n ) ),
 				$is_active ? ' aria-current="step"' : '',
 				esc_html( $this->step_title( $n ) ),
-				esc_html( $this->step_badge( $n ) )
+				esc_html( $this->step_badge( $n, $bot ) )
 			);
 		}
 
@@ -124,48 +265,71 @@ final class BotSetupWizardRenderer {
 	 * label for the Telegram-side manual steps (2, 3), which are never
 	 * marked complete.
 	 *
-	 * @param int $step The step number.
+	 * @param int        $step The step number.
+	 * @param BotProfile $bot  The bot being configured.
 	 *
 	 * @return string
 	 */
-	private function step_badge( int $step ): string {
+	private function step_badge( int $step, BotProfile $bot ): string {
 		switch ( $step ) {
 			case 1:
-				return $this->state->step_one_complete() ? __( 'Complete', 'universal-telegram' ) : __( 'Not yet', 'universal-telegram' );
+				return $this->state->step_one_complete( $bot ) ? __( 'Complete', 'universal-telegram' ) : __( 'Not yet', 'universal-telegram' );
 			case 2:
 			case 3:
 				return __( 'Manual step — do this in Telegram', 'universal-telegram' );
 			case 4:
-				return $this->state->step_four_complete() ? __( 'Complete', 'universal-telegram' ) : __( 'Not yet', 'universal-telegram' );
+				return $this->state->step_four_complete( $bot ) ? __( 'Complete', 'universal-telegram' ) : __( 'Not yet', 'universal-telegram' );
 			default:
-				return $this->state->step_five_complete() ? __( 'Complete', 'universal-telegram' ) : __( 'Not yet', 'universal-telegram' );
+				return $this->state->step_five_complete( $bot ) ? __( 'Complete', 'universal-telegram' ) : __( 'Not yet', 'universal-telegram' );
 		}
 	}
 
 	/**
-	 * The URL for a given step, on this same Bots tab.
+	 * The URL for a given step of a given bot's checklist, on this same
+	 * Bots tab.
 	 *
-	 * @param int $step The step number.
+	 * @param int $bot_id The bot's primary key.
+	 * @param int $step   The step number.
 	 *
 	 * @return string
 	 */
-	private function step_url( int $step ): string {
-		return admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . BotManagementPage::TAB_ID . '&view=wizard&step=' . $step );
+	private function bot_step_url( int $bot_id, int $step ): string {
+		return admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . BotManagementPage::TAB_ID . '&view=wizard&bot_id=' . $bot_id . '&step=' . $step );
+	}
+
+	/**
+	 * The wizard's own bare landing URL (no bot selected, no mode chosen).
+	 *
+	 * @return string
+	 */
+	private function wizard_landing_url(): string {
+		return admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . BotManagementPage::TAB_ID . '&view=wizard' );
+	}
+
+	/**
+	 * The URL for a specific top-level landing-choice mode ('new'|'existing').
+	 *
+	 * @param string $mode 'new' or 'existing'.
+	 *
+	 * @return string
+	 */
+	private function landing_choice_url( string $mode ): string {
+		return $this->wizard_landing_url() . '&bot_mode=' . $mode;
 	}
 
 	/**
 	 * Renders the active step's own content.
 	 *
-	 * @param int             $step The step to render.
-	 * @param BotProfile|null $bot  The default bot, if one is configured.
+	 * @param int        $step The step to render.
+	 * @param BotProfile $bot  The bot being configured.
 	 */
-	private function render_step( int $step, ?BotProfile $bot ): void {
+	private function render_step( int $step, BotProfile $bot ): void {
 		echo '<section aria-labelledby="wizard-current-step">';
 		echo '<h3 id="wizard-current-step" tabindex="-1">' . esc_html( $this->step_title( $step ) ) . '</h3>';
 
 		switch ( $step ) {
 			case 1:
-				$this->render_step_1();
+				$this->render_step_1( $bot );
 				break;
 			case 2:
 				$this->render_step_2();
@@ -183,24 +347,26 @@ final class BotSetupWizardRenderer {
 
 		echo '</section>';
 
-		$this->render_step_nav( $step );
+		$this->render_step_nav( $step, $bot );
 	}
 
 	/**
-	 * Renders step 1: create bot.
+	 * Renders step 1 for an already-selected bot: a plain confirmation,
+	 * never another create-bot form (that would risk creating an unrelated
+	 * second bot while configuring this one).
+	 *
+	 * @param BotProfile $bot The bot being configured.
 	 */
-	private function render_step_1(): void {
-		echo '<p>' . esc_html__( 'Open BotFather in Telegram, run /newbot, and copy the token it provides.', 'universal-telegram' ) . '</p>';
-		printf(
-			'<p><a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s</a></p>',
-			esc_url( 'https://core.telegram.org/bots#6-botfather' ),
-			esc_html__( 'How to get a bot token', 'universal-telegram' )
-		);
-		echo '<div class="notice notice-warning inline"><p>' .
-			esc_html__( 'Keep your bot token private. Anyone with it can control the bot.', 'universal-telegram' ) .
-			'</p></div>';
-		echo '<p>' . esc_html__( 'Enter the token only in the form below. It is never shown again once saved.', 'universal-telegram' ) . '</p>';
-		$this->forms->create_bot_form();
+	private function render_step_1( BotProfile $bot ): void {
+		if ( $this->state->step_one_complete( $bot ) ) {
+			echo '<p>' . esc_html__( 'Bot created and its token validated.', 'universal-telegram' ) . '</p>';
+			return;
+		}
+
+		// Not reachable through the normal wizard flow (every bot the
+		// create_bot op creates is validated first), kept only as an
+		// honest fallback rather than silently claiming completion.
+		echo '<p>' . esc_html__( "This bot's token has not been validated yet. Use Test connection on the Bots tab.", 'universal-telegram' ) . '</p>';
 	}
 
 	/**
@@ -222,14 +388,9 @@ final class BotSetupWizardRenderer {
 	/**
 	 * Renders step 4: connect group.
 	 *
-	 * @param BotProfile|null $bot The default bot, if one is configured.
+	 * @param BotProfile $bot The bot being configured.
 	 */
-	private function render_step_4( ?BotProfile $bot ): void {
-		if ( null === $bot ) {
-			echo '<p>' . esc_html__( 'Complete step 1 (create bot) first.', 'universal-telegram' ) . '</p>';
-			return;
-		}
-
+	private function render_step_4( BotProfile $bot ): void {
 		printf(
 			'<p><a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s</a></p>',
 			esc_url( 'https://telegram.me/chatIDrobot' ),
@@ -239,7 +400,7 @@ final class BotSetupWizardRenderer {
 
 		$this->forms->create_destination_form( $bot->id(), __( 'Website Support', 'universal-telegram' ), 'supergroup' );
 
-		$connected = $this->state->connected_destination();
+		$connected = $this->state->connected_destination( $bot );
 
 		if ( null !== $connected ) {
 			echo '<p>' . esc_html__( 'Recommended: send a test message to confirm the bot can post to this group. Delivery is queued and may take a short time to arrive.', 'universal-telegram' ) . '</p>';
@@ -255,18 +416,19 @@ final class BotSetupWizardRenderer {
 	}
 
 	/**
-	 * Renders step 5: activate chat widget.
+	 * Renders step 5: register the webhook and, for the default bot only,
+	 * activate the chat widget.
 	 *
-	 * @param BotProfile|null $bot The default bot, if one is configured.
+	 * @param BotProfile $bot The bot being configured.
 	 */
-	private function render_step_5( ?BotProfile $bot ): void {
-		if ( null === $bot ) {
-			echo '<p>' . esc_html__( 'Complete the earlier steps first.', 'universal-telegram' ) . '</p>';
-			return;
-		}
-
+	private function render_step_5( BotProfile $bot ): void {
 		echo '<p>' . esc_html__( 'Register the webhook so Telegram can reach this site.', 'universal-telegram' ) . '</p>';
 		$this->forms->op_button_form( 'register_webhook', array( 'bot_id' => $bot->id() ), __( 'Register webhook', 'universal-telegram' ) );
+
+		if ( ! $this->state->is_default_bot( $bot ) ) {
+			echo '<p>' . esc_html__( "This bot is not connected to the website's chat widget, so no further action is needed here.", 'universal-telegram' ) . '</p>';
+			return;
+		}
 
 		printf(
 			// translators: %s: a link to the existing Hub Settings tab, already escaped.
@@ -278,17 +440,19 @@ final class BotSetupWizardRenderer {
 	}
 
 	/**
-	 * Renders the Previous/Next links for the active step.
+	 * Renders the Previous/Next links for the active step, scoped to the
+	 * bot being configured.
 	 *
-	 * @param int $step The active step.
+	 * @param int        $step The active step.
+	 * @param BotProfile $bot  The bot being configured.
 	 */
-	private function render_step_nav( int $step ): void {
+	private function render_step_nav( int $step, BotProfile $bot ): void {
 		echo '<p>';
 
 		if ( $step > 1 ) {
 			printf(
 				'<a href="%1$s">%2$s</a> ',
-				esc_url( $this->step_url( $step - 1 ) ),
+				esc_url( $this->bot_step_url( $bot->id(), $step - 1 ) ),
 				esc_html__( '← Back', 'universal-telegram' )
 			);
 		}
@@ -296,7 +460,7 @@ final class BotSetupWizardRenderer {
 		if ( $step < 5 ) {
 			printf(
 				'<a href="%1$s">%2$s</a>',
-				esc_url( $this->step_url( $step + 1 ) ),
+				esc_url( $this->bot_step_url( $bot->id(), $step + 1 ) ),
 				esc_html__( 'Continue →', 'universal-telegram' )
 			);
 		}

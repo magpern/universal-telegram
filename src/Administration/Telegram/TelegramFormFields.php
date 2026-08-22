@@ -27,11 +27,19 @@ final class TelegramFormFields {
 
 	/**
 	 * Renders the add-bot form (name + token, posts create_bot).
+	 *
+	 * @param bool $from_wizard When true, adds a hidden marker so
+	 *                          BotManagementController::handle_request() redirects back
+	 *                          into the setup wizard (continuing this same new bot's
+	 *                          checklist) instead of the plain Bots tab.
 	 */
-	public function create_bot_form(): void {
+	public function create_bot_form( bool $from_wizard = false ): void {
 		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 		echo '<input type="hidden" name="action" value="' . esc_attr( BotManagementController::ADMIN_POST_ACTION ) . '" />';
 		echo '<input type="hidden" name="op" value="create_bot" />';
+		if ( $from_wizard ) {
+			echo '<input type="hidden" name="from_wizard" value="1" />';
+		}
 		wp_nonce_field( BotManagementController::NONCE_ACTION );
 		echo '<p><input type="text" name="name" placeholder="' . esc_attr__( 'Name', 'universal-telegram' ) . '" /></p>';
 		echo '<p><input type="text" name="token" placeholder="' . esc_attr__( 'Bot token', 'universal-telegram' ) . '" /></p>';

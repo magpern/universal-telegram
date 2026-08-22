@@ -401,7 +401,11 @@ wp eval '
 		fwrite( STDERR, "FAIL: the hub shell did not render the tab navigation\n" );
 		exit( 1 );
 	}
-	if ( false === strpos( $html, "Add a bot" ) ) {
+	// A fresh install has no bot configured, so the Bots tab renders the
+	// setup wizard by default (M06.1 wizard-manual-view hotfix) rather
+	// than the manual "Add a bot" form — check for content present in
+	// both views instead of the manual-view-only form.
+	if ( false === strpos( $html, "Dead-lettered messages" ) ) {
 		fwrite( STDERR, "FAIL: the hub shell did not render the requested (bots) tab content\n" );
 		exit( 1 );
 	}
