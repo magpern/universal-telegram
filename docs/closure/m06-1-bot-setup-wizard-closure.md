@@ -27,7 +27,7 @@
 
 **PASS.** Every requirement of the frozen plan is implemented and tested; local lean validation and
 the full GitHub Actions matrix are both green on the PR. Product Owner acceptance (real Bots-tab
-walkthrough) is pending — see below.
+walkthrough, including the corrective addenda below) is complete — see below.
 
 ## Implementation scope
 
@@ -123,7 +123,7 @@ and green CI, all present above.
 
 ## Final status
 
-**PASS**, pending Product Owner acceptance below.
+**PASS**, with Product Owner acceptance below.
 
 ## Addendum — wizard/manual-view hotfix, new-user guided setup, and any-bot configuration
 
@@ -213,9 +213,9 @@ capture on its updated `controller()` helper. Merge commit `970308c`.
 
 ## Product Owner acceptance
 
-**Pending.** Awaiting final sign-off following the live BioPentra walkthrough that already
-identified and fed back the two corrective addenda above.
+**PASS.** Approved following the live BioPentra walkthrough that identified and fed back the two
+corrective addenda above, both implemented, tested, and merged before this sign-off.
 
-- Name:
-- Date:
-- Conditions attached:
+- Name: Magnus
+- Date: 2026-08-22
+- Conditions attached: None.
