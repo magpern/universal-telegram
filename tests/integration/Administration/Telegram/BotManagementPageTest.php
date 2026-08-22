@@ -449,6 +449,37 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		$this->assertSame( 1, substr_count( $html, 'Send test message' ) );
 	}
 
+	public function test_destination_hygiene_regression_an_authenticated_owned_conversations_destination_is_also_excluded(): void {
+		// M06.3.1 (ADR-0025) regression: the owner_user_id addition must not
+		// change destination_ids_for_bot()'s own bot_id/destination_id-only
+		// query — an authenticated, owned conversation's topic is hidden
+		// from the manual table exactly like a legacy ownerless one.
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+		$bots          = new BotProfileRepository( $schema_health, $vault );
+		$destinations  = new DestinationRepository( $schema_health );
+		$conversations = new ConversationRepository( $schema_health, $vault, new VisitorTokenGenerator() );
+
+		$bot = $bots->create( 'Bot', 'token' );
+		$this->complete_setup_for( $bots, $destinations, $bot->id(), '-100999' );
+		$settings = new Settings();
+		update_option( Settings::OPTION_NAME, $settings->sanitize( array_merge( $settings->get(), array( 'chat_widget_enabled' => true ) ) ) );
+
+		$conversation_destination = $destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100999', 78, 'Conversation owned-abc' );
+		$conversation             = $conversations->create( 'owned-abc', 'hash', $bot->id(), null, null, 909, 'Owner' );
+		$conversations->set_destination( $conversation->id(), $conversation_destination->id() );
+
+		$page = $this->make_page( $bots, $destinations );
+
+		ob_start();
+		$page->render_tab_content();
+		$html = ob_get_clean();
+
+		$this->assertStringContainsString( 'Conversation topics', $html );
+		$this->assertStringContainsString( 'Conversation owned-abc', $html );
+		$this->assertSame( 1, substr_count( $html, 'Send test message' ) );
+	}
+
 	public function test_an_unauthorized_user_is_denied(): void {
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'subscriber' ) ) );
 
