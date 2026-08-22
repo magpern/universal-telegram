@@ -767,8 +767,8 @@ final class ConversationsController {
 	 * is returned, never a distinguishing signal that the conversation
 	 * exists.
 	 *
-	 * @param Conversation     $conversation The bearer-secret-verified conversation.
-	 * @param WP_REST_Request  $request      The inbound request.
+	 * @param Conversation    $conversation The bearer-secret-verified conversation.
+	 * @param WP_REST_Request $request      The inbound request.
 	 *
 	 * @return WP_REST_Response|true True when access is authorized.
 	 */

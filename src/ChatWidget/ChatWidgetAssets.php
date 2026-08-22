@@ -127,16 +127,16 @@ final class ChatWidgetAssets {
 		$logged_in  = is_user_logged_in();
 
 		$config = array(
-			'restUrl'       => rest_url( 'universal-telegram/v1' ),
-			'namespace'     => 'universal-telegram/v1',
-			'geometry'      => in_array( $values['chat_widget_geometry'], array( 'round', 'square' ), true ) ? $values['chat_widget_geometry'] : 'round',
-			'motionDefault' => in_array( $values['chat_widget_motion_default'], array( 'standard', 'reduced' ), true ) ? $values['chat_widget_motion_default'] : 'standard',
-			'labelVisitor'  => (string) $values['chat_widget_participant_label_visitor'],
-			'labelOperator' => (string) $values['chat_widget_participant_label_operator'],
-			'loggedIn'      => $logged_in,
-			'nonce'         => $logged_in ? wp_create_nonce( 'wp_rest' ) : null,
-			'loginUrl'      => $this->account_urls->login_url( $return_url ),
-			'registerUrl'   => $this->account_urls->register_url( $return_url ),
+			'restUrl'              => rest_url( 'universal-telegram/v1' ),
+			'namespace'            => 'universal-telegram/v1',
+			'geometry'             => in_array( $values['chat_widget_geometry'], array( 'round', 'square' ), true ) ? $values['chat_widget_geometry'] : 'round',
+			'motionDefault'        => in_array( $values['chat_widget_motion_default'], array( 'standard', 'reduced' ), true ) ? $values['chat_widget_motion_default'] : 'standard',
+			'labelVisitor'         => (string) $values['chat_widget_participant_label_visitor'],
+			'labelOperator'        => (string) $values['chat_widget_participant_label_operator'],
+			'loggedIn'             => $logged_in,
+			'nonce'                => $logged_in ? wp_create_nonce( 'wp_rest' ) : null,
+			'loginUrl'             => $this->account_urls->login_url( $return_url ),
+			'registerUrl'          => $this->account_urls->register_url( $return_url ),
 			// Identical for every anonymous visitor of a given page — a
 			// pure function of stored settings like geometry/preset above,
 			// so it stays cache-safe (M06.3.1 addendum).

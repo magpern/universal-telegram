@@ -219,7 +219,13 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 	public function test_config_island_reflects_the_anonymous_chat_setting(): void {
 		update_option(
 			Settings::OPTION_NAME,
-			array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true, 'chat_widget_allow_anonymous' => true ) )
+			array_merge(
+				( new Settings() )->defaults(),
+				array(
+					'chat_widget_enabled'         => true,
+					'chat_widget_allow_anonymous' => true,
+				)
+			)
 		);
 		$this->make_eligible_destination();
 		wp_set_current_user( 0 );
@@ -237,7 +243,13 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 	public function test_config_island_anonymous_chat_setting_stays_identical_across_two_anonymous_requests(): void {
 		update_option(
 			Settings::OPTION_NAME,
-			array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true, 'chat_widget_allow_anonymous' => true ) )
+			array_merge(
+				( new Settings() )->defaults(),
+				array(
+					'chat_widget_enabled'         => true,
+					'chat_widget_allow_anonymous' => true,
+				)
+			)
 		);
 		$this->make_eligible_destination();
 		wp_set_current_user( 0 );

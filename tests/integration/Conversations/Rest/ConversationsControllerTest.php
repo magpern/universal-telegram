@@ -788,8 +788,6 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$this->assertNull( $response->get_data()['conversation_uuid'] );
 	}
 
-	// -- M06.3.1 addendum: configurable anonymous chat -------------------
-
 	public function test_start_anonymous_is_rejected_when_the_setting_is_off(): void {
 		$this->allow_anonymous_chat( false );
 		wp_set_current_user( 0 );
