@@ -11,6 +11,9 @@ namespace UniversalTelegram\Administration\Conversations;
 
 use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Audit\AuditLogger;
+use UniversalTelegram\Conversations\ConversationNoteRepository;
+use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\ConversationStatus;
 use UniversalTelegram\Conversations\OperatorAvailability;
 use UniversalTelegram\Conversations\OperatorAvailabilityRepository;
 use UniversalTelegram\Conversations\OperatorIdentityRepository;
@@ -20,12 +23,11 @@ use UniversalTelegram\Privacy\Classification;
 /**
  * The single admin-post handler for every operator self-service and
  * administrator-override conversation-workflow action (M07, docs/adr/0026):
- * availability (this work package), and — added by later M07 work
- * packages — assignment, lifecycle transitions, notes, and manual
- * deletion, mirroring RuleBuilderRequestHandler's own single-handler,
- * op-dispatch shape. Every action independently re-verifies both its own
- * required capability and its own nonce, never relying solely on
- * menu-registration-time gating.
+ * availability, CAS assignment/unassignment, the reopen lifecycle
+ * transition, internal notes, and (WP8) manual deletion, mirroring
+ * RuleBuilderRequestHandler's own single-handler, op-dispatch shape. Every
+ * action independently re-verifies both its own required capability and
+ * its own nonce, never relying solely on menu-registration-time gating.
  *
  * Not declared final: tests override redirect_and_exit() to avoid a real
  * exit call terminating the test process, matching RuleBuilderRequestHandler's
@@ -39,13 +41,17 @@ class ConversationActionHandler {
 	/**
 	 * Constructor.
 	 *
-	 * @param OperatorAvailabilityRepository $availability Operator availability.
-	 * @param OperatorIdentityRepository     $identities   Operator identity mappings, used to verify a target operator is actually mapped.
-	 * @param AuditLogger                    $audit        Records every successful state change.
+	 * @param OperatorAvailabilityRepository $availability  Operator availability.
+	 * @param OperatorIdentityRepository     $identities    Operator identity mappings, used to verify a target operator is actually mapped.
+	 * @param ConversationRepository         $conversations Assignment and lifecycle transitions.
+	 * @param ConversationNoteRepository     $notes         Internal notes.
+	 * @param AuditLogger                    $audit         Records every successful state change.
 	 */
 	public function __construct(
 		private readonly OperatorAvailabilityRepository $availability,
 		private readonly OperatorIdentityRepository $identities,
+		private readonly ConversationRepository $conversations,
+		private readonly ConversationNoteRepository $notes,
 		private readonly AuditLogger $audit
 	) {}
 
@@ -68,9 +74,194 @@ class ConversationActionHandler {
 			case 'set_availability_for_operator':
 				$this->set_availability_for_operator();
 				break;
+			case 'assign':
+				$this->assign();
+				break;
+			case 'unassign':
+				$this->unassign();
+				break;
+			case 'reopen':
+				$this->reopen();
+				break;
+			case 'add_note':
+				$this->add_note();
+				break;
 		}
 
 		$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox' ) );
+	}
+
+	/**
+	 * Reads the submitted `expected_operator_id` field: an empty string
+	 * means the caller displayed "currently unassigned"; a numeric string
+	 * means the caller displayed that specific operator.
+	 *
+	 * @return int|null
+	 */
+	private function submitted_expected_operator_id(): ?int {
+		$raw = isset( $_POST['expected_operator_id'] ) ? sanitize_text_field( wp_unslash( $_POST['expected_operator_id'] ) ) : '';
+
+		return '' === $raw ? null : (int) $raw;
+	}
+
+	/**
+	 * Concurrency-safe assignment (ADR-0026 decision 8). Requires
+	 * MANAGE_CONVERSATIONS. Assigning to an operator whose current
+	 * availability is busy/offline is blocked unless the acting user holds
+	 * the broader MANAGE capability and explicitly confirmed an override
+	 * (the `override` field); an override is always audited with a
+	 * distinct action code (ADR-0026 decision 6).
+	 */
+	private function assign(): void {
+		if ( ! current_user_can( CapabilityRegistrar::MANAGE_CONVERSATIONS ) ) {
+			return;
+		}
+
+		$conversation_id      = isset( $_POST['conversation_id'] ) ? (int) $_POST['conversation_id'] : 0;
+		$new_operator_id      = isset( $_POST['new_operator_id'] ) ? (int) $_POST['new_operator_id'] : 0;
+		$expected_operator_id = $this->submitted_expected_operator_id();
+		$override_requested   = ! empty( $_POST['override'] );
+
+		if ( $conversation_id <= 0 || $new_operator_id <= 0 ) {
+			return;
+		}
+
+		if ( null === $this->identities->find_by_wp_user_id( $new_operator_id ) ) {
+			return;
+		}
+
+		$target_state    = $this->availability->find_for_operator( $new_operator_id );
+		$target_is_busy  = null !== $target_state && in_array( $target_state->state(), array( OperatorAvailability::BUSY, OperatorAvailability::OFFLINE ), true );
+		$is_override     = false;
+
+		if ( $target_is_busy ) {
+			if ( ! $override_requested || ! current_user_can( CapabilityRegistrar::MANAGE ) ) {
+				return;
+			}
+
+			$is_override = true;
+		}
+
+		$acting_user_id = get_current_user_id();
+		$succeeded       = $this->conversations->assign_with_expected( $conversation_id, $expected_operator_id, $new_operator_id );
+
+		if ( ! $succeeded ) {
+			// A stale expectation: no change, no audit entry — the acting
+			// user sees the redirect's now-current state instead.
+			return;
+		}
+
+		$this->audit->record(
+			$is_override ? 'conversation.assignment.set_with_availability_override' : 'conversation.assignment.set',
+			'operator',
+			$acting_user_id,
+			array(
+				'conversation_id' => $conversation_id,
+				'operator_user_id' => $new_operator_id,
+			),
+			array(
+				'conversation_id' => Classification::INTERNAL,
+				'operator_user_id' => Classification::INTERNAL,
+			),
+			Classification::INTERNAL
+		);
+	}
+
+	/**
+	 * Concurrency-safe unassignment.
+	 */
+	private function unassign(): void {
+		if ( ! current_user_can( CapabilityRegistrar::MANAGE_CONVERSATIONS ) ) {
+			return;
+		}
+
+		$conversation_id      = isset( $_POST['conversation_id'] ) ? (int) $_POST['conversation_id'] : 0;
+		$expected_operator_id = $this->submitted_expected_operator_id();
+
+		if ( $conversation_id <= 0 ) {
+			return;
+		}
+
+		$acting_user_id = get_current_user_id();
+		$succeeded       = $this->conversations->assign_with_expected( $conversation_id, $expected_operator_id, null );
+
+		if ( ! $succeeded ) {
+			return;
+		}
+
+		$this->audit->record(
+			'conversation.assignment.cleared',
+			'operator',
+			$acting_user_id,
+			array( 'conversation_id' => $conversation_id ),
+			array( 'conversation_id' => Classification::INTERNAL ),
+			Classification::INTERNAL
+		);
+	}
+
+	/**
+	 * The sole manual lifecycle transition this handler exposes:
+	 * `resolved -> open` (ADR-0026 decision 7). Every other transition is
+	 * system-driven (webhook capture, retention cleanup), never operator-
+	 * triggered, so this method never accepts an arbitrary `to` status.
+	 */
+	private function reopen(): void {
+		if ( ! current_user_can( CapabilityRegistrar::MANAGE_CONVERSATIONS ) ) {
+			return;
+		}
+
+		$conversation_id = isset( $_POST['conversation_id'] ) ? (int) $_POST['conversation_id'] : 0;
+
+		if ( $conversation_id <= 0 ) {
+			return;
+		}
+
+		$succeeded = $this->conversations->transition( $conversation_id, ConversationStatus::RESOLVED, ConversationStatus::OPEN );
+
+		if ( ! $succeeded ) {
+			return;
+		}
+
+		$this->audit->record(
+			'conversation.status.reopened',
+			'operator',
+			get_current_user_id(),
+			array( 'conversation_id' => $conversation_id ),
+			array( 'conversation_id' => Classification::INTERNAL ),
+			Classification::INTERNAL
+		);
+	}
+
+	/**
+	 * Adds an encrypted internal note.
+	 */
+	private function add_note(): void {
+		if ( ! current_user_can( CapabilityRegistrar::MANAGE_CONVERSATIONS ) ) {
+			return;
+		}
+
+		$conversation_id = isset( $_POST['conversation_id'] ) ? (int) $_POST['conversation_id'] : 0;
+		$body             = isset( $_POST['body'] ) ? sanitize_textarea_field( wp_unslash( $_POST['body'] ) ) : '';
+
+		if ( $conversation_id <= 0 || '' === $body ) {
+			return;
+		}
+
+		$acting_user_id = get_current_user_id();
+		$note            = $this->notes->create( $conversation_id, $acting_user_id, $body );
+
+		if ( null === $note ) {
+			return;
+		}
+
+		$this->audit->record(
+			'conversation.note.added',
+			'operator',
+			$acting_user_id,
+			array( 'conversation_id' => $conversation_id ),
+			array( 'conversation_id' => Classification::INTERNAL ),
+			Classification::INTERNAL
+		);
 	}
 
 	/**

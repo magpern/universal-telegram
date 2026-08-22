@@ -7,11 +7,15 @@ namespace UniversalTelegram\Tests\Integration\Administration\Conversations;
 
 use UniversalTelegram\Administration\Conversations\ConversationActionHandler;
 use UniversalTelegram\Audit\AuditLogger;
-use UniversalTelegram\Audit\AuditLogRepository;
+use UniversalTelegram\Conversations\ConversationNoteRepository;
+use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\ConversationStatus;
+use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Conversations\OperatorAvailability;
 use UniversalTelegram\Conversations\OperatorAvailabilityRepository;
 use UniversalTelegram\Conversations\OperatorIdentityRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
+use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
 use WP_UnitTestCase;
@@ -19,18 +23,41 @@ use WP_UnitTestCase;
 final class ConversationActionHandlerTest extends WP_UnitTestCase {
 
 	protected function tearDown(): void {
-		unset( $_POST['_wpnonce'], $_REQUEST['_wpnonce'], $_POST['op'], $_POST['state'], $_POST['operator_user_id'] );
+		unset(
+			$_POST['_wpnonce'],
+			$_REQUEST['_wpnonce'],
+			$_POST['op'],
+			$_POST['state'],
+			$_POST['operator_user_id'],
+			$_POST['conversation_id'],
+			$_POST['new_operator_id'],
+			$_POST['expected_operator_id'],
+			$_POST['override'],
+			$_POST['body']
+		);
 		parent::tearDown();
 	}
 
-	private function handler( OperatorAvailabilityRepository $availability, OperatorIdentityRepository $identities, AuditLogger $audit ): ConversationActionHandler {
-		return new class( $availability, $identities, $audit ) extends ConversationActionHandler {
+	/**
+	 * @return array{0: ConversationActionHandler, 1: OperatorAvailabilityRepository, 2: OperatorIdentityRepository, 3: ConversationRepository, 4: ConversationNoteRepository, 5: AuditLogger}
+	 */
+	private function fixture(): array {
+		$schema_health = new SchemaHealth();
+		$availability  = new OperatorAvailabilityRepository( $schema_health );
+		$identities    = new OperatorIdentityRepository( $schema_health );
+		$conversations = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );
+		$notes         = new ConversationNoteRepository( $schema_health, new CredentialVault() );
+		$audit         = new AuditLogger( $schema_health, new Redactor() );
+
+		$handler = new class( $availability, $identities, $conversations, $notes, $audit ) extends ConversationActionHandler {
 			public ?string $redirected_to = null;
 
 			protected function redirect_and_exit( string $url ): void {
 				$this->redirected_to = $url;
 			}
 		};
+
+		return array( $handler, $availability, $identities, $conversations, $notes, $audit );
 	}
 
 	public function test_missing_capability_is_denied_even_with_a_valid_nonce(): void {
@@ -40,8 +67,7 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$_POST['_wpnonce'] = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
 		$_POST['op']       = 'set_availability';
 
-		$schema_health = new SchemaHealth();
-		$handler       = $this->handler( new OperatorAvailabilityRepository( $schema_health ), new OperatorIdentityRepository( $schema_health ), new AuditLogger( $schema_health, new Redactor() ) );
+		list( $handler ) = $this->fixture();
 
 		$this->expectException( \WPDieException::class );
 		$handler->handle_request();
@@ -56,8 +82,7 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		unset( $_POST['_wpnonce'] );
 		$_POST['op'] = 'set_availability';
 
-		$schema_health = new SchemaHealth();
-		$handler       = $this->handler( new OperatorAvailabilityRepository( $schema_health ), new OperatorIdentityRepository( $schema_health ), new AuditLogger( $schema_health, new Redactor() ) );
+		list( $handler ) = $this->fixture();
 
 		try {
 			$this->expectException( \WPDieException::class );
@@ -73,10 +98,8 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
 		wp_set_current_user( $operator );
 
-		$schema_health = new SchemaHealth();
-		$identities    = new OperatorIdentityRepository( $schema_health );
+		list( $handler, $availability, $identities ) = $this->fixture();
 		$identities->create( $operator, 999888777, null, $operator );
-		$availability = new OperatorAvailabilityRepository( $schema_health );
 
 		$nonce                = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
 		$_POST['_wpnonce']    = $nonce;
@@ -85,7 +108,6 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$_POST['state']       = OperatorAvailability::BUSY;
 
 		try {
-			$handler = $this->handler( $availability, $identities, new AuditLogger( $schema_health, new Redactor() ) );
 			$handler->handle_request();
 		} finally {
 			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
@@ -102,9 +124,7 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
 		wp_set_current_user( $operator );
 
-		$schema_health = new SchemaHealth();
-		$identities    = new OperatorIdentityRepository( $schema_health );
-		$availability  = new OperatorAvailabilityRepository( $schema_health );
+		list( $handler, $availability ) = $this->fixture();
 
 		$nonce                = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
 		$_POST['_wpnonce']    = $nonce;
@@ -113,7 +133,6 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$_POST['state']       = OperatorAvailability::BUSY;
 
 		try {
-			$handler = $this->handler( $availability, $identities, new AuditLogger( $schema_health, new Redactor() ) );
 			$handler->handle_request();
 		} finally {
 			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
@@ -129,20 +148,17 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
 		wp_set_current_user( $acting_user );
 
-		$schema_health = new SchemaHealth();
-		$identities    = new OperatorIdentityRepository( $schema_health );
+		list( $handler, $availability, $identities ) = $this->fixture();
 		$identities->create( $admin_target, 999888777, null, 1 );
-		$availability = new OperatorAvailabilityRepository( $schema_health );
 
-		$nonce                       = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
-		$_POST['_wpnonce']           = $nonce;
-		$_REQUEST['_wpnonce']        = $nonce;
-		$_POST['op']                 = 'set_availability_for_operator';
-		$_POST['operator_user_id']   = (string) $admin_target;
-		$_POST['state']              = OperatorAvailability::OFFLINE;
+		$nonce                     = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']         = $nonce;
+		$_REQUEST['_wpnonce']      = $nonce;
+		$_POST['op']               = 'set_availability_for_operator';
+		$_POST['operator_user_id'] = (string) $admin_target;
+		$_POST['state']            = OperatorAvailability::OFFLINE;
 
 		try {
-			$handler = $this->handler( $availability, $identities, new AuditLogger( $schema_health, new Redactor() ) );
 			$handler->handle_request();
 		} finally {
 			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
@@ -152,16 +168,13 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 	}
 
 	public function test_manage_can_override_another_mapped_operators_availability_and_it_is_audited(): void {
-		$admin  = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
 		( new CapabilityRegistrar() )->grant_to_administrator();
 		wp_set_current_user( $admin );
 
+		list( $handler, $availability, $identities, , , $audit ) = $this->fixture();
 		$target_operator = self::factory()->user->create();
-		$schema_health    = new SchemaHealth();
-		$identities       = new OperatorIdentityRepository( $schema_health );
 		$identities->create( $target_operator, 999888777, null, $admin );
-		$availability = new OperatorAvailabilityRepository( $schema_health );
-		$audit        = new AuditLogger( $schema_health, new Redactor() );
 
 		$nonce                     = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
 		$_POST['_wpnonce']         = $nonce;
@@ -170,7 +183,6 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$_POST['operator_user_id'] = (string) $target_operator;
 		$_POST['state']            = OperatorAvailability::OFFLINE;
 
-		$handler = $this->handler( $availability, $identities, $audit );
 		$handler->handle_request();
 
 		$found = $availability->find_for_operator( $target_operator );
@@ -178,15 +190,242 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$this->assertSame( OperatorAvailability::OFFLINE, $found->state() );
 		$this->assertSame( $admin, $found->updated_by() );
 
-		$audit_log = new AuditLogRepository( $schema_health );
-		$entries   = array_values(
-			array_filter(
-				$audit_log->recent( 50 ),
-				static function ( array $entry ): bool {
-					return 'conversation.operator_availability.set_by_administrator' === $entry['action'];
-				}
-			)
-		);
-		$this->assertCount( 1, $entries );
+		$this->assertActionRecorded( 'conversation.operator_availability.set_by_administrator' );
+	}
+
+	public function test_assign_succeeds_when_expectation_matches(): void {
+		$operator = self::factory()->user->create();
+		$role     = get_role( 'subscriber' );
+		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_set_current_user( $operator );
+
+		list( $handler, , $identities, $conversations, , $audit ) = $this->fixture();
+		$target_operator = self::factory()->user->create();
+		$identities->create( $target_operator, 999888777, null, 1 );
+		$conversation = $conversations->create( 'uuid-handler-assign-1', 'hash', 1, null );
+
+		$nonce                          = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']              = $nonce;
+		$_REQUEST['_wpnonce']           = $nonce;
+		$_POST['op']                    = 'assign';
+		$_POST['conversation_id']       = (string) $conversation->id();
+		$_POST['new_operator_id']       = (string) $target_operator;
+		$_POST['expected_operator_id']  = '';
+
+		try {
+			$handler->handle_request();
+		} finally {
+			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		}
+
+		$this->assertSame( $target_operator, $conversations->find( $conversation->id() )->assigned_operator_id() );
+		$this->assertActionRecorded( 'conversation.assignment.set' );
+	}
+
+	public function test_assign_with_a_stale_expectation_makes_no_change_and_is_not_audited(): void {
+		$operator = self::factory()->user->create();
+		$role     = get_role( 'subscriber' );
+		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_set_current_user( $operator );
+
+		list( $handler, , $identities, $conversations, , $audit ) = $this->fixture();
+		$first_operator  = self::factory()->user->create();
+		$second_operator = self::factory()->user->create();
+		$identities->create( $second_operator, 999888777, null, 1 );
+		$conversation = $conversations->create( 'uuid-handler-assign-2', 'hash', 1, null );
+		$conversations->assign( $conversation->id(), $first_operator );
+
+		$nonce                         = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']             = $nonce;
+		$_REQUEST['_wpnonce']          = $nonce;
+		$_POST['op']                   = 'assign';
+		$_POST['conversation_id']      = (string) $conversation->id();
+		$_POST['new_operator_id']      = (string) $second_operator;
+		$_POST['expected_operator_id'] = '';
+
+		try {
+			$handler->handle_request();
+		} finally {
+			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		}
+
+		$this->assertSame( $first_operator, $conversations->find( $conversation->id() )->assigned_operator_id() );
+		$this->assertActionNotRecorded( 'conversation.assignment.set' );
+	}
+
+	public function test_assigning_a_busy_operator_is_blocked_without_an_override(): void {
+		$operator = self::factory()->user->create();
+		$role     = get_role( 'subscriber' );
+		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_set_current_user( $operator );
+
+		list( $handler, $availability, $identities, $conversations ) = $this->fixture();
+		$target_operator = self::factory()->user->create();
+		$identities->create( $target_operator, 999888777, null, 1 );
+		$availability->set_state( $target_operator, OperatorAvailability::BUSY, $target_operator );
+		$conversation = $conversations->create( 'uuid-handler-assign-3', 'hash', 1, null );
+
+		$nonce                          = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']              = $nonce;
+		$_REQUEST['_wpnonce']           = $nonce;
+		$_POST['op']                    = 'assign';
+		$_POST['conversation_id']       = (string) $conversation->id();
+		$_POST['new_operator_id']       = (string) $target_operator;
+		$_POST['expected_operator_id']  = '';
+
+		try {
+			$handler->handle_request();
+		} finally {
+			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		}
+
+		$this->assertNull( $conversations->find( $conversation->id() )->assigned_operator_id() );
+	}
+
+	public function test_manage_can_override_a_busy_operator_assignment_and_it_is_audited(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		list( $handler, $availability, $identities, $conversations, , $audit ) = $this->fixture();
+		$target_operator = self::factory()->user->create();
+		$identities->create( $target_operator, 999888777, null, $admin );
+		$availability->set_state( $target_operator, OperatorAvailability::OFFLINE, $target_operator );
+		$conversation = $conversations->create( 'uuid-handler-assign-4', 'hash', 1, null );
+
+		$nonce                          = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']              = $nonce;
+		$_REQUEST['_wpnonce']           = $nonce;
+		$_POST['op']                    = 'assign';
+		$_POST['conversation_id']       = (string) $conversation->id();
+		$_POST['new_operator_id']       = (string) $target_operator;
+		$_POST['expected_operator_id']  = '';
+		$_POST['override']              = '1';
+
+		$handler->handle_request();
+
+		$this->assertSame( $target_operator, $conversations->find( $conversation->id() )->assigned_operator_id() );
+		$this->assertActionRecorded( 'conversation.assignment.set_with_availability_override' );
+	}
+
+	public function test_unassign_clears_assignment(): void {
+		$operator = self::factory()->user->create();
+		$role     = get_role( 'subscriber' );
+		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_set_current_user( $operator );
+
+		list( $handler, , , $conversations ) = $this->fixture();
+		$conversation = $conversations->create( 'uuid-handler-unassign-1', 'hash', 1, null );
+		$conversations->assign( $conversation->id(), $operator );
+
+		$nonce                         = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']             = $nonce;
+		$_REQUEST['_wpnonce']          = $nonce;
+		$_POST['op']                   = 'unassign';
+		$_POST['conversation_id']      = (string) $conversation->id();
+		$_POST['expected_operator_id'] = (string) $operator;
+
+		try {
+			$handler->handle_request();
+		} finally {
+			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		}
+
+		$this->assertNull( $conversations->find( $conversation->id() )->assigned_operator_id() );
+	}
+
+	public function test_reopen_transitions_resolved_to_open(): void {
+		$operator = self::factory()->user->create();
+		$role     = get_role( 'subscriber' );
+		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_set_current_user( $operator );
+
+		list( $handler, , , $conversations ) = $this->fixture();
+		$conversation = $conversations->create( 'uuid-handler-reopen-1', 'hash', 1, null );
+		$conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+		$conversations->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::RESOLVED );
+
+		$nonce                    = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']        = $nonce;
+		$_REQUEST['_wpnonce']     = $nonce;
+		$_POST['op']              = 'reopen';
+		$_POST['conversation_id'] = (string) $conversation->id();
+
+		try {
+			$handler->handle_request();
+		} finally {
+			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		}
+
+		$this->assertSame( ConversationStatus::OPEN, $conversations->find( $conversation->id() )->status() );
+	}
+
+	public function test_reopen_never_reopens_an_archived_conversation(): void {
+		$operator = self::factory()->user->create();
+		$role     = get_role( 'subscriber' );
+		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_set_current_user( $operator );
+
+		list( $handler, , , $conversations ) = $this->fixture();
+		$conversation = $conversations->create( 'uuid-handler-reopen-2', 'hash', 1, null );
+		$conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+		$conversations->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::RESOLVED );
+		$conversations->transition( $conversation->id(), ConversationStatus::RESOLVED, ConversationStatus::ARCHIVED );
+
+		$nonce                    = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']        = $nonce;
+		$_REQUEST['_wpnonce']     = $nonce;
+		$_POST['op']              = 'reopen';
+		$_POST['conversation_id'] = (string) $conversation->id();
+
+		try {
+			$handler->handle_request();
+		} finally {
+			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		}
+
+		$this->assertSame( ConversationStatus::ARCHIVED, $conversations->find( $conversation->id() )->status() );
+	}
+
+	public function test_add_note_creates_an_encrypted_note(): void {
+		$operator = self::factory()->user->create();
+		$role     = get_role( 'subscriber' );
+		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_set_current_user( $operator );
+
+		list( $handler, , , $conversations, $notes ) = $this->fixture();
+		$conversation = $conversations->create( 'uuid-handler-note-1', 'hash', 1, null );
+
+		$nonce                    = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']        = $nonce;
+		$_REQUEST['_wpnonce']     = $nonce;
+		$_POST['op']              = 'add_note';
+		$_POST['conversation_id'] = (string) $conversation->id();
+		$_POST['body']            = 'Called the customer back.';
+
+		try {
+			$handler->handle_request();
+		} finally {
+			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		}
+
+		$saved = $notes->for_conversation( $conversation->id() );
+		$this->assertCount( 1, $saved );
+		$this->assertSame( 'Called the customer back.', $notes->decrypt( $saved[0] ) );
+		$this->assertSame( $operator, $saved[0]->operator_user_id() );
+	}
+
+	private function assertActionRecorded( string $action ): void {
+		global $wpdb;
+		$table   = $wpdb->prefix . 'universal_telegram_audit_log';
+		$matches = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE action = %s", $action ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$this->assertGreaterThan( 0, (int) $matches, "Expected an audit entry for action {$action}" );
+	}
+
+	private function assertActionNotRecorded( string $action ): void {
+		global $wpdb;
+		$table   = $wpdb->prefix . 'universal_telegram_audit_log';
+		$matches = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE action = %s", $action ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$this->assertSame( 0, (int) $matches, "Expected no audit entry for action {$action}" );
 	}
 }

@@ -526,6 +526,50 @@ final class ConversationRepositoryTest extends WP_UnitTestCase {
 		$this->assertContains( $open->id(), $ids );
 	}
 
+	public function test_assign_with_expected_succeeds_when_expectation_matches_unassigned(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-cas-1', 'hash', 1, null );
+
+		$result = $repo->assign_with_expected( $conversation->id(), null, 80 );
+
+		$this->assertTrue( $result );
+		$this->assertSame( 80, $repo->find( $conversation->id() )->assigned_operator_id() );
+	}
+
+	public function test_assign_with_expected_fails_and_makes_no_change_when_expectation_is_stale(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-cas-2', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 81 );
+
+		// A second caller still believes the conversation is unassigned.
+		$result = $repo->assign_with_expected( $conversation->id(), null, 82 );
+
+		$this->assertFalse( $result );
+		$this->assertSame( 81, $repo->find( $conversation->id() )->assigned_operator_id() );
+	}
+
+	public function test_assign_with_expected_resets_the_seen_marker_on_a_successful_reassignment(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-cas-3', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 83 );
+		$repo->mark_seen( $conversation->id(), 5 );
+
+		$repo->assign_with_expected( $conversation->id(), 83, 84 );
+
+		$this->assertNull( $repo->find( $conversation->id() )->assignee_last_seen_message_id() );
+	}
+
+	public function test_assign_with_expected_can_unassign(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-cas-4', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 85 );
+
+		$result = $repo->assign_with_expected( $conversation->id(), 85, null );
+
+		$this->assertTrue( $result );
+		$this->assertNull( $repo->find( $conversation->id() )->assigned_operator_id() );
+	}
+
 	public function test_for_inbox_with_no_status_returns_every_status(): void {
 		$repo = $this->repository();
 		$repo->create( 'uuid-inbox-all-1', 'hash', 1, null );

@@ -708,6 +708,50 @@ class ConversationRepository {
 	}
 
 	/**
+	 * Concurrency-safe assignment: updates `assigned_operator_id` only when
+	 * the row's current value still matches the caller's displayed
+	 * expectation (including the null/"unassigned" case), reusing the same
+	 * `$wpdb->update()` null-in-WHERE idiom store_display_name() already
+	 * establishes in this codebase. A losing caller's request matches zero
+	 * rows and must be reported by the caller as a visible conflict, never
+	 * applied silently (M07, docs/adr/0026 decision 8). Always resets
+	 * `assignee_last_seen_message_id` to NULL on a successful change, since
+	 * a new assignee has seen nothing yet.
+	 *
+	 * @param int      $id                   The conversation's primary key.
+	 * @param int|null $expected_operator_id The caller's displayed current assignment (null for "currently unassigned").
+	 * @param int|null $new_operator_id      The new assignment (null to unassign).
+	 *
+	 * @return bool True only if a row actually matched and was updated.
+	 */
+	public function assign_with_expected( int $id, ?int $expected_operator_id, ?int $new_operator_id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'assigned_operator_id'          => $new_operator_id,
+				'assignee_last_seen_message_id' => null,
+				'updated_at'                     => current_time( 'mysql', true ),
+			),
+			array(
+				'id'                    => $id,
+				'assigned_operator_id'  => $expected_operator_id,
+			),
+			array( '%d', '%s', '%s' ),
+			array( '%d', '%d' )
+		);
+
+		return false !== $updated && $updated > 0;
+	}
+
+	/**
 	 * Sets `assigned_operator_id` and `assignee_last_seen_message_id` to
 	 * NULL on every conversation currently assigned to a given operator —
 	 * part of the operator-account-deletion cleanup (ADR-0026 decision
