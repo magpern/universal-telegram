@@ -76,9 +76,9 @@ final class TelegramFormFields {
 	 * requeue_message, delete_bot, delete_destination, ...), with whichever
 	 * hidden fields that op requires.
 	 *
-	 * @param string               $op            The 'op' field value.
-	 * @param array<string,int>    $hidden_fields  Hidden field name => integer value (e.g. ['bot_id' => 5, 'destination_id' => 7]).
-	 * @param string               $label         The button label.
+	 * @param string            $op            The 'op' field value.
+	 * @param array<string,int> $hidden_fields  Hidden field name => integer value (e.g. ['bot_id' => 5, 'destination_id' => 7]).
+	 * @param string            $label         The button label.
 	 */
 	public function op_button_form( string $op, array $hidden_fields, string $label ): void {
 		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" style="display:inline-block;margin-right:8px;">';

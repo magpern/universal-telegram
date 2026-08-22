@@ -52,7 +52,7 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 			new ChatWidgetAvailability( $settings, $chat_profiles ),
 			$destinations
 		);
-		$forms = new TelegramFormFields();
+		$forms         = new TelegramFormFields();
 
 		return new BotManagementPage(
 			$bots,
@@ -117,7 +117,7 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'name="token"', $html );
 
 		$wizard_position = strpos( $html, 'Set up your Telegram bot' );
-		$form_position    = strpos( $html, 'Add a bot' );
+		$form_position   = strpos( $html, 'Add a bot' );
 		$this->assertLessThan( $form_position, $wizard_position );
 	}
 
@@ -263,9 +263,9 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 	 */
 	public function invalid_step_values(): array {
 		return array(
-			'zero'         => array( '0' ),
-			'six'          => array( '6' ),
-			'non_numeric'  => array( 'abc' ),
+			'zero'        => array( '0' ),
+			'six'         => array( '6' ),
+			'non_numeric' => array( 'abc' ),
 		);
 	}
 

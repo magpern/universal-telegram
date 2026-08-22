@@ -33,7 +33,7 @@ final class BotSetupWizardState {
 	/**
 	 * Constructor.
 	 *
-	 * @param ChatProfileResolver     $chat_profiles            Resolves the default bot and its eligible destination.
+	 * @param ChatProfileResolver    $chat_profiles            Resolves the default bot and its eligible destination.
 	 * @param ChatWidgetAvailability $chat_widget_availability The plugin's own single "is the widget usable" predicate.
 	 * @param DestinationRepository  $destinations             Used only to look up the connected destination's own row (id) once ChatProfileResolver has already confirmed one is eligible.
 	 */

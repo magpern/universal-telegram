@@ -32,9 +32,9 @@ final class BotSetupWizardStateTest extends WP_UnitTestCase {
 		$this->destinations = new DestinationRepository( $schema_health );
 		$this->settings     = new Settings();
 
-		$chat_profiles      = new ChatProfileResolver( $this->bots, $this->destinations );
-		$chat_widget_avail  = new ChatWidgetAvailability( $this->settings, $chat_profiles );
-		$this->state        = new BotSetupWizardState( $chat_profiles, $chat_widget_avail, $this->destinations );
+		$chat_profiles     = new ChatProfileResolver( $this->bots, $this->destinations );
+		$chat_widget_avail = new ChatWidgetAvailability( $this->settings, $chat_profiles );
+		$this->state       = new BotSetupWizardState( $chat_profiles, $chat_widget_avail, $this->destinations );
 	}
 
 	public function test_no_bot_configured_is_entirely_incomplete(): void {
@@ -159,8 +159,8 @@ final class BotSetupWizardStateTest extends WP_UnitTestCase {
 		$bot = $this->bots->create( 'My Bot', '123456789:validated-token' );
 		$this->bots->update_telegram_identity( $bot->id(), 111, 'my_bot' );
 
-		$before_bot_row       = $this->bots->find( $bot->id() );
-		$destinations_before  = count( $this->destinations->for_bot( $bot->id() ) );
+		$before_bot_row      = $this->bots->find( $bot->id() );
+		$destinations_before = count( $this->destinations->for_bot( $bot->id() ) );
 
 		$this->state->step_one_complete();
 		$this->state->step_four_complete();
@@ -168,8 +168,8 @@ final class BotSetupWizardStateTest extends WP_UnitTestCase {
 		$this->state->current_step();
 		$this->state->is_complete();
 
-		$after_bot_row       = $this->bots->find( $bot->id() );
-		$destinations_after  = count( $this->destinations->for_bot( $bot->id() ) );
+		$after_bot_row      = $this->bots->find( $bot->id() );
+		$destinations_after = count( $this->destinations->for_bot( $bot->id() ) );
 
 		$this->assertEquals( $before_bot_row, $after_bot_row );
 		$this->assertSame( $destinations_before, $destinations_after );

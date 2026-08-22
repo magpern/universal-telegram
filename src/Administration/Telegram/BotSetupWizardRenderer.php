@@ -51,6 +51,7 @@ final class BotSetupWizardRenderer {
 
 		if ( null !== $bot ) {
 			printf(
+				// translators: %s: the bot's own admin-facing name, already escaped.
 				'<p>' . esc_html__( 'Setting up: %s', 'universal-telegram' ) . '</p>', // phpcs:ignore WordPress.WP.I18n.NonSingularStringLiteralText, WordPress.Security.EscapeOutput.OutputNotEscaped
 				'<strong>' . esc_html( $bot->name() ) . '</strong>'
 			);
@@ -268,6 +269,7 @@ final class BotSetupWizardRenderer {
 		$this->forms->op_button_form( 'register_webhook', array( 'bot_id' => $bot->id() ), __( 'Register webhook', 'universal-telegram' ) );
 
 		printf(
+			// translators: %s: a link to the existing Hub Settings tab, already escaped.
 			'<p>' . esc_html__( 'Then open %s and enable the chat widget, then return to this Bots tab.', 'universal-telegram' ) . '</p>', // phpcs:ignore WordPress.WP.I18n.NonSingularStringLiteralText, WordPress.Security.EscapeOutput.OutputNotEscaped
 			'<a href="' . esc_url( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . SettingsPage::TAB_ID ) ) . '">' . esc_html__( 'Settings', 'universal-telegram' ) . '</a>'
 		);

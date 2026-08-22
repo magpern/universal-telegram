@@ -33,13 +33,13 @@ final class BotManagementPage {
 	/**
 	 * Constructor.
 	 *
-	 * @param BotProfileRepository     $bots            Bot profiles.
-	 * @param DestinationRepository    $destinations    Destinations.
-	 * @param UpdateRepository         $updates         Last-inbound-update-received signal.
+	 * @param BotProfileRepository      $bots            Bot profiles.
+	 * @param DestinationRepository     $destinations    Destinations.
+	 * @param UpdateRepository          $updates         Last-inbound-update-received signal.
 	 * @param OutboundMessageRepository $messages       Dead-lettered message inspection.
-	 * @param TelegramFormFields       $forms           Shared bot/destination/op form markup.
-	 * @param BotSetupWizardState      $wizard_state    Derives the setup wizard's current step.
-	 * @param BotSetupWizardRenderer   $wizard_renderer Renders the setup wizard in place of the old static guidance panel.
+	 * @param TelegramFormFields        $forms           Shared bot/destination/op form markup.
+	 * @param BotSetupWizardState       $wizard_state    Derives the setup wizard's current step.
+	 * @param BotSetupWizardRenderer    $wizard_renderer Renders the setup wizard in place of the old static guidance panel.
 	 */
 	public function __construct(
 		private readonly BotProfileRepository $bots,
@@ -100,7 +100,7 @@ final class BotManagementPage {
 	 * @return int
 	 */
 	private function resolve_step(): int {
-		$raw = isset( $_GET['step'] ) ? wp_unslash( (string) $_GET['step'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$raw = isset( $_GET['step'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['step'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
 		if ( '' !== $raw && ctype_digit( $raw ) ) {
 			$step = (int) $raw;

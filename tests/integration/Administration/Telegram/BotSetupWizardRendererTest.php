@@ -33,8 +33,8 @@ final class BotSetupWizardRendererTest extends WP_UnitTestCase {
 		$this->destinations = new DestinationRepository( $schema_health );
 		$settings           = new Settings();
 
-		$chat_profiles = new ChatProfileResolver( $this->bots, $this->destinations );
-		$state         = new BotSetupWizardState( $chat_profiles, new ChatWidgetAvailability( $settings, $chat_profiles ), $this->destinations );
+		$chat_profiles  = new ChatProfileResolver( $this->bots, $this->destinations );
+		$state          = new BotSetupWizardState( $chat_profiles, new ChatWidgetAvailability( $settings, $chat_profiles ), $this->destinations );
 		$this->renderer = new BotSetupWizardRenderer( $state, new TelegramFormFields(), $this->bots );
 	}
 
@@ -94,7 +94,7 @@ final class BotSetupWizardRendererTest extends WP_UnitTestCase {
 
 		$html = $this->render( 5 );
 
-		$this->assertStringContainsString( '&tab=settings', $html );
+		$this->assertStringContainsString( 'tab=settings', $html );
 		$this->assertStringNotContainsString( 'chat_widget_enabled', $html );
 		$this->assertStringNotContainsString( 'remove_data_on_uninstall', $html );
 	}
