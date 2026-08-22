@@ -6,7 +6,13 @@
 namespace UniversalTelegram\Tests\Integration\Administration\Telegram;
 
 use UniversalTelegram\Administration\Telegram\BotManagementPage;
+use UniversalTelegram\Administration\Telegram\BotSetupWizardRenderer;
+use UniversalTelegram\Administration\Telegram\BotSetupWizardState;
+use UniversalTelegram\ChatWidget\ChatWidgetAvailability;
+use UniversalTelegram\Administration\Telegram\TelegramFormFields;
+use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
+use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
@@ -25,19 +31,51 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		wp_set_current_user( $admin_id );
 	}
 
+	/**
+	 * Builds a fully-wired BotManagementPage against real, freshly
+	 * constructed collaborators (this codebase's existing testing
+	 * convention — no mocking framework, real objects against the test DB).
+	 *
+	 * @param BotProfileRepository  $bots         Bot profiles.
+	 * @param DestinationRepository $destinations Destinations.
+	 *
+	 * @return BotManagementPage
+	 */
+	private function make_page( BotProfileRepository $bots, DestinationRepository $destinations ): BotManagementPage {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+		$settings      = new Settings();
+
+		$chat_profiles = new ChatProfileResolver( $bots, $destinations );
+		$wizard_state  = new BotSetupWizardState(
+			$chat_profiles,
+			new ChatWidgetAvailability( $settings, $chat_profiles ),
+			$destinations
+		);
+		$forms         = new TelegramFormFields();
+
+		return new BotManagementPage(
+			$bots,
+			$destinations,
+			new UpdateRepository( $schema_health ),
+			new OutboundMessageRepository( $schema_health, $vault ),
+			$forms,
+			$wizard_state,
+			new BotSetupWizardRenderer( $wizard_state, $forms, $bots )
+		);
+	}
+
 	public function test_the_rendered_page_never_exposes_the_plaintext_token_or_any_ciphertext(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
 
 		$bots         = new BotProfileRepository( $schema_health, $vault );
 		$destinations = new DestinationRepository( $schema_health );
-		$updates      = new UpdateRepository( $schema_health );
-		$messages     = new OutboundMessageRepository( $schema_health, $vault );
 
 		$known_plaintext_token = '123456789:AAH_a-known-synthetic-token-value';
 		$bot                   = $bots->create( 'My Bot', $known_plaintext_token );
 
-		$page = new BotManagementPage( $bots, $destinations, $updates, $messages );
+		$page = $this->make_page( $bots, $destinations );
 
 		ob_start();
 		$page->render_tab_content();
@@ -49,44 +87,186 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( $bot->webhook_secret_ciphertext(), $html );
 	}
 
-	public function test_the_rendered_page_includes_the_bot_setup_guidance_panel(): void {
+	public function test_the_rendered_page_includes_the_setup_wizard(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
 
-		$page = new BotManagementPage(
+		$page = $this->make_page(
 			new BotProfileRepository( $schema_health, $vault ),
-			new DestinationRepository( $schema_health ),
-			new UpdateRepository( $schema_health ),
-			new OutboundMessageRepository( $schema_health, $vault )
+			new DestinationRepository( $schema_health )
 		);
 
 		ob_start();
 		$page->render_tab_content();
 		$html = ob_get_clean();
 
-		$this->assertStringContainsString( 'Set up a Telegram bot', $html );
-		$this->assertStringContainsString( 'Create a bot and connect it to a Telegram forum group before adding it here.', $html );
-		$this->assertStringContainsString( 'Create a bot', $html );
-		$this->assertStringContainsString( 'Prepare the support group', $html );
-		$this->assertStringContainsString( 'Add the bot and destination', $html );
+		$this->assertStringContainsString( 'Set up your Telegram bot', $html );
+		$this->assertStringContainsString( '1. Create bot', $html );
+		$this->assertStringContainsString( '2. Create support group', $html );
+		$this->assertStringContainsString( '3. Add bot as administrator', $html );
+		$this->assertStringContainsString( '4. Connect group', $html );
+		$this->assertStringContainsString( '5. Activate chat widget', $html );
 
 		$this->assertStringContainsString( 'href="https://core.telegram.org/bots#6-botfather"', $html );
-		$this->assertStringContainsString( 'How to get a bot token', $html );
-		$this->assertStringContainsString( 'href="https://telegram.me/chatIDrobot"', $html );
-		$this->assertStringContainsString( 'How to find a chat ID', $html );
-
 		$this->assertStringContainsString( 'target="_blank" rel="noopener noreferrer"', $html );
-
 		$this->assertStringContainsString( 'Keep your bot token private. Anyone with it can control the bot.', $html );
 
-		// The guidance panel must render above the existing form, not replace it.
+		// The wizard must render above the existing "Add a bot" form, not replace it.
 		$this->assertStringContainsString( 'Add a bot', $html );
 		$this->assertStringContainsString( 'name="name"', $html );
 		$this->assertStringContainsString( 'name="token"', $html );
 
-		$guidance_position = strpos( $html, 'Set up a Telegram bot' );
-		$form_position     = strpos( $html, 'Add a bot' );
-		$this->assertLessThan( $form_position, $guidance_position );
+		$wizard_position = strpos( $html, 'Set up your Telegram bot' );
+		$form_position   = strpos( $html, 'Add a bot' );
+		$this->assertLessThan( $form_position, $wizard_position );
+	}
+
+	public function test_complete_setup_defaults_to_the_manual_view_with_a_setup_wizard_link(): void {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+		$bots          = new BotProfileRepository( $schema_health, $vault );
+		$destinations  = new DestinationRepository( $schema_health );
+
+		$bot = $bots->create( 'My Bot', '123:token' );
+		$bots->update_telegram_identity( $bot->id(), 1, 'my_bot' );
+		$destinations->create( $bot->id(), \UniversalTelegram\Telegram\Configuration\DestinationKind::SUPERGROUP, '-100123', null, 'Website Support' );
+		$bots->mark_registered( $bot->id() );
+		$settings = new Settings();
+		update_option( Settings::OPTION_NAME, $settings->sanitize( array_merge( $settings->get(), array( 'chat_widget_enabled' => true ) ) ) );
+
+		$page = $this->make_page( $bots, $destinations );
+
+		ob_start();
+		$page->render_tab_content();
+		$html = ob_get_clean();
+
+		$this->assertStringNotContainsString( 'Set up your Telegram bot', $html );
+		$this->assertStringContainsString( 'Setup wizard', $html );
+	}
+
+	public function test_view_wizard_query_arg_forces_the_wizard_even_when_setup_is_complete(): void {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+		$bots          = new BotProfileRepository( $schema_health, $vault );
+		$destinations  = new DestinationRepository( $schema_health );
+
+		$bot = $bots->create( 'My Bot', '123:token' );
+		$bots->update_telegram_identity( $bot->id(), 1, 'my_bot' );
+		$destinations->create( $bot->id(), \UniversalTelegram\Telegram\Configuration\DestinationKind::SUPERGROUP, '-100123', null, 'Website Support' );
+		$bots->mark_registered( $bot->id() );
+		$settings = new Settings();
+		update_option( Settings::OPTION_NAME, $settings->sanitize( array_merge( $settings->get(), array( 'chat_widget_enabled' => true ) ) ) );
+
+		$page = $this->make_page( $bots, $destinations );
+
+		$_GET['view'] = 'wizard';
+		ob_start();
+		$page->render_tab_content();
+		$html = ob_get_clean();
+		unset( $_GET['view'] );
+
+		$this->assertStringContainsString( 'Set up your Telegram bot', $html );
+	}
+
+	public function test_view_wizard_and_step_three_always_renders_step_three(): void {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+		$page          = $this->make_page(
+			new BotProfileRepository( $schema_health, $vault ),
+			new DestinationRepository( $schema_health )
+		);
+
+		$_GET['view'] = 'wizard';
+		$_GET['step'] = '3';
+		ob_start();
+		$page->render_tab_content();
+		$html = ob_get_clean();
+		unset( $_GET['view'], $_GET['step'] );
+
+		$this->assertStringContainsString( 'aria-current="step"', $html );
+		$position_of_step_3_link = strpos( $html, 'step=3' );
+		$position_of_aria        = strpos( $html, 'aria-current="step"' );
+		$this->assertLessThan( $position_of_aria, $position_of_step_3_link );
+	}
+
+	public function test_an_unrecognized_view_value_behaves_identically_to_no_view_at_all(): void {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+		$page          = $this->make_page(
+			new BotProfileRepository( $schema_health, $vault ),
+			new DestinationRepository( $schema_health )
+		);
+
+		$_GET['view'] = 'something_else';
+		ob_start();
+		$page->render_tab_content();
+		$html_unrecognized = ob_get_clean();
+		unset( $_GET['view'] );
+
+		ob_start();
+		$page->render_tab_content();
+		$html_absent = ob_get_clean();
+
+		// No bot configured either way, so both must fall back to the wizard's default step 1.
+		$this->assertStringContainsString( 'Set up your Telegram bot', $html_unrecognized );
+		$this->assertStringContainsString( 'Set up your Telegram bot', $html_absent );
+	}
+
+	/**
+	 * @dataProvider invalid_step_values
+	 *
+	 * @param string $invalid_step The raw, invalid `step` query value.
+	 */
+	public function test_invalid_step_values_fall_back_to_the_derived_current_step( string $invalid_step ): void {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+		$page          = $this->make_page(
+			new BotProfileRepository( $schema_health, $vault ),
+			new DestinationRepository( $schema_health )
+		);
+
+		$_GET['view'] = 'wizard';
+		$_GET['step'] = $invalid_step;
+		ob_start();
+		$page->render_tab_content();
+		$html = ob_get_clean();
+		unset( $_GET['view'], $_GET['step'] );
+
+		// No bot configured, so the derived current step is 1 — never clamped
+		// from 0/6, and never an invalid render for "abc".
+		$position_of_step_1_link = strpos( $html, 'step=1' );
+		$position_of_aria        = strpos( $html, 'aria-current="step"' );
+		$this->assertLessThan( $position_of_aria, $position_of_step_1_link );
+	}
+
+	public function test_missing_step_falls_back_to_the_derived_current_step(): void {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+		$page          = $this->make_page(
+			new BotProfileRepository( $schema_health, $vault ),
+			new DestinationRepository( $schema_health )
+		);
+
+		$_GET['view'] = 'wizard';
+		ob_start();
+		$page->render_tab_content();
+		$html = ob_get_clean();
+		unset( $_GET['view'] );
+
+		$position_of_step_1_link = strpos( $html, 'step=1' );
+		$position_of_aria        = strpos( $html, 'aria-current="step"' );
+		$this->assertLessThan( $position_of_aria, $position_of_step_1_link );
+	}
+
+	/**
+	 * @return array<string, array{0: string}>
+	 */
+	public function invalid_step_values(): array {
+		return array(
+			'zero'        => array( '0' ),
+			'six'         => array( '6' ),
+			'non_numeric' => array( 'abc' ),
+		);
 	}
 
 	public function test_an_unauthorized_user_is_denied(): void {
@@ -95,11 +275,9 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
 
-		$page = new BotManagementPage(
+		$page = $this->make_page(
 			new BotProfileRepository( $schema_health, $vault ),
-			new DestinationRepository( $schema_health ),
-			new UpdateRepository( $schema_health ),
-			new OutboundMessageRepository( $schema_health, $vault )
+			new DestinationRepository( $schema_health )
 		);
 
 		$this->expectException( \WPDieException::class );

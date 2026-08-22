@@ -24,6 +24,9 @@ use UniversalTelegram\Administration\Hub\TabRegistry;
 use UniversalTelegram\Administration\PluginActionLinks;
 use UniversalTelegram\Administration\Telegram\BotManagementController;
 use UniversalTelegram\Administration\Telegram\BotManagementPage;
+use UniversalTelegram\Administration\Telegram\BotSetupWizardRenderer;
+use UniversalTelegram\Administration\Telegram\BotSetupWizardState;
+use UniversalTelegram\Administration\Telegram\TelegramFormFields;
 use UniversalTelegram\Administration\Visitor\VisitorTrackingPage;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
@@ -664,11 +667,28 @@ final class Plugin {
 		);
 		add_action( 'admin_post_' . BotManagementController::ADMIN_POST_ACTION, array( $this->bot_management_controller, 'handle_request' ) );
 
+		$telegram_form_fields = new TelegramFormFields();
+
+		$bot_setup_wizard_state = new BotSetupWizardState(
+			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
+			new ChatWidgetAvailability( $settings, new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ) ),
+			$this->destination_repository
+		);
+
+		$bot_setup_wizard_renderer = new BotSetupWizardRenderer(
+			$bot_setup_wizard_state,
+			$telegram_form_fields,
+			$this->bot_profile_repository
+		);
+
 		$this->bot_management_page = new BotManagementPage(
 			$this->bot_profile_repository,
 			$this->destination_repository,
 			$this->update_repository,
-			$this->outbound_message_repository
+			$this->outbound_message_repository,
+			$telegram_form_fields,
+			$bot_setup_wizard_state,
+			$bot_setup_wizard_renderer
 		);
 
 		// Events/Automations (M02) repositories: constructed here, ahead of

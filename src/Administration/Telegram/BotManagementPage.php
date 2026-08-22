@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Telegram;
 
+use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
@@ -32,16 +33,22 @@ final class BotManagementPage {
 	/**
 	 * Constructor.
 	 *
-	 * @param BotProfileRepository      $bots         Bot profiles.
-	 * @param DestinationRepository     $destinations Destinations.
-	 * @param UpdateRepository          $updates      Last-inbound-update-received signal.
-	 * @param OutboundMessageRepository $messages     Dead-lettered message inspection.
+	 * @param BotProfileRepository      $bots            Bot profiles.
+	 * @param DestinationRepository     $destinations    Destinations.
+	 * @param UpdateRepository          $updates         Last-inbound-update-received signal.
+	 * @param OutboundMessageRepository $messages       Dead-lettered message inspection.
+	 * @param TelegramFormFields        $forms           Shared bot/destination/op form markup.
+	 * @param BotSetupWizardState       $wizard_state    Derives the setup wizard's current step.
+	 * @param BotSetupWizardRenderer    $wizard_renderer Renders the setup wizard in place of the old static guidance panel.
 	 */
 	public function __construct(
 		private readonly BotProfileRepository $bots,
 		private readonly DestinationRepository $destinations,
 		private readonly UpdateRepository $updates,
-		private readonly OutboundMessageRepository $messages
+		private readonly OutboundMessageRepository $messages,
+		private readonly TelegramFormFields $forms,
+		private readonly BotSetupWizardState $wizard_state,
+		private readonly BotSetupWizardRenderer $wizard_renderer
 	) {}
 
 	/**
@@ -55,9 +62,64 @@ final class BotManagementPage {
 		}
 
 		$this->render_bot_list();
-		$this->render_bot_setup_guidance();
+
+		if ( $this->wizard_view_requested() || ! $this->wizard_state->is_complete() ) {
+			$this->wizard_renderer->render( $this->resolve_step() );
+		} else {
+			printf(
+				'<p><a href="%1$s">%2$s</a></p>',
+				esc_url( $this->wizard_url() ),
+				esc_html__( 'Setup wizard', 'universal-telegram' )
+			);
+		}
+
 		$this->render_create_bot_form();
 		$this->render_dead_letter_list();
+	}
+
+	/**
+	 * Whether the wizard view was explicitly requested via `?view=wizard`.
+	 * Any other `view` value — or its absence — is treated identically to
+	 * "not requested," mirroring HubPage::resolve_tab_id()'s own
+	 * unrecognized-input-falls-back-silently convention. Never an error.
+	 *
+	 * @return bool
+	 */
+	private function wizard_view_requested(): bool {
+		$view = isset( $_GET['view'] ) ? sanitize_key( wp_unslash( (string) $_GET['view'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+		return 'wizard' === $view;
+	}
+
+	/**
+	 * Resolves the wizard step to display: `?step=` only when it is an
+	 * integer in the inclusive range 1-5; any other value (non-numeric,
+	 * out of range, or absent) falls back to the derived current step —
+	 * never clamped, never an error.
+	 *
+	 * @return int
+	 */
+	private function resolve_step(): int {
+		$raw = isset( $_GET['step'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['step'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+		if ( '' !== $raw && ctype_digit( $raw ) ) {
+			$step = (int) $raw;
+
+			if ( $step >= 1 && $step <= 5 ) {
+				return $step;
+			}
+		}
+
+		return $this->wizard_state->current_step();
+	}
+
+	/**
+	 * The wizard's own entry URL on this same Bots tab.
+	 *
+	 * @return string
+	 */
+	private function wizard_url(): string {
+		return admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . self::TAB_ID . '&view=wizard' );
 	}
 
 	/**
@@ -100,14 +162,14 @@ final class BotManagementPage {
 
 		echo '<h3>' . esc_html__( 'Actions', 'universal-telegram' ) . '</h3>';
 
-		$this->render_op_form( 'test_connection', $bot->id(), __( 'Test connection', 'universal-telegram' ) );
+		$this->forms->op_button_form( 'test_connection', array( 'bot_id' => $bot->id() ), __( 'Test connection', 'universal-telegram' ) );
 
 		if ( ! $has_pending ) {
-			$this->render_op_form( 'register_webhook', $bot->id(), __( 'Register webhook', 'universal-telegram' ) );
-			$this->render_op_form( 'rotate_webhook', $bot->id(), __( 'Rotate webhook secret', 'universal-telegram' ) );
+			$this->forms->op_button_form( 'register_webhook', array( 'bot_id' => $bot->id() ), __( 'Register webhook', 'universal-telegram' ) );
+			$this->forms->op_button_form( 'rotate_webhook', array( 'bot_id' => $bot->id() ), __( 'Rotate webhook secret', 'universal-telegram' ) );
 		} else {
-			$this->render_op_form( 'retry_pending_webhook', $bot->id(), __( 'Retry pending rotation', 'universal-telegram' ) );
-			$this->render_op_form( 'rollback_webhook', $bot->id(), __( 'Roll back rotation', 'universal-telegram' ) );
+			$this->forms->op_button_form( 'retry_pending_webhook', array( 'bot_id' => $bot->id() ), __( 'Retry pending rotation', 'universal-telegram' ) );
+			$this->forms->op_button_form( 'rollback_webhook', array( 'bot_id' => $bot->id() ), __( 'Roll back rotation', 'universal-telegram' ) );
 		}
 
 		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" style="display:inline-block;margin-right:8px;">';
@@ -119,24 +181,7 @@ final class BotManagementPage {
 		submit_button( __( 'Replace token', 'universal-telegram' ), 'secondary', 'submit', false );
 		echo '</form>';
 
-		$this->render_op_form( 'delete_bot', $bot->id(), __( 'Delete bot', 'universal-telegram' ) );
-	}
-
-	/**
-	 * Renders one single-button admin-post form.
-	 *
-	 * @param string $op     The 'op' field value.
-	 * @param int    $bot_id The bot's primary key.
-	 * @param string $label  The button label.
-	 */
-	private function render_op_form( string $op, int $bot_id, string $label ): void {
-		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" style="display:inline-block;margin-right:8px;">';
-		echo '<input type="hidden" name="action" value="' . esc_attr( BotManagementController::ADMIN_POST_ACTION ) . '" />';
-		echo '<input type="hidden" name="op" value="' . esc_attr( $op ) . '" />';
-		echo '<input type="hidden" name="bot_id" value="' . esc_attr( (string) $bot_id ) . '" />';
-		wp_nonce_field( BotManagementController::NONCE_ACTION );
-		submit_button( $label, 'secondary', 'submit', false );
-		echo '</form>';
+		$this->forms->op_button_form( 'delete_bot', array( 'bot_id' => $bot->id() ), __( 'Delete bot', 'universal-telegram' ) );
 	}
 
 	/**
@@ -157,77 +202,20 @@ final class BotManagementPage {
 			printf( '<td>%s</td>', esc_html( $destination->kind()->value ) );
 			printf( '<td>%s</td>', esc_html( $destination->chat_id() ) );
 			echo '<td>';
-			echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
-			echo '<input type="hidden" name="action" value="' . esc_attr( BotManagementController::ADMIN_POST_ACTION ) . '" />';
-			echo '<input type="hidden" name="op" value="send_test_message" />';
-			echo '<input type="hidden" name="bot_id" value="' . esc_attr( (string) $bot->id() ) . '" />';
-			echo '<input type="hidden" name="destination_id" value="' . esc_attr( (string) $destination->id() ) . '" />';
-			wp_nonce_field( BotManagementController::NONCE_ACTION );
-			submit_button( __( 'Send test message', 'universal-telegram' ), 'secondary', 'submit', false );
-			echo '</form>';
+			$this->forms->op_button_form(
+				'send_test_message',
+				array(
+					'bot_id'         => $bot->id(),
+					'destination_id' => $destination->id(),
+				),
+				__( 'Send test message', 'universal-telegram' )
+			);
 			echo '</td>';
 			echo '</tr>';
 		}
 		echo '</tbody></table>';
 
-		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
-		echo '<input type="hidden" name="action" value="' . esc_attr( BotManagementController::ADMIN_POST_ACTION ) . '" />';
-		echo '<input type="hidden" name="op" value="create_destination" />';
-		echo '<input type="hidden" name="bot_id" value="' . esc_attr( (string) $bot->id() ) . '" />';
-		wp_nonce_field( BotManagementController::NONCE_ACTION );
-		echo '<input type="text" name="label" placeholder="' . esc_attr__( 'Label', 'universal-telegram' ) . '" /> ';
-		echo '<select name="kind">';
-		foreach ( \UniversalTelegram\Telegram\Configuration\DestinationKind::cases() as $kind ) {
-			printf( '<option value="%1$s">%1$s</option>', esc_attr( $kind->value ) );
-		}
-		echo '</select> ';
-		echo '<input type="text" name="chat_id" placeholder="' . esc_attr__( 'Chat ID', 'universal-telegram' ) . '" /> ';
-		echo '<input type="number" name="message_thread_id" placeholder="' . esc_attr__( 'Topic ID (supergroup only)', 'universal-telegram' ) . '" /> ';
-		submit_button( __( 'Add destination', 'universal-telegram' ), 'secondary', 'submit', false );
-		echo '</form>';
-	}
-
-	/**
-	 * Renders the "Set up a Telegram bot" onboarding guidance panel shown
-	 * immediately above the add-bot form.
-	 */
-	private function render_bot_setup_guidance(): void {
-		echo '<div class="card" style="max-width:none;">';
-		echo '<h2>' . esc_html__( 'Set up a Telegram bot', 'universal-telegram' ) . '</h2>';
-		echo '<p>' . esc_html__( 'Create a bot and connect it to a Telegram forum group before adding it here.', 'universal-telegram' ) . '</p>';
-
-		echo '<ol>';
-
-		echo '<li><strong>' . esc_html__( 'Create a bot', 'universal-telegram' ) . '</strong>';
-		echo '<p>' . esc_html__( 'Open BotFather in Telegram, run /newbot, and copy the token it provides.', 'universal-telegram' ) . '</p>';
-		printf(
-			'<p><a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s</a></p>',
-			esc_url( 'https://core.telegram.org/bots#6-botfather' ),
-			esc_html__( 'How to get a bot token', 'universal-telegram' )
-		);
-		echo '</li>';
-
-		echo '<li><strong>' . esc_html__( 'Prepare the support group', 'universal-telegram' ) . '</strong>';
-		echo '<p>' . esc_html__( 'Create or choose a Telegram supergroup. Enable Topics. Add the bot as an administrator and allow it to manage topics.', 'universal-telegram' ) . '</p>';
-		echo '</li>';
-
-		echo '<li><strong>' . esc_html__( 'Add the bot and destination', 'universal-telegram' ) . '</strong>';
-		echo '<p>' . esc_html__( 'Enter the bot name and token below. Then configure an enabled supergroup destination for that bot.', 'universal-telegram' ) . '</p>';
-		printf(
-			'<p><a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s</a></p>',
-			esc_url( 'https://telegram.me/chatIDrobot' ),
-			esc_html__( 'How to find a chat ID', 'universal-telegram' )
-		);
-		echo '<p>' . esc_html__( 'The group ID must belong to the intended support supergroup.', 'universal-telegram' ) . '</p>';
-		echo '</li>';
-
-		echo '</ol>';
-
-		echo '<div class="notice notice-warning inline"><p>' .
-			esc_html__( 'Keep your bot token private. Anyone with it can control the bot.', 'universal-telegram' ) .
-			'</p></div>';
-
-		echo '</div>';
+		$this->forms->create_destination_form( $bot->id() );
 	}
 
 	/**
@@ -235,14 +223,7 @@ final class BotManagementPage {
 	 */
 	private function render_create_bot_form(): void {
 		echo '<h2>' . esc_html__( 'Add a bot', 'universal-telegram' ) . '</h2>';
-		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
-		echo '<input type="hidden" name="action" value="' . esc_attr( BotManagementController::ADMIN_POST_ACTION ) . '" />';
-		echo '<input type="hidden" name="op" value="create_bot" />';
-		wp_nonce_field( BotManagementController::NONCE_ACTION );
-		echo '<p><input type="text" name="name" placeholder="' . esc_attr__( 'Name', 'universal-telegram' ) . '" /></p>';
-		echo '<p><input type="text" name="token" placeholder="' . esc_attr__( 'Bot token', 'universal-telegram' ) . '" /></p>';
-		submit_button( __( 'Add bot', 'universal-telegram' ) );
-		echo '</form>';
+		$this->forms->create_bot_form();
 	}
 
 	/**
@@ -263,13 +244,7 @@ final class BotManagementPage {
 			printf( '<td>%s</td>', esc_html( (string) $message->last_failure_code() ) );
 			printf( '<td>%s</td>', esc_html( (string) $message->dead_lettered_at() ) );
 			echo '<td>';
-			echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
-			echo '<input type="hidden" name="action" value="' . esc_attr( BotManagementController::ADMIN_POST_ACTION ) . '" />';
-			echo '<input type="hidden" name="op" value="requeue_message" />';
-			echo '<input type="hidden" name="message_id" value="' . esc_attr( (string) $message->id() ) . '" />';
-			wp_nonce_field( BotManagementController::NONCE_ACTION );
-			submit_button( __( 'Requeue', 'universal-telegram' ), 'secondary', 'submit', false );
-			echo '</form>';
+			$this->forms->op_button_form( 'requeue_message', array( 'message_id' => $message->id() ), __( 'Requeue', 'universal-telegram' ) );
 			echo '</td>';
 			echo '</tr>';
 		}
