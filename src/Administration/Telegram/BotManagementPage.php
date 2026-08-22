@@ -61,19 +61,22 @@ final class BotManagementPage {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'universal-telegram' ) );
 		}
 
-		$this->render_bot_list();
-
 		if ( $this->wizard_view_requested() || ! $this->wizard_state->is_complete() ) {
+			// Wizard-only render: the manual bot list and "Add a bot" form are
+			// deliberately not appended here. Showing both at once duplicated
+			// the sensitive token-entry form and made multi-bot management
+			// unclear (M06.1 wizard-manual-view hotfix).
 			$this->wizard_renderer->render( $this->resolve_step() );
 		} else {
+			$this->render_bot_list();
 			printf(
 				'<p><a href="%1$s">%2$s</a></p>',
 				esc_url( $this->wizard_url() ),
 				esc_html__( 'Setup wizard', 'universal-telegram' )
 			);
+			$this->render_create_bot_form();
 		}
 
-		$this->render_create_bot_form();
 		$this->render_dead_letter_list();
 	}
 
@@ -223,6 +226,7 @@ final class BotManagementPage {
 	 */
 	private function render_create_bot_form(): void {
 		echo '<h2>' . esc_html__( 'Add a bot', 'universal-telegram' ) . '</h2>';
+		echo '<p>' . esc_html__( 'Adding another bot here does not change your website\'s chat bot — the first bot you configured remains the one connected to the chat widget.', 'universal-telegram' ) . '</p>';
 		$this->forms->create_bot_form();
 	}
 

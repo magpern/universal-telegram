@@ -87,7 +87,7 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( $bot->webhook_secret_ciphertext(), $html );
 	}
 
-	public function test_the_rendered_page_includes_the_setup_wizard(): void {
+	public function test_incomplete_setup_on_default_url_renders_wizard_only(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
 
@@ -111,14 +111,11 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'target="_blank" rel="noopener noreferrer"', $html );
 		$this->assertStringContainsString( 'Keep your bot token private. Anyone with it can control the bot.', $html );
 
-		// The wizard must render above the existing "Add a bot" form, not replace it.
-		$this->assertStringContainsString( 'Add a bot', $html );
-		$this->assertStringContainsString( 'name="name"', $html );
-		$this->assertStringContainsString( 'name="token"', $html );
-
-		$wizard_position = strpos( $html, 'Set up your Telegram bot' );
-		$form_position   = strpos( $html, 'Add a bot' );
-		$this->assertLessThan( $form_position, $wizard_position );
+		// Exactly one create-bot form (the wizard's own, in step 1) — the
+		// manual "Add a bot" heading/form must not be appended beneath it.
+		$this->assertStringNotContainsString( '<h2>Add a bot</h2>', $html );
+		$this->assertSame( 1, substr_count( $html, 'name="name"' ) );
+		$this->assertSame( 1, substr_count( $html, 'name="token"' ) );
 	}
 
 	public function test_complete_setup_defaults_to_the_manual_view_with_a_setup_wizard_link(): void {
@@ -140,8 +137,18 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		$page->render_tab_content();
 		$html = ob_get_clean();
 
+		// Manual view only: the wizard's own heading/nav/step-1 copy must not appear at all.
 		$this->assertStringNotContainsString( 'Set up your Telegram bot', $html );
+		$this->assertStringNotContainsString( 'aria-label="Setup progress"', $html );
+		$this->assertStringNotContainsString( 'Open BotFather in Telegram, run /newbot', $html );
 		$this->assertStringContainsString( 'Setup wizard', $html );
+
+		// The manual "Add a bot" form is present, exactly once — not duplicated
+		// by any wizard-rendered create-bot form. The bot's own "Replace
+		// token" action form also has a name="token" field, so "name=\"name\""
+		// — unique to the create-bot form — is the reliable duplicate check.
+		$this->assertStringContainsString( '<h2>Add a bot</h2>', $html );
+		$this->assertSame( 1, substr_count( $html, 'name="name"' ) );
 	}
 
 	public function test_view_wizard_query_arg_forces_the_wizard_even_when_setup_is_complete(): void {
@@ -166,6 +173,12 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		unset( $_GET['view'] );
 
 		$this->assertStringContainsString( 'Set up your Telegram bot', $html );
+
+		// The explicit wizard view must never append the manual bot list or
+		// "Add a bot" form beneath it, even though setup is complete.
+		$this->assertStringNotContainsString( '<h2>Add a bot</h2>', $html );
+		$this->assertStringNotContainsString( 'Adding another bot here', $html );
+		$this->assertSame( 1, substr_count( $html, 'name="name"' ) );
 	}
 
 	public function test_view_wizard_and_step_three_always_renders_step_three(): void {
@@ -267,6 +280,78 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 			'six'         => array( '6' ),
 			'non_numeric' => array( 'abc' ),
 		);
+	}
+
+	public function test_additional_bot_form_and_its_explanatory_sentence_appear_only_in_manual_view(): void {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+		$bots          = new BotProfileRepository( $schema_health, $vault );
+		$destinations  = new DestinationRepository( $schema_health );
+
+		$bot = $bots->create( 'My Bot', '123:token' );
+		$bots->update_telegram_identity( $bot->id(), 1, 'my_bot' );
+		$destinations->create( $bot->id(), \UniversalTelegram\Telegram\Configuration\DestinationKind::SUPERGROUP, '-100123', null, 'Website Support' );
+		$bots->mark_registered( $bot->id() );
+		$settings = new Settings();
+		update_option( Settings::OPTION_NAME, $settings->sanitize( array_merge( $settings->get(), array( 'chat_widget_enabled' => true ) ) ) );
+
+		$page = $this->make_page( $bots, $destinations );
+
+		// Manual view (setup complete, no explicit wizard request): the
+		// additional-bot form and its explanatory sentence are present.
+		ob_start();
+		$page->render_tab_content();
+		$manual_html = ob_get_clean();
+
+		$this->assertStringContainsString( '<h2>Add a bot</h2>', $manual_html );
+		$this->assertStringContainsString( 'Adding another bot here does not change your website', $manual_html );
+
+		// Explicit wizard view: neither the form nor the sentence appear.
+		$_GET['view'] = 'wizard';
+		ob_start();
+		$page->render_tab_content();
+		$wizard_html = ob_get_clean();
+		unset( $_GET['view'] );
+
+		$this->assertStringNotContainsString( '<h2>Add a bot</h2>', $wizard_html );
+		$this->assertStringNotContainsString( 'Adding another bot here does not change your website', $wizard_html );
+	}
+
+	public function test_manual_view_manages_multiple_bots_and_preserves_default_bot_semantics(): void {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+		$bots          = new BotProfileRepository( $schema_health, $vault );
+		$destinations  = new DestinationRepository( $schema_health );
+
+		$first = $bots->create( 'First Bot', '111:token' );
+		$bots->update_telegram_identity( $first->id(), 1, 'first_bot' );
+		$destinations->create( $first->id(), \UniversalTelegram\Telegram\Configuration\DestinationKind::SUPERGROUP, '-100111', null, 'Website Support' );
+		$bots->mark_registered( $first->id() );
+		$settings = new Settings();
+		update_option( Settings::OPTION_NAME, $settings->sanitize( array_merge( $settings->get(), array( 'chat_widget_enabled' => true ) ) ) );
+
+		$second = $bots->create( 'Second Bot', '222:token' );
+
+		$chat_profiles = new ChatProfileResolver( $bots, $destinations );
+
+		// The first-created bot remains the default website chat bot,
+		// unaffected by adding a second, incomplete bot — this hotfix does
+		// not touch default-bot selection.
+		$this->assertSame( $first->id(), $chat_profiles->default_bot()->id() );
+
+		$page = $this->make_page( $bots, $destinations );
+
+		ob_start();
+		$page->render_tab_content();
+		$html = ob_get_clean();
+
+		// Setup as a whole is still considered complete (based on the
+		// default bot only), so the manual view — where both bots are
+		// listed and managed — remains the default, unchanged behaviour.
+		$this->assertStringNotContainsString( 'Set up your Telegram bot', $html );
+		$this->assertStringContainsString( 'First Bot', $html );
+		$this->assertStringContainsString( 'Second Bot', $html );
+		$this->assertStringContainsString( '<h2>Add a bot</h2>', $html );
 	}
 
 	public function test_an_unauthorized_user_is_denied(): void {
