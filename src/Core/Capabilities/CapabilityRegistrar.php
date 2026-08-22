@@ -15,12 +15,16 @@ namespace UniversalTelegram\Core\Capabilities;
  * uninstall (docs/adr/0010). M02 adds MANAGE_AUTOMATIONS as a distinct
  * constant, since rule/event configuration is a genuinely distinct
  * authorization need from bot/destination configuration (M02 plan §6.3);
- * manage_options is never substituted for either.
+ * manage_options is never substituted for either. M07 adds
+ * MANAGE_CONVERSATIONS, the operator self-service capability (inbox,
+ * assignment, notes, own availability); administrator-level overrides
+ * continue to use the broader, existing MANAGE (docs/adr/0026).
  */
 final class CapabilityRegistrar {
 
-	public const MANAGE             = 'universal_telegram_manage';
-	public const MANAGE_AUTOMATIONS = 'universal_telegram_manage_automations';
+	public const MANAGE               = 'universal_telegram_manage';
+	public const MANAGE_AUTOMATIONS   = 'universal_telegram_manage_automations';
+	public const MANAGE_CONVERSATIONS = 'universal_telegram_manage_conversations';
 
 	/**
 	 * Grants every capability to the administrator role.
@@ -31,6 +35,7 @@ final class CapabilityRegistrar {
 		if ( null !== $role ) {
 			$role->add_cap( self::MANAGE );
 			$role->add_cap( self::MANAGE_AUTOMATIONS );
+			$role->add_cap( self::MANAGE_CONVERSATIONS );
 		}
 	}
 
@@ -47,6 +52,7 @@ final class CapabilityRegistrar {
 		foreach ( $wp_roles->role_objects as $role ) {
 			$role->remove_cap( self::MANAGE );
 			$role->remove_cap( self::MANAGE_AUTOMATIONS );
+			$role->remove_cap( self::MANAGE_CONVERSATIONS );
 		}
 	}
 }

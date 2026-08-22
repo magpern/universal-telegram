@@ -35,6 +35,9 @@ class Migrator {
 	public const DISPATCH_LOG_TABLE          = 'universal_telegram_notification_dispatch_log';
 	public const CONVERSATIONS_TABLE         = 'universal_telegram_conversations';
 	public const CONVERSATION_MESSAGES_TABLE = 'universal_telegram_conversation_messages';
+	public const OPERATOR_IDENTITIES_TABLE   = 'universal_telegram_operator_identities';
+	public const CONVERSATION_NOTES_TABLE    = 'universal_telegram_conversation_notes';
+	public const OPERATOR_AVAILABILITY_TABLE = 'universal_telegram_operator_availability';
 
 	private const DB_VERSION_OPTION = 'universal_telegram_db_version';
 
@@ -61,7 +64,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 16;
+		return 18;
 	}
 
 	/**
@@ -146,6 +149,8 @@ class Migrator {
 			14 => array( array( $this, 'step_14_add_claim_lease_columns' ), array( $this, 'verify_step_14' ) ),
 			15 => array( array( $this, 'step_15_add_conversation_display_name_column' ), array( $this, 'verify_step_15' ) ),
 			16 => array( array( $this, 'step_16_add_conversation_ownership_and_concurrency_index' ), array( $this, 'verify_step_16' ) ),
+			17 => array( array( $this, 'step_17_create_operator_workflow_tables' ), array( $this, 'verify_step_17' ) ),
+			18 => array( array( $this, 'step_18_add_operator_workflow_columns' ), array( $this, 'verify_step_18' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -1061,6 +1066,132 @@ class Migrator {
 		return $this->table_has_columns( $table, array( 'owner_user_id', 'owner_active_slot' ) )
 			&& $this->table_has_index( $table, 'owner_active_slot' )
 			&& $this->table_has_index( $table, 'owner_user_id' );
+	}
+
+	/**
+	 * Creates the three new M07 operator-workflow tables (docs/adr/0026):
+	 * the manually maintained WordPress-user <-> Telegram numeric-id
+	 * identity mapping (the plugin's inbound Telegram operator-
+	 * authorization gate), encrypted internal notes, and three-state
+	 * operator availability. `conversation_notes.operator_user_id` is
+	 * nullable specifically so authorship can be anonymized on operator
+	 * account deletion (ADR-0026 decision 12(b2)) without deleting note
+	 * content.
+	 */
+	private function step_17_create_operator_workflow_tables(): void {
+		global $wpdb;
+
+		$charset_collate = $wpdb->get_charset_collate();
+
+		$identities_table    = $wpdb->prefix . self::OPERATOR_IDENTITIES_TABLE;
+		$notes_table         = $wpdb->prefix . self::CONVERSATION_NOTES_TABLE;
+		$availability_table  = $wpdb->prefix . self::OPERATOR_AVAILABILITY_TABLE;
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$identities_table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				wp_user_id BIGINT UNSIGNED NOT NULL,
+				telegram_user_id BIGINT UNSIGNED NOT NULL,
+				telegram_username VARCHAR(255) NULL,
+				created_at DATETIME NOT NULL,
+				created_by BIGINT UNSIGNED NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY wp_user_id (wp_user_id),
+				UNIQUE KEY telegram_user_id (telegram_user_id)
+			) {$charset_collate}"
+		);
+
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$notes_table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				conversation_id BIGINT UNSIGNED NOT NULL,
+				operator_user_id BIGINT UNSIGNED NULL,
+				body_ciphertext LONGTEXT NOT NULL,
+				created_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				KEY conversation_created (conversation_id, created_at)
+			) {$charset_collate}"
+		);
+
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$availability_table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				operator_user_id BIGINT UNSIGNED NOT NULL,
+				state VARCHAR(16) NOT NULL DEFAULT 'offline',
+				updated_at DATETIME NOT NULL,
+				updated_by BIGINT UNSIGNED NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY operator_user_id (operator_user_id)
+			) {$charset_collate}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_17(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::OPERATOR_IDENTITIES_TABLE,
+			array( 'id', 'wp_user_id', 'telegram_user_id', 'telegram_username', 'created_at', 'created_by' )
+		) && $this->table_has_columns(
+			$wpdb->prefix . self::CONVERSATION_NOTES_TABLE,
+			array( 'id', 'conversation_id', 'operator_user_id', 'body_ciphertext', 'created_at' )
+		) && $this->table_has_columns(
+			$wpdb->prefix . self::OPERATOR_AVAILABILITY_TABLE,
+			array( 'id', 'operator_user_id', 'state', 'updated_at', 'updated_by' )
+		);
+	}
+
+	/**
+	 * Adds the M07 assignment-unread column (`assignee_last_seen_message_id`
+	 * on conversations) and the M07 inbound-attribution column
+	 * (`telegram_sender_user_id` on conversation messages), the latter
+	 * indexed since WebhookController joins on it to attribute an accepted
+	 * operator reply to a mapped WordPress display name, but never renders,
+	 * URL-exposes, or search-filters the raw value itself (ADR-0026
+	 * decisions 2-3, SENSITIVE classification).
+	 */
+	private function step_18_add_operator_workflow_columns(): void {
+		global $wpdb;
+
+		$conversations_table = $wpdb->prefix . self::CONVERSATIONS_TABLE;
+		$messages_table       = $wpdb->prefix . self::CONVERSATION_MESSAGES_TABLE;
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( ! $this->table_has_columns( $conversations_table, array( 'assignee_last_seen_message_id' ) ) ) {
+			$wpdb->query( "ALTER TABLE {$conversations_table} ADD COLUMN assignee_last_seen_message_id BIGINT UNSIGNED NULL" );
+		}
+
+		if ( ! $this->table_has_columns( $messages_table, array( 'telegram_sender_user_id' ) ) ) {
+			$wpdb->query( "ALTER TABLE {$messages_table} ADD COLUMN telegram_sender_user_id BIGINT UNSIGNED NULL" );
+		}
+
+		if ( ! $this->table_has_index( $messages_table, 'telegram_sender_user_id' ) ) {
+			$wpdb->query( "ALTER TABLE {$messages_table} ADD KEY telegram_sender_user_id (telegram_sender_user_id)" );
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_18(): bool {
+		global $wpdb;
+
+		$conversations_table = $wpdb->prefix . self::CONVERSATIONS_TABLE;
+		$messages_table       = $wpdb->prefix . self::CONVERSATION_MESSAGES_TABLE;
+
+		return $this->table_has_columns( $conversations_table, array( 'assignee_last_seen_message_id' ) )
+			&& $this->table_has_columns( $messages_table, array( 'telegram_sender_user_id' ) )
+			&& $this->table_has_index( $messages_table, 'telegram_sender_user_id' );
 	}
 
 	/**

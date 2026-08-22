@@ -15,14 +15,17 @@ final class CapabilityRegistrarTest extends WP_UnitTestCase {
 		$role = get_role( 'administrator' );
 		$role->remove_cap( CapabilityRegistrar::MANAGE );
 		$role->remove_cap( CapabilityRegistrar::MANAGE_AUTOMATIONS );
+		$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
 
 		( new Activator() )->activate( false );
 
 		$this->assertTrue( get_role( 'administrator' )->has_cap( CapabilityRegistrar::MANAGE ) );
 		$this->assertTrue( get_role( 'administrator' )->has_cap( CapabilityRegistrar::MANAGE_AUTOMATIONS ) );
+		$this->assertTrue( get_role( 'administrator' )->has_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS ) );
 
 		$role->remove_cap( CapabilityRegistrar::MANAGE );
 		$role->remove_cap( CapabilityRegistrar::MANAGE_AUTOMATIONS );
+		$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
 	}
 
 	public function test_a_role_granted_no_such_capability_does_not_hold_it(): void {
@@ -30,6 +33,7 @@ final class CapabilityRegistrarTest extends WP_UnitTestCase {
 
 		$this->assertFalse( $role->has_cap( CapabilityRegistrar::MANAGE ) );
 		$this->assertFalse( $role->has_cap( CapabilityRegistrar::MANAGE_AUTOMATIONS ) );
+		$this->assertFalse( $role->has_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS ) );
 	}
 
 	public function test_revoke_removes_every_capability_from_every_role(): void {
@@ -38,10 +42,12 @@ final class CapabilityRegistrarTest extends WP_UnitTestCase {
 
 		$this->assertTrue( get_role( 'administrator' )->has_cap( CapabilityRegistrar::MANAGE ) );
 		$this->assertTrue( get_role( 'administrator' )->has_cap( CapabilityRegistrar::MANAGE_AUTOMATIONS ) );
+		$this->assertTrue( get_role( 'administrator' )->has_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS ) );
 
 		$registrar->revoke_from_all_roles();
 
 		$this->assertFalse( get_role( 'administrator' )->has_cap( CapabilityRegistrar::MANAGE ) );
 		$this->assertFalse( get_role( 'administrator' )->has_cap( CapabilityRegistrar::MANAGE_AUTOMATIONS ) );
+		$this->assertFalse( get_role( 'administrator' )->has_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS ) );
 	}
 }
