@@ -69,13 +69,15 @@ final class ChatWidgetAssets {
 			return;
 		}
 
-		$version = defined( 'UNIVERSAL_TELEGRAM_VERSION' ) ? UNIVERSAL_TELEGRAM_VERSION : 'unknown';
+		$plugin_dir  = plugin_dir_path( UNIVERSAL_TELEGRAM_PLUGIN_FILE );
+		$script_path = $plugin_dir . 'assets/js/chat-widget.js';
+		$style_path  = $plugin_dir . 'assets/css/chat-widget-' . $this->preset() . '.css';
 
 		wp_enqueue_script(
 			self::SCRIPT_HANDLE,
 			plugins_url( 'assets/js/chat-widget.js', UNIVERSAL_TELEGRAM_PLUGIN_FILE ),
 			array(),
-			$version,
+			$this->asset_version( $script_path ),
 			true
 		);
 
@@ -83,8 +85,31 @@ final class ChatWidgetAssets {
 			self::STYLE_HANDLE,
 			plugins_url( 'assets/css/chat-widget-' . $this->preset() . '.css', UNIVERSAL_TELEGRAM_PLUGIN_FILE ),
 			array(),
-			$version
+			$this->asset_version( $style_path )
 		);
+	}
+
+	/**
+	 * Per-file cache-busting version: the file's own mtime when readable,
+	 * so a code change to chat-widget.js or a preset stylesheet is always
+	 * fetched fresh by browsers on the very next enqueue, regardless of
+	 * whether the plugin version constant was bumped. Falls back to the
+	 * plugin version when the file cannot be stat'd (e.g. a stripped
+	 * release build without filesystem access).
+	 *
+	 * @param string $path Absolute path to the enqueued file.
+	 * @return string
+	 */
+	private function asset_version( string $path ): string {
+		if ( is_readable( $path ) ) {
+			$mtime = filemtime( $path );
+
+			if ( false !== $mtime ) {
+				return (string) $mtime;
+			}
+		}
+
+		return defined( 'UNIVERSAL_TELEGRAM_VERSION' ) ? UNIVERSAL_TELEGRAM_VERSION : 'unknown';
 	}
 
 	/**

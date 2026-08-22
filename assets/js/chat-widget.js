@@ -889,14 +889,14 @@
 				showSignedOut();
 			}
 
-			// 'idle' means: authenticated, no conversation yet — the visitor
-			// has never sent a message in this one. A personalized greeting
-			// there is friendlier than a bare, empty textarea; every later
-			// state (an existing conversation, or a genuinely anonymous
-			// visitor) keeps the generic placeholder.
-			if ( 'idle' === described.status && config.loggedIn && config.firstName ) {
+			// 'idle' (no conversation yet) and 'active' (an existing,
+			// resumed conversation) both leave the composer enabled with
+			// nothing more specific to say, so both get the placeholder.
+			// A genuinely anonymous visitor (no firstName in the config)
+			// keeps the generic wording.
+			if ( ( 'idle' === described.status || 'active' === described.status ) && config.loggedIn && config.firstName ) {
 				input.placeholder = 'What’s on your mind, ' + config.firstName + '?';
-			} else if ( 'idle' === described.status ) {
+			} else if ( 'idle' === described.status || 'active' === described.status ) {
 				input.placeholder = 'What’s on your mind?';
 			}
 
