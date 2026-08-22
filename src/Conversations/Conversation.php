@@ -41,6 +41,7 @@ final class Conversation {
 	 * @param string|null $start_idempotency_key    Client-supplied idempotency key from the start request that created this row, or null (M06 plan §0, ADR-0021 amendment).
 	 * @param string|null $topic_claim_expires_at   When the currently held topic-creation claim/lease expires, or null if unclaimed (M06.2 corrective plan v2, ADR-0023 amendment).
 	 * @param string|null $display_name_ciphertext  Encrypted visitor display name, or null if none is stored yet (M06.3, ADR-0024).
+	 * @param int|null    $owner_user_id            The authenticated WordPress user this conversation belongs to, or null for a legacy/ownerless row or one whose owner account was deleted (M06.3.1, ADR-0025).
 	 */
 	public function __construct(
 		private readonly int $id,
@@ -62,7 +63,8 @@ final class Conversation {
 		private readonly ?string $expires_at,
 		private readonly ?string $start_idempotency_key = null,
 		private readonly ?string $topic_claim_expires_at = null,
-		private readonly ?string $display_name_ciphertext = null
+		private readonly ?string $display_name_ciphertext = null,
+		private readonly ?int $owner_user_id = null
 	) {}
 
 	/**
@@ -265,5 +267,16 @@ final class Conversation {
 	 */
 	public function display_name_required(): bool {
 		return null === $this->display_name_ciphertext;
+	}
+
+	/**
+	 * The authenticated WordPress user this conversation belongs to, or null
+	 * for a legacy/ownerless row (M05-M06.3) or one whose owning account was
+	 * later deleted (M06.3.1, ADR-0025).
+	 *
+	 * @return int|null
+	 */
+	public function owner_user_id(): ?int {
+		return $this->owner_user_id;
 	}
 }

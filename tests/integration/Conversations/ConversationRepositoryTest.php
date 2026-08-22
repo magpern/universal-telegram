@@ -6,6 +6,7 @@
 namespace UniversalTelegram\Tests\Integration\Conversations;
 
 use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Conversations\ConversationStatus;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
@@ -14,7 +15,7 @@ use WP_UnitTestCase;
 final class ConversationRepositoryTest extends WP_UnitTestCase {
 
 	private function repository(): ConversationRepository {
-		return new ConversationRepository( new SchemaHealth(), new CredentialVault() );
+		return new ConversationRepository( new SchemaHealth(), new CredentialVault(), new VisitorTokenGenerator() );
 	}
 
 	public function test_create_and_find_round_trip(): void {
@@ -280,7 +281,7 @@ final class ConversationRepositoryTest extends WP_UnitTestCase {
 
 		$this->assertContains( $stale_open->id(), $ids );
 		$this->assertNotContains( $fresh_open->id(), $ids );
-		$this->assertNotContains( $stale_new->id(), $ids, 'NEW is not a valid transition source for RESOLVED and must never be selected.' );
+		$this->assertContains( $stale_new->id(), $ids, 'NEW must be matched too (M06.3.1, ADR-0025) since it now occupies the owner_active_slot index and must be freeable.' );
 	}
 
 	public function test_inactive_open_conversations_never_matches_resolved_or_archived(): void {
@@ -322,5 +323,105 @@ final class ConversationRepositoryTest extends WP_UnitTestCase {
 		$this->assertContains( 501, $ids );
 		$this->assertContains( 502, $ids );
 		$this->assertNotContains( 999, $ids );
+	}
+
+	public function test_create_persists_owner_and_display_name_atomically(): void {
+		$repo = $this->repository();
+
+		$created = $repo->create( 'uuid-owned-1', 'hash', 1, null, 'idem-owned-1', 99, 'Alice' );
+
+		$this->assertNotNull( $created );
+		$this->assertSame( 99, $created->owner_user_id() );
+		$this->assertFalse( $created->display_name_required() );
+		$this->assertSame( 'Alice', $repo->decrypt_display_name( $created ) );
+	}
+
+	public function test_create_or_resume_owned_creates_a_fresh_row_when_none_is_active(): void {
+		$repo = $this->repository();
+
+		$result = $repo->create_or_resume_owned( 'uuid-owned-2', 'hash', 1, null, 'idem-owned-2', 101, 'Bob' );
+
+		$this->assertNotNull( $result );
+		$this->assertFalse( $result['resumed'] );
+		$this->assertNull( $result['secret'] );
+		$this->assertSame( 101, $result['conversation']->owner_user_id() );
+	}
+
+	public function test_create_or_resume_owned_resumes_and_rotates_the_secret_on_collision(): void {
+		$repo = $this->repository();
+
+		$first = $repo->create_or_resume_owned( 'uuid-owned-3a', 'hash-a', 1, null, 'idem-owned-3a', 102, 'Carol' );
+		$this->assertNotNull( $first );
+
+		$second = $repo->create_or_resume_owned( 'uuid-owned-3b', 'hash-b', 1, null, 'idem-owned-3b', 102, 'Carol' );
+
+		$this->assertNotNull( $second );
+		$this->assertTrue( $second['resumed'] );
+		$this->assertSame( $first['conversation']->id(), $second['conversation']->id() );
+		$this->assertNotNull( $second['secret'] );
+
+		$refreshed = $repo->find( $first['conversation']->id() );
+		$this->assertNotNull( $refreshed );
+		$this->assertTrue( ( new VisitorTokenGenerator() )->verify( $second['secret'], (string) $refreshed->secret_hash() ) );
+	}
+
+	public function test_create_or_resume_owned_never_creates_a_second_row_on_collision(): void {
+		$repo = $this->repository();
+
+		$repo->create_or_resume_owned( 'uuid-owned-4a', 'hash-a', 1, null, 'idem-owned-4a', 103, 'Dana' );
+		$repo->create_or_resume_owned( 'uuid-owned-4b', 'hash-b', 1, null, 'idem-owned-4b', 103, 'Dana' );
+
+		$this->assertNull( $repo->find_by_uuid( 'uuid-owned-4b' ), 'The collision must never create a second row.' );
+	}
+
+	public function test_find_active_for_owner_ignores_resolved_and_archived_rows(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-owned-5', 'hash', 1, null, null, 104, 'Erin' );
+		$repo->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+		$repo->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::RESOLVED );
+
+		$this->assertNull( $repo->find_active_for_owner( 104, 1 ) );
+	}
+
+	public function test_find_active_for_owner_never_crosses_bots(): void {
+		$repo = $this->repository();
+		$repo->create( 'uuid-owned-6', 'hash', 1, null, null, 105, 'Faye' );
+
+		$this->assertNull( $repo->find_active_for_owner( 105, 2 ) );
+	}
+
+	public function test_rotate_secret_invalidates_the_previous_secret(): void {
+		$repo         = $this->repository();
+		$tokens       = new VisitorTokenGenerator();
+		$conversation = $repo->create( 'uuid-owned-7', $tokens->hash( 'old-secret' ), 1, null, null, 106, 'Gwen' );
+
+		$fresh = $repo->rotate_secret( $conversation->id() );
+
+		$this->assertNotNull( $fresh );
+		$refreshed = $repo->find( $conversation->id() );
+		$this->assertFalse( $tokens->verify( 'old-secret', (string) $refreshed->secret_hash() ) );
+		$this->assertTrue( $tokens->verify( $fresh, (string) $refreshed->secret_hash() ) );
+	}
+
+	public function test_release_owner_conversations_clears_ownership_and_revokes_the_secret(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-owned-8', 'hash', 1, null, null, 107, 'Hana' );
+
+		$repo->release_owner_conversations( 107 );
+
+		$refreshed = $repo->find( $conversation->id() );
+		$this->assertNull( $refreshed->owner_user_id() );
+		$this->assertNull( $refreshed->secret_hash() );
+	}
+
+	public function test_release_owner_conversations_never_touches_another_owners_row(): void {
+		$repo = $this->repository();
+		$repo->create( 'uuid-owned-9', 'hash', 1, null, null, 108, 'Ida' );
+		$other = $repo->create( 'uuid-owned-10', 'hash', 1, null, null, 109, 'Jae' );
+
+		$repo->release_owner_conversations( 108 );
+
+		$refreshed = $repo->find( $other->id() );
+		$this->assertSame( 109, $refreshed->owner_user_id() );
 	}
 }

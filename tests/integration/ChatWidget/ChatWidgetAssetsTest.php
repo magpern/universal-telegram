@@ -5,6 +5,7 @@
 
 namespace UniversalTelegram\Tests\Integration\ChatWidget;
 
+use UniversalTelegram\ChatWidget\AccountUrlResolver;
 use UniversalTelegram\ChatWidget\ChatWidgetAssets;
 use UniversalTelegram\ChatWidget\ChatWidgetAvailability;
 use UniversalTelegram\Conversations\ChatProfileResolver;
@@ -43,7 +44,7 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 		$bots          = new BotProfileRepository( $schema_health, new CredentialVault() );
 		$destinations  = new DestinationRepository( $schema_health );
 
-		return new ChatWidgetAssets( new ChatWidgetAvailability( new Settings(), new ChatProfileResolver( $bots, $destinations ) ), new Settings() );
+		return new ChatWidgetAssets( new ChatWidgetAvailability( new Settings(), new ChatProfileResolver( $bots, $destinations ) ), new Settings(), new AccountUrlResolver() );
 	}
 
 	public function test_disabled_setting_enqueues_nothing_and_prints_nothing(): void {
@@ -105,9 +106,16 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 		$this->assertSame( 1, substr_count( $output, '</script>' ) );
 	}
 
-	public function test_config_island_is_identical_across_two_anonymous_requests(): void {
+	public function test_config_island_is_identical_across_two_anonymous_requests_to_the_same_page(): void {
+		// The cache-safety guarantee is scoped to repeated requests for the
+		// *same* page (M06.3.1, ADR-0025): loginUrl/registerUrl now
+		// legitimately vary by page (the return URL), so two different
+		// pages are no longer expected to produce byte-identical output —
+		// what a cache must be able to rely on is that the same URL always
+		// renders identically for every anonymous visitor.
 		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
 		$this->make_eligible_destination();
+		wp_set_current_user( 0 );
 
 		$this->go_to( home_url( '/' ) );
 		$first_assets = $this->assets();
@@ -115,13 +123,28 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 		$first_assets->print_config();
 		$first = ob_get_clean();
 
-		$this->go_to( home_url( '/some-other-page' ) );
+		$this->go_to( home_url( '/' ) );
 		$second_assets = $this->assets();
 		ob_start();
 		$second_assets->print_config();
 		$second = ob_get_clean();
 
 		$this->assertSame( $first, $second );
+	}
+
+	public function test_config_island_login_url_reflects_the_current_page(): void {
+		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
+		$this->make_eligible_destination();
+		wp_set_current_user( 0 );
+
+		$this->go_to( home_url( '/some-other-page' ) );
+		$assets = $this->assets();
+
+		ob_start();
+		$assets->print_config();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'some-other-page', $output );
 	}
 
 	public function test_enqueue_selects_the_stylesheet_matching_the_stored_preset(): void {
@@ -147,7 +170,7 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'chat-widget-minimal.css', $src );
 	}
 
-	public function test_enqueue_falls_back_to_modern_for_a_corrupted_preset_value(): void {
+	public function test_enqueue_falls_back_to_theme_for_a_corrupted_preset_value(): void {
 		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
 		update_option( Settings::OPTION_NAME, array_merge( get_option( Settings::OPTION_NAME ), array( 'chat_widget_preset' => 'not-a-real-preset' ) ) );
 		$this->make_eligible_destination();
@@ -159,7 +182,122 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 		global $wp_styles;
 		$src = $wp_styles->registered['universal-telegram-chat-widget']->src;
 
-		$this->assertStringContainsString( 'chat-widget-modern.css', $src );
+		$this->assertStringContainsString( 'chat-widget-theme.css', $src );
+	}
+
+	public function test_enqueue_selects_the_theme_stylesheet_by_default(): void {
+		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
+		$this->make_eligible_destination();
+
+		$this->go_to( home_url( '/' ) );
+		$assets = $this->assets();
+		$assets->enqueue();
+
+		global $wp_styles;
+		$src = $wp_styles->registered['universal-telegram-chat-widget']->src;
+
+		$this->assertStringContainsString( 'chat-widget-theme.css', $src );
+	}
+
+	public function test_config_island_reflects_logged_out_state_with_no_nonce(): void {
+		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
+		$this->make_eligible_destination();
+		wp_set_current_user( 0 );
+
+		$this->go_to( home_url( '/' ) );
+		$assets = $this->assets();
+
+		ob_start();
+		$assets->print_config();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( '"loggedIn":false', $output );
+		$this->assertStringContainsString( '"nonce":null', $output );
+		$this->assertStringContainsString( 'loginUrl', $output );
+	}
+
+	public function test_config_island_reflects_the_anonymous_chat_setting(): void {
+		update_option(
+			Settings::OPTION_NAME,
+			array_merge(
+				( new Settings() )->defaults(),
+				array(
+					'chat_widget_enabled'         => true,
+					'chat_widget_allow_anonymous' => true,
+				)
+			)
+		);
+		$this->make_eligible_destination();
+		wp_set_current_user( 0 );
+
+		$this->go_to( home_url( '/' ) );
+		$assets = $this->assets();
+
+		ob_start();
+		$assets->print_config();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( '"anonymousChatAllowed":true', $output );
+	}
+
+	public function test_config_island_anonymous_chat_setting_stays_identical_across_two_anonymous_requests(): void {
+		update_option(
+			Settings::OPTION_NAME,
+			array_merge(
+				( new Settings() )->defaults(),
+				array(
+					'chat_widget_enabled'         => true,
+					'chat_widget_allow_anonymous' => true,
+				)
+			)
+		);
+		$this->make_eligible_destination();
+		wp_set_current_user( 0 );
+
+		$this->go_to( home_url( '/' ) );
+		$first_assets = $this->assets();
+		ob_start();
+		$first_assets->print_config();
+		$first = ob_get_clean();
+
+		$this->go_to( home_url( '/' ) );
+		$second_assets = $this->assets();
+		ob_start();
+		$second_assets->print_config();
+		$second = ob_get_clean();
+
+		$this->assertSame( $first, $second );
+	}
+
+	public function test_config_island_reflects_logged_in_state_with_a_nonce(): void {
+		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
+		$this->make_eligible_destination();
+		wp_set_current_user( self::factory()->user->create() );
+
+		$this->go_to( home_url( '/' ) );
+		$assets = $this->assets();
+
+		ob_start();
+		$assets->print_config();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( '"loggedIn":true', $output );
+		$this->assertStringNotContainsString( '"nonce":null', $output );
+	}
+
+	public function test_config_island_omits_registration_link_when_registration_is_disabled(): void {
+		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
+		update_option( 'users_can_register', 0 );
+		$this->make_eligible_destination();
+
+		$this->go_to( home_url( '/' ) );
+		$assets = $this->assets();
+
+		ob_start();
+		$assets->print_config();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( '"registerUrl":null', $output );
 	}
 
 	public function test_config_island_includes_appearance_and_label_fields_with_no_visitor_specific_data(): void {

@@ -62,6 +62,17 @@ final class RetentionCleanupHandler {
 	 */
 	public function run(): void {
 		foreach ( $this->conversations->inactive_open_conversations( $this->inactivity_days ) as $conversation ) {
+			if ( ConversationStatus::NEW === $conversation->status() ) {
+				// `new` is not directly resolvable per the frozen transition
+				// map; a `new` row occupies the owner_active_slot index
+				// (M06.3.1, ADR-0025) and, if its topic creation permanently
+				// failed, would otherwise never free that slot. Both hops
+				// are individually valid per the existing map.
+				$this->conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+				$this->conversations->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::RESOLVED );
+				continue;
+			}
+
 			$this->conversations->transition( $conversation->id(), $conversation->status(), ConversationStatus::RESOLVED );
 		}
 

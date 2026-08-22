@@ -36,6 +36,7 @@ use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Automations\RuleEvaluator;
 use UniversalTelegram\Automations\RuleSimulator;
 use UniversalTelegram\Automations\TemplateRenderer;
+use UniversalTelegram\ChatWidget\AccountUrlResolver;
 use UniversalTelegram\ChatWidget\ChatWidgetAssets;
 use UniversalTelegram\ChatWidget\ChatWidgetAvailability;
 use UniversalTelegram\Conversations\ChatProfileResolver;
@@ -560,7 +561,7 @@ final class Plugin {
 		);
 		$this->handler_registry->register( MessageDispatcher::JOB_TYPE, array( $send_message_handler, 'handle_job' ) );
 
-		$this->conversation_repository = new ConversationRepository( $this->schema_health, $this->credential_vault );
+		$this->conversation_repository = new ConversationRepository( $this->schema_health, $this->credential_vault, new VisitorTokenGenerator() );
 		$this->message_repository      = new MessageRepository( $this->schema_health, $this->credential_vault );
 
 		$this->update_repository       = new UpdateRepository( $this->schema_health );
@@ -630,7 +631,8 @@ final class Plugin {
 			$this->topic_creation_dispatcher,
 			$conversation_outbound_dispatcher,
 			$immediate_delivery_attempt,
-			$prompt_delivery_fallback
+			$prompt_delivery_fallback,
+			$settings
 		);
 		add_action( 'rest_api_init', array( $this->conversations_controller, 'register_routes' ) );
 
@@ -668,6 +670,19 @@ final class Plugin {
 				if ( ! as_has_scheduled_action( ConversationRetentionCleanupHandler::HOOK, array(), WorkerRunner::GROUP ) ) {
 					as_schedule_recurring_action( time() + DAY_IN_SECONDS, DAY_IN_SECONDS, ConversationRetentionCleanupHandler::HOOK, array(), WorkerRunner::GROUP );
 				}
+			}
+		);
+
+		// Account deletion (M06.3.1, ADR-0025): revokes the bearer secret and
+		// clears owner_user_id for every conversation the deleted account
+		// owned, so the numeric id is never retained. Message rows and the
+		// existing retention-age sweeps are untouched. Logout itself needs
+		// no handler — every route re-checks the live cookie session per
+		// request.
+		add_action(
+			'deleted_user',
+			function ( int $user_id ): void {
+				$this->conversation_repository->release_owner_conversations( $user_id );
 			}
 		);
 
@@ -847,7 +862,8 @@ final class Plugin {
 				$settings,
 				new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository )
 			),
-			$settings
+			$settings,
+			new AccountUrlResolver()
 		);
 		add_action( 'wp_enqueue_scripts', array( $chat_widget_assets, 'enqueue' ) );
 		add_action( 'wp_footer', array( $chat_widget_assets, 'print_config' ), 5 );

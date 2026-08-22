@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.7.0
+Stable tag: 0.8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -41,6 +41,27 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.8.0 =
+* Authenticated chat access and UX redesign (M06.3.1, ADR-0025): corrects M06.3's rejected
+  visitor-entered-name onboarding. Chat now requires an authenticated WordPress user; a logged-out
+  visitor sees only "Sign in to chat" (and "Create account" when registration is enabled) — no
+  name field, composer, history, or conversation control is ever shown before sign-in. The display
+  name is now derived server-side from the WordPress account (a fixed generic fallback when empty)
+  and is never entered by the visitor. Conversations gain a persistent, database-enforced owner,
+  with exactly one active conversation per account and bot guaranteed by a unique index — never a
+  request-timing assumption. Every conversation REST route now explicitly requires a WordPress
+  cookie session and nonce, additive to the existing bearer-secret credential, plus an ownership
+  match on message/poll. A returning, authenticated visitor resumes their conversation across
+  browsers/sessions via a new resume endpoint. Opening the chat panel creates nothing; the first
+  Send invisibly starts and posts the conversation. The visible "Start chat" and "End conversation"
+  controls are removed. Deleting a WordPress account revokes its conversations' bearer secret and
+  clears the ownership link. The default presentation preset is now a theme-derived style using the
+  active WordPress theme's own colors, with the previous static presets still available. The
+  message log now respects a visitor's manual upward scroll, showing a "New messages" control
+  instead of forcing the view back down. Pre-existing (M05-M06.3) conversations remain in the
+  database, subject to existing retention, but are no longer reachable through the widget, since
+  they were never associated with an authenticated account.
 
 = 0.7.0 =
 * Chat identity, lifecycle, and presentation (M06.3, ADR-0024): the chat widget now requires a

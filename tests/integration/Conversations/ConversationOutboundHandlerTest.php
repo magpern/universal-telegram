@@ -7,6 +7,7 @@ namespace UniversalTelegram\Tests\Integration\Conversations;
 
 use UniversalTelegram\Conversations\ConversationOutboundHandler;
 use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
@@ -34,7 +35,7 @@ final class ConversationOutboundHandlerTest extends WP_UnitTestCase {
 
 		$this->schema_health     = new SchemaHealth();
 		$this->vault             = new CredentialVault();
-		$this->conversations     = new ConversationRepository( $this->schema_health, new CredentialVault() );
+		$this->conversations     = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
 		$this->messages          = new MessageRepository( $this->schema_health, $this->vault );
 		$this->bots              = new BotProfileRepository( $this->schema_health, $this->vault );
 		$this->destinations      = new DestinationRepository( $this->schema_health );

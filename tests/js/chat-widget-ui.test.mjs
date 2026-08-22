@@ -84,3 +84,21 @@ test( 'describeUiState provides a non-empty announcement for every failure/end s
 		assert.notEqual( describe( status ).announce, '' );
 	} );
 } );
+
+// M06.3.1 (ADR-0025): the logged-out and mine-lookup-in-progress states.
+
+test( 'signed-out disables the composer and carries a non-empty announcement', () => {
+	const sandbox = makeSandbox();
+	const describe = sandbox.__UT_CHAT_WIDGET_UI_DESCRIBE_STATE__;
+
+	const described = describe( 'signed-out' );
+	assert.equal( described.inputDisabled, true );
+	assert.notEqual( described.announce, '' );
+} );
+
+test( 'checking (mine lookup in flight) disables the composer', () => {
+	const sandbox = makeSandbox();
+	const describe = sandbox.__UT_CHAT_WIDGET_UI_DESCRIBE_STATE__;
+
+	assert.equal( describe( 'checking' ).inputDisabled, true );
+} );

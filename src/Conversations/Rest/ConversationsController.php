@@ -22,29 +22,52 @@ use UniversalTelegram\Conversations\PromptDeliveryFallback;
 use UniversalTelegram\Conversations\ResponseReason;
 use UniversalTelegram\Conversations\TopicCreationDispatcher;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
+use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
 use WP_REST_Request;
 use WP_REST_Response;
 
 /**
- * `universal-telegram/v1/conversations*` — start, post-message, and
- * short-poll only, unauthenticated at the WP-REST layer, authenticated
- * instead by the visitor bearer secret (docs/adr/0021, M05 plan §3–§4).
- * Every authentication failure mode (unknown/malformed conversation_uuid,
- * revoked or wrong secret, missing header) produces the identical,
- * controlled 404 — no distinguishing detail, no 401. No response ever
- * serializes the bearer secret (beyond the one-time start response), the
- * stored secret_hash, or any raw body_ciphertext value.
+ * `universal-telegram/v1/conversations*` — start, resume ("mine"),
+ * post-message, and short-poll. Every route requires a live WordPress
+ * cookie session and a valid `X-WP-Nonce` (see authenticate_session()),
+ * explicitly verified as the first statement of each handler (M06.3.1,
+ * ADR-0025) — a missing/invalid session or nonce is the uniform
+ * `auth_required` 401. This is additive to, never a replacement of, the
+ * existing per-conversation bearer secret (docs/adr/0021, M05 plan §3–§4):
+ * post-message and poll also require the bearer secret *and* an ownership
+ * match (the conversation's owner_user_id === the authenticated user).
+ * Every bearer/ownership failure mode (unknown/malformed conversation_uuid,
+ * revoked or wrong secret, owner mismatch) produces the identical,
+ * controlled 404 — no distinguishing detail. No response ever serializes
+ * the bearer secret (beyond the one-time start/mine response), the stored
+ * secret_hash, the WordPress numeric user id, username, or email, or any
+ * raw body_ciphertext value.
  */
 final class ConversationsController {
 
 	private const ROUTE_NAMESPACE = 'universal-telegram/v1';
 	private const ROUTE_START     = '/conversations';
+	private const ROUTE_MINE      = '/conversations/mine';
 	private const ROUTE_MESSAGES  = '/conversations/(?P<conversation_uuid>[^/]+)/messages';
 	private const ROUTE_POLL      = '/conversations/(?P<conversation_uuid>[^/]+)';
 
 	private const MAX_TEXT_CHARS = 4096;
+
+	// Fixed, generic, never username/email/numeric id (M06.3.1, ADR-0025).
+	private const FALLBACK_DISPLAY_NAME = 'Member';
+
+	// Fixed, generic, non-PII identity for an anonymous conversation
+	// (M06.3.1 addendum) — never the visitor's IP, user agent, or anything
+	// else. ConversationDisplay::topic_title() already appends the
+	// non-secret short reference on top of this, producing exactly
+	// "Visitor · <short_ref>".
+	private const ANONYMOUS_DISPLAY_NAME = 'Visitor';
+
+	private const MINE_SCOPE    = 'conv_mine';
+	private const MINE_CAPACITY = 30.0;
+	private const MINE_REFILL   = 30.0 / HOUR_IN_SECONDS;
 
 	private const RATE_LIMIT_SECRET_OPTION = 'universal_telegram_conversation_rate_limit_secret';
 
@@ -103,6 +126,7 @@ final class ConversationsController {
 	 * @param ConversationOutboundDispatcher $outbound          Queue-before-topic visitor-to-Telegram routing dispatch.
 	 * @param ImmediateDeliveryAttempt       $immediate_attempt  The bounded, claim-protected primary delivery mechanism (M06.2 corrective plan v2 §3.2, ADR-0023 amendment).
 	 * @param PromptDeliveryFallback         $prompt_fallback     The host-independent bounded second-layer fallback (§3.3); owns its own ExpeditedDispatchTrigger reference for the final, demoted best-effort nudge (§3.4).
+	 * @param Settings                       $settings            Reads chat_widget_allow_anonymous (M06.3.1 addendum).
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
@@ -114,11 +138,20 @@ final class ConversationsController {
 		private readonly TopicCreationDispatcher $topic_creation,
 		private readonly ConversationOutboundDispatcher $outbound,
 		private readonly ImmediateDeliveryAttempt $immediate_attempt,
-		private readonly PromptDeliveryFallback $prompt_fallback
+		private readonly PromptDeliveryFallback $prompt_fallback,
+		private readonly Settings $settings
 	) {}
 
 	/**
-	 * Registers the three REST routes.
+	 * Registers the four REST routes. `mine` is registered before `poll`
+	 * deliberately: `poll`'s bare `(?P<conversation_uuid>[^/]+)` pattern
+	 * would otherwise also match `/conversations/mine` literally, and
+	 * WP_REST_Server tries routes in registration order (M06.3.1, ADR-0025).
+	 * Every route's own `permission_callback` stays `__return_true` — the
+	 * cookie+nonce check is performed explicitly, in this class's own code,
+	 * as the first statement of every handler (see authenticate_session()),
+	 * rather than relied upon implicitly via core's cookie-authentication
+	 * wiring.
 	 */
 	public function register_routes(): void {
 		register_rest_route(
@@ -127,6 +160,16 @@ final class ConversationsController {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'handle_start' ),
+				'permission_callback' => '__return_true',
+			)
+		);
+
+		register_rest_route(
+			self::ROUTE_NAMESPACE,
+			self::ROUTE_MINE,
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'handle_mine' ),
 				'permission_callback' => '__return_true',
 			)
 		);
@@ -174,6 +217,22 @@ final class ConversationsController {
 				),
 				503
 			);
+		}
+
+		// Auth-branch selection (M06.3.1 addendum): a logged-in visitor
+		// always uses the authenticated flow, unconditionally — never the
+		// anonymous one, regardless of chat_widget_allow_anonymous. A
+		// logged-out visitor may start anonymously only when that setting
+		// is enabled; no nonce is required or checked on the anonymous
+		// path (a public, cacheable page cannot safely carry one).
+		$anonymous = ! is_user_logged_in();
+
+		if ( $anonymous ) {
+			if ( ! (bool) $this->settings->get()['chat_widget_allow_anonymous'] ) {
+				return $this->auth_required();
+			}
+		} elseif ( ! $this->authenticate_session( $request ) ) {
+			return $this->auth_required();
 		}
 
 		$raw_body     = $request->get_body();
@@ -237,7 +296,16 @@ final class ConversationsController {
 		$existing = $this->conversations->find_by_start_idempotency_key( $idempotency_key );
 
 		if ( null !== $existing ) {
-			if ( null === $existing->secret_hash() || ! $this->tokens->verify( $presented_secret, $existing->secret_hash() ) ) {
+			// The expected owner is null for an anonymous replay, or the
+			// current user for an authenticated one — a single condition
+			// that naturally also rejects an anonymous request replaying an
+			// owned conversation's key, and vice versa.
+			$expected_owner = $anonymous ? null : get_current_user_id();
+
+			if ( null === $existing->secret_hash()
+				|| ! $this->tokens->verify( $presented_secret, $existing->secret_hash() )
+				|| $existing->owner_user_id() !== $expected_owner
+			) {
 				$this->rate_limiter->try_consume( self::AUTH_FAIL_CLIENT_SCOPE, $this->client_scope_id( 'hour' ), self::AUTH_FAIL_CLIENT_CAPACITY, self::AUTH_FAIL_CLIENT_REFILL );
 
 				return $this->respond(
@@ -251,10 +319,9 @@ final class ConversationsController {
 
 			return $this->respond(
 				array(
-					'ok'                    => true,
-					'conversation_uuid'     => $existing->conversation_uuid(),
-					'secret'                => $presented_secret,
-					'display_name_required' => $existing->display_name_required(),
+					'ok'                => true,
+					'conversation_uuid' => $existing->conversation_uuid(),
+					'secret'            => $presented_secret,
 				),
 				200
 			);
@@ -285,15 +352,60 @@ final class ConversationsController {
 			);
 		}
 
-		$conversation = $this->conversations->create(
+		if ( $anonymous ) {
+			// The pre-M06.3.1 (M05/M06.2) anonymous model, unchanged: no
+			// owner, no concurrency slot (owner_active_slot's own generated
+			// CASE requires owner_user_id IS NOT NULL, so an anonymous row
+			// never occupies or contends for it), a fixed non-PII identity
+			// — never the visitor's IP, user agent, or anything else
+			// (M06.3.1 addendum).
+			$conversation = $this->conversations->create(
+				$this->tokens->generate_uuid(),
+				$this->tokens->hash( $presented_secret ),
+				$bot->id(),
+				$chat_profile,
+				$idempotency_key,
+				null,
+				self::ANONYMOUS_DISPLAY_NAME
+			);
+
+			if ( null === $conversation ) {
+				return $this->respond(
+					array(
+						'ok'     => false,
+						'reason' => ResponseReason::REQUEST_FAILED->value,
+					),
+					503
+				);
+			}
+
+			return $this->respond(
+				array(
+					'ok'                => true,
+					'conversation_uuid' => $conversation->conversation_uuid(),
+					'secret'            => $presented_secret,
+				),
+				200
+			);
+		}
+
+		// Server-derived identity only (M06.3.1, ADR-0025): the visitor
+		// never supplies a name. create_or_resume_owned() performs exactly
+		// one insert attempt; a duplicate-key collision on the
+		// owner_active_slot index (a concurrent first-Send in another tab
+		// already won) resumes that existing row and rotates its secret —
+		// it never retries the insert and never creates a second row.
+		$result = $this->conversations->create_or_resume_owned(
 			$this->tokens->generate_uuid(),
 			$this->tokens->hash( $presented_secret ),
 			$bot->id(),
 			$chat_profile,
-			$idempotency_key
+			$idempotency_key,
+			get_current_user_id(),
+			$this->resolve_display_name()
 		);
 
-		if ( null === $conversation ) {
+		if ( null === $result ) {
 			return $this->respond(
 				array(
 					'ok'     => false,
@@ -305,10 +417,89 @@ final class ConversationsController {
 
 		return $this->respond(
 			array(
-				'ok'                    => true,
-				'conversation_uuid'     => $conversation->conversation_uuid(),
-				'secret'                => $presented_secret,
-				'display_name_required' => $conversation->display_name_required(),
+				'ok'                => true,
+				'conversation_uuid' => $result['conversation']->conversation_uuid(),
+				'secret'            => $result['resumed'] ? $result['secret'] : $presented_secret,
+			),
+			200
+		);
+	}
+
+	/**
+	 * GET /conversations/mine — cookie+nonce only (no bearer secret exists
+	 * yet for a browser resuming on a new tab/session). Finds the current
+	 * user's single active conversation for the resolved bot, if any, and
+	 * rotates its bearer secret so it can be safely re-issued to this
+	 * browser — no secret is ever stored server-side in recoverable form
+	 * (M06.3.1, ADR-0025).
+	 *
+	 * @param WP_REST_Request $request The inbound request.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function handle_mine( WP_REST_Request $request ): WP_REST_Response {
+		if ( ! $this->schema_health->is_available() ) {
+			return $this->respond(
+				array(
+					'ok'     => false,
+					'reason' => ResponseReason::REQUEST_FAILED->value,
+				),
+				503
+			);
+		}
+
+		if ( ! $this->authenticate_session( $request ) ) {
+			return $this->auth_required();
+		}
+
+		if ( ! $this->rate_limiter->try_consume( self::MINE_SCOPE, get_current_user_id(), self::MINE_CAPACITY, self::MINE_REFILL ) ) {
+			return $this->rate_limited();
+		}
+
+		$chat_profile_param = $request->get_param( 'chat_profile' );
+		$chat_profile       = is_string( $chat_profile_param ) && '' !== $chat_profile_param ? $chat_profile_param : null;
+
+		$bot = null === $chat_profile ? $this->chat_profiles->default_bot() : $this->chat_profiles->find_by_profile( $chat_profile );
+
+		if ( null === $bot ) {
+			return $this->respond(
+				array(
+					'ok'                => true,
+					'conversation_uuid' => null,
+				),
+				200
+			);
+		}
+
+		$existing = $this->conversations->find_active_for_owner( get_current_user_id(), $bot->id() );
+
+		if ( null === $existing ) {
+			return $this->respond(
+				array(
+					'ok'                => true,
+					'conversation_uuid' => null,
+				),
+				200
+			);
+		}
+
+		$secret = $this->conversations->rotate_secret( $existing->id() );
+
+		if ( null === $secret ) {
+			return $this->respond(
+				array(
+					'ok'     => false,
+					'reason' => ResponseReason::REQUEST_FAILED->value,
+				),
+				503
+			);
+		}
+
+		return $this->respond(
+			array(
+				'ok'                => true,
+				'conversation_uuid' => $existing->conversation_uuid(),
+				'secret'            => $secret,
 			),
 			200
 		);
@@ -336,10 +527,21 @@ final class ConversationsController {
 			return $this->rate_limited();
 		}
 
+		// Ownership is resolved from the conversation itself, not assumed
+		// up front (M06.3.1 addendum): an owned conversation requires
+		// cookie+nonce+owner match; an anonymous one requires only that
+		// anonymous chat currently be enabled — see
+		// authorize_conversation_access().
 		$conversation = $this->authenticate( $request );
 
 		if ( null === $conversation ) {
 			return $this->controlled_not_found();
+		}
+
+		$authorized = $this->authorize_conversation_access( $conversation, $request );
+
+		if ( true !== $authorized ) {
+			return $authorized;
 		}
 
 		if ( ! $this->rate_limiter->try_consume( self::POST_CONVERSATION_SCOPE, $conversation->id(), self::POST_CONVERSATION_CAPACITY, self::POST_CONVERSATION_REFILL ) ) {
@@ -397,64 +599,9 @@ final class ConversationsController {
 			}
 		}
 
-		// Reload-safe required-name contract (M06.3, ADR-0024): while no
-		// encrypted name is stored yet, every POST /messages call for this
-		// conversation must supply one — a missing or invalid name is
-		// rejected here, before any message is persisted or routed. Since
-		// an invalid/missing name blocks persistence entirely, this
-		// condition is always equivalent to "this is the conversation's
-		// first accepted message" — there is no separate name endpoint.
-		$display_name_required = $conversation->display_name_required();
-		$display_name          = null;
-
-		if ( $display_name_required ) {
-			if ( ! isset( $decoded['display_name'] ) || ! is_string( $decoded['display_name'] ) ) {
-				return $this->respond(
-					array(
-						'ok'     => false,
-						'reason' => ResponseReason::REQUEST_FAILED->value,
-					),
-					400
-				);
-			}
-
-			$trimmed_display_name = trim( $decoded['display_name'] );
-
-			if ( ! ConversationDisplay::is_valid_display_name( $trimmed_display_name ) ) {
-				return $this->respond(
-					array(
-						'ok'     => false,
-						'reason' => ResponseReason::REQUEST_FAILED->value,
-					),
-					400
-				);
-			}
-
-			$display_name = $trimmed_display_name;
-		}
-
 		$message = $this->messages->create( $conversation->id(), 'visitor', $text, 'stored', null, '' === $idempotency_key ? null : $idempotency_key );
 
 		if ( null === $message ) {
-			return $this->respond(
-				array(
-					'ok'     => false,
-					'reason' => ResponseReason::REQUEST_FAILED->value,
-				),
-				503
-			);
-		}
-
-		// Name storage happens immediately after the message insert and
-		// before any status transition, topic creation, or outbound
-		// routing — both writes commit before this conversation is ever
-		// dispatched toward Telegram. A storage failure here compensates
-		// by removing the just-inserted message (this is definitionally
-		// the conversation's only message so far, since $display_name_required
-		// was true) rather than leaving an orphaned, unnamed first message.
-		if ( null !== $display_name && ! $this->conversations->store_display_name( $conversation, $display_name ) ) {
-			$this->messages->delete_for_conversation( $conversation->id() );
-
 			return $this->respond(
 				array(
 					'ok'     => false,
@@ -533,6 +680,12 @@ final class ConversationsController {
 			return $this->controlled_not_found();
 		}
 
+		$authorized = $this->authorize_conversation_access( $conversation, $request );
+
+		if ( true !== $authorized ) {
+			return $authorized;
+		}
+
 		if ( ! $this->rate_limiter->try_consume( self::POLL_CONVERSATION_SCOPE, $conversation->id(), self::POLL_CONVERSATION_CAPACITY, self::POLL_CONVERSATION_REFILL ) ) {
 			return $this->rate_limited();
 		}
@@ -556,10 +709,9 @@ final class ConversationsController {
 
 		return $this->respond(
 			array(
-				'ok'                    => true,
-				'status'                => $conversation->status(),
-				'messages'              => $messages,
-				'display_name_required' => $conversation->display_name_required(),
+				'ok'       => true,
+				'status'   => $conversation->status(),
+				'messages' => $messages,
 			),
 			200
 		);
@@ -597,6 +749,103 @@ final class ConversationsController {
 		}
 
 		return $conversation;
+	}
+
+	/**
+	 * Decides whether an already bearer-secret-verified conversation (see
+	 * authenticate()) may actually be accessed, and by what rule (M06.3.1
+	 * addendum). An owned conversation (owner_user_id not null) additionally
+	 * requires a valid cookie session + nonce and an owner match — a
+	 * missing/invalid session returns the distinct `auth_required` 401
+	 * (the caller has already proven secret possession, so this reveals
+	 * nothing new), while an owner mismatch returns the uniform, non-
+	 * disclosing controlled_not_found() 404, exactly as before. An
+	 * anonymous conversation (owner_user_id null) requires only that
+	 * chat_widget_allow_anonymous currently be enabled — no nonce is ever
+	 * required for it; if the setting is off (including for a conversation
+	 * created while it was previously on), the identical non-disclosing 404
+	 * is returned, never a distinguishing signal that the conversation
+	 * exists.
+	 *
+	 * @param Conversation    $conversation The bearer-secret-verified conversation.
+	 * @param WP_REST_Request $request      The inbound request.
+	 *
+	 * @return WP_REST_Response|true True when access is authorized.
+	 */
+	private function authorize_conversation_access( Conversation $conversation, WP_REST_Request $request ) {
+		if ( null !== $conversation->owner_user_id() ) {
+			if ( ! $this->authenticate_session( $request ) ) {
+				return $this->auth_required();
+			}
+
+			if ( $conversation->owner_user_id() !== get_current_user_id() ) {
+				return $this->controlled_not_found();
+			}
+
+			return true;
+		}
+
+		if ( ! (bool) $this->settings->get()['chat_widget_allow_anonymous'] ) {
+			return $this->controlled_not_found();
+		}
+
+		return true;
+	}
+
+	/**
+	 * Explicit, self-enforced CSRF check performed as the first statement of
+	 * every handler (M06.3.1, ADR-0025) — not relied upon implicitly via
+	 * WordPress core's own cookie-authentication wiring, so this boundary
+	 * behaves identically regardless of which other authentication handlers
+	 * are registered. Requires both a live cookie session and a valid
+	 * `X-WP-Nonce` header for the `wp_rest` action.
+	 *
+	 * @param WP_REST_Request $request The inbound request.
+	 *
+	 * @return bool
+	 */
+	private function authenticate_session( WP_REST_Request $request ): bool {
+		if ( ! is_user_logged_in() ) {
+			return false;
+		}
+
+		$nonce = (string) $request->get_header( 'X-WP-Nonce' );
+
+		return '' !== $nonce && false !== wp_verify_nonce( $nonce, 'wp_rest' );
+	}
+
+	/**
+	 * The uniform failure for a missing/invalid session or nonce — never a
+	 * distinguishing detail about which of the two failed (M06.3.1, ADR-0025).
+	 *
+	 * @return WP_REST_Response
+	 */
+	private function auth_required(): WP_REST_Response {
+		return $this->respond(
+			array(
+				'ok'     => false,
+				'reason' => ResponseReason::AUTH_REQUIRED->value,
+			),
+			401
+		);
+	}
+
+	/**
+	 * The server-derived display name for the currently authenticated user
+	 * (M06.3.1, ADR-0025) — the visitor never supplies one. Bounded and
+	 * validated through the same ConversationDisplay helpers a client-
+	 * supplied name would have used, so a pathological WordPress display
+	 * name (empty, all-whitespace, absurdly long) can never produce an
+	 * invalid stored value. Falls back to a fixed, generic literal — never
+	 * the username, email, or numeric user id.
+	 *
+	 * @return string
+	 */
+	private function resolve_display_name(): string {
+		$user = wp_get_current_user();
+		$name = ConversationDisplay::bounded_utf8( trim( (string) $user->display_name ), 80 );
+
+		return ConversationDisplay::is_valid_display_name( $name ) ? $name : self::FALLBACK_DISPLAY_NAME;
 	}
 
 	/**
