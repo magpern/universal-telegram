@@ -216,6 +216,15 @@
 						emit( 'state', { status: 'transient-failure' } );
 						throw { terminal: true };
 					}
+					if ( 429 === response.status ) {
+						// Retryable, never a reason to mint a fresh
+						// idempotency key/secret pair or to clear the
+						// pending start — the same pair is reused verbatim
+						// on the visitor's next attempt (M06.2 corrective
+						// plan v2 §3.5, ADR-0023 amendment).
+						emit( 'state', { status: 'rate-limited' } );
+						throw { terminal: true };
+					}
 					if ( allowRetry ) {
 						return requestStart( idempotencyKey, secret, false );
 					}
@@ -272,7 +281,21 @@
 			).then(
 				function ( response ) {
 					if ( 200 === response.status ) {
-						return true;
+						// The server's response contract (M06.2 corrective
+						// plan v2 §3.7, ADR-0023 amendment) carries an
+						// optional `delivery` field: 'pending' means the
+						// message is durably stored and will be delivered,
+						// but not yet confirmed sent to Telegram — a
+						// distinct, truthful UI state, never a false
+						// "sent".
+						return response.json().then(
+							function ( data ) {
+								return { pending: data && 'pending' === data.delivery };
+							},
+							function () {
+								return { pending: false };
+							}
+						);
 					}
 					if ( 404 === response.status ) {
 						state.clearAll();
@@ -282,6 +305,10 @@
 					}
 					if ( 400 === response.status ) {
 						emit( 'state', { status: 'transient-failure' } );
+						throw { terminal: true };
+					}
+					if ( 429 === response.status ) {
+						emit( 'state', { status: 'rate-limited' } );
 						throw { terminal: true };
 					}
 					if ( allowRetry ) {
@@ -310,8 +337,8 @@
 
 			return ensureStarted().then( function ( conversation ) {
 				emit( 'state', { status: 'sending' } );
-				return requestSend( conversation, text, idempotencyKey, true ).then( function () {
-					emit( 'state', { status: 'active' } );
+				return requestSend( conversation, text, idempotencyKey, true ).then( function ( result ) {
+					emit( 'state', { status: result.pending ? 'pending' : 'active' } );
 					startPolling();
 					return true;
 				} );
@@ -469,6 +496,8 @@
 		idle: '',
 		sending: 'Sending…',
 		active: '',
+		pending: 'Message received — delivery in progress.',
+		'rate-limited': 'Too many attempts. Please wait a moment and try again.',
 		unavailable: 'Chat is currently unavailable.',
 		'transient-failure': 'Something went wrong. Please try again.',
 		ended: 'This conversation has ended.',

@@ -239,6 +239,80 @@ test( 'a 503 on start clears the pending-start entry and emits the unavailable s
 	assert.equal( state.getPendingStart(), null );
 } );
 
+test( 'a 429 on start emits rate-limited (not transient-failure) and leaves the pending-start entry in place', async () => {
+	const fetch = makeFakeFetch();
+	fetch.queueResponse( jsonResponse( 429, { ok: false, reason: 'rate_limited' } ) );
+
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
+
+	const seen = [];
+	client.on( 'state', ( event ) => seen.push( event.status ) );
+
+	await assert.rejects( client.sendMessage( 'hello' ) );
+
+	assert.ok( seen.includes( 'rate-limited' ) );
+	assert.ok( ! seen.includes( 'transient-failure' ) );
+	assert.ok( state.getPendingStart() );
+} );
+
+test( 'a 429 on message post emits rate-limited (not transient-failure) without ending the conversation', async () => {
+	const fetch = makeFakeFetch();
+	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-1', secret: 'irrelevant' } ) );
+	fetch.queueResponse( jsonResponse( 429, { ok: false, reason: 'rate_limited' } ) );
+
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
+
+	const seen = [];
+	client.on( 'state', ( event ) => seen.push( event.status ) );
+
+	await assert.rejects( client.sendMessage( 'hello' ) );
+
+	assert.ok( seen.includes( 'rate-limited' ) );
+	assert.ok( ! seen.includes( 'transient-failure' ) );
+	assert.ok( ! seen.includes( 'ended' ) );
+	assert.ok( state.getConversation() );
+} );
+
+test( 'a 200 response with delivery=pending emits the pending state, not active', async () => {
+	const fetch = makeFakeFetch();
+	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-1', secret: 'irrelevant' } ) );
+	fetch.queueResponse( jsonResponse( 200, { ok: true, delivery: 'pending', reason: 'temporary_delivery_pending' } ) );
+
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
+
+	const seen = [];
+	client.on( 'state', ( event ) => seen.push( event.status ) );
+
+	await client.sendMessage( 'hello' );
+
+	assert.ok( seen.includes( 'pending' ) );
+	assert.ok( ! seen.includes( 'active' ) );
+} );
+
+test( 'a 200 response with delivery=delivered (or absent) emits the active state', async () => {
+	const fetch = makeFakeFetch();
+	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-1', secret: 'irrelevant' } ) );
+	fetch.queueResponse( jsonResponse( 200, { ok: true, delivery: 'delivered' } ) );
+
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
+
+	const seen = [];
+	client.on( 'state', ( event ) => seen.push( event.status ) );
+
+	await client.sendMessage( 'hello' );
+
+	assert.ok( seen.includes( 'active' ) );
+	assert.ok( ! seen.includes( 'pending' ) );
+} );
+
 test( 'a 404 on message post is terminal: clears all state, stops polling, and emits ended', async () => {
 	const fetch = makeFakeFetch();
 	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-1', secret: 'irrelevant' } ) );
