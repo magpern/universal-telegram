@@ -6,8 +6,10 @@
 namespace UniversalTelegram\Tests\Integration\Telegram\Inbound;
 
 use UniversalTelegram\Audit\AuditLogger;
+use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\OperatorIdentityRepository;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Conversations\ConversationStatus;
 use UniversalTelegram\Conversations\MessageRepository;
@@ -37,21 +39,28 @@ final class WebhookControllerConversationRoutingTest extends WP_UnitTestCase {
 	private ConversationRepository $conversations;
 	private MessageRepository $messages;
 	private DestinationRepository $destinations;
+	private OperatorIdentityRepository $operator_identities;
+	private AuditLogger $audit_logger;
 	private WebhookController $controller;
+
+	public const MAPPED_SENDER_TELEGRAM_ID = 999888777;
 
 	protected function setUp(): void {
 		parent::setUp();
 
 		$this->schema_health = new SchemaHealth();
 		$vault               = new CredentialVault();
-		$audit_logger        = new AuditLogger( $this->schema_health, new Redactor() );
+		$this->audit_logger  = new AuditLogger( $this->schema_health, new Redactor() );
 
-		$this->bots          = new BotProfileRepository( $this->schema_health, $vault );
-		$this->conversations = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
-		$this->messages      = new MessageRepository( $this->schema_health, $vault );
-		$this->destinations  = new DestinationRepository( $this->schema_health );
-		$updates             = new UpdateRepository( $this->schema_health );
-		$verifier            = new WebhookSecretVerifier( $this->bots, $audit_logger );
+		$this->bots                = new BotProfileRepository( $this->schema_health, $vault );
+		$this->conversations       = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
+		$this->messages            = new MessageRepository( $this->schema_health, $vault );
+		$this->destinations        = new DestinationRepository( $this->schema_health );
+		$this->operator_identities = new OperatorIdentityRepository( $this->schema_health );
+		$updates                   = new UpdateRepository( $this->schema_health );
+		$verifier                  = new WebhookSecretVerifier( $this->bots, $this->audit_logger );
+
+		$this->operator_identities->create( 1, self::MAPPED_SENDER_TELEGRAM_ID, 'opuser', 1 );
 
 		$this->controller = new WebhookController(
 			$this->schema_health,
@@ -60,11 +69,13 @@ final class WebhookControllerConversationRoutingTest extends WP_UnitTestCase {
 			$updates,
 			$this->conversations,
 			$this->messages,
-			new ChatProfileResolver( $this->bots, $this->destinations )
+			new ChatProfileResolver( $this->bots, $this->destinations ),
+			$this->operator_identities,
+			$this->audit_logger
 		);
 	}
 
-	private function request( string $bot_uuid, string $secret, int $update_id, string $chat_id, ?int $message_thread_id, string $text ): WP_REST_Request {
+	private function request( string $bot_uuid, string $secret, int $update_id, string $chat_id, ?int $message_thread_id, string $text, ?int $sender_telegram_user_id = self::MAPPED_SENDER_TELEGRAM_ID ): WP_REST_Request {
 		$body = wp_json_encode(
 			array(
 				'update_id' => $update_id,
@@ -73,6 +84,7 @@ final class WebhookControllerConversationRoutingTest extends WP_UnitTestCase {
 						'chat'              => array( 'id' => $chat_id ),
 						'message_thread_id' => $message_thread_id,
 						'text'              => $text,
+						'from'              => null === $sender_telegram_user_id ? null : array( 'id' => $sender_telegram_user_id ),
 					),
 					static function ( $value ) {
 						return null !== $value;
@@ -131,6 +143,57 @@ final class WebhookControllerConversationRoutingTest extends WP_UnitTestCase {
 		$this->assertCount( 1, $messages );
 		$this->assertSame( 'operator', $messages[0]->direction() );
 		$this->assertSame( 'We can help with that.', $this->messages->decrypt( $messages[0] ) );
+		$this->assertSame( self::MAPPED_SENDER_TELEGRAM_ID, $messages[0]->telegram_sender_user_id() );
+	}
+
+	public function test_an_unmapped_sender_captures_nothing_and_transitions_nothing(): void {
+		$fixture = $this->conversation_with_a_created_topic();
+		$bot     = $fixture['bot'];
+
+		$response = $this->controller->handle_request(
+			$this->request( $bot->bot_uuid(), $this->active_secret_for( $bot ), 950, '-100123', 88, 'I am not mapped.', 111222333 )
+		);
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( array(), $this->messages->messages_since( $fixture['conversation']->id(), 0 ) );
+		$this->assertSame( ConversationStatus::OPEN, $this->conversations->find( $fixture['conversation']->id() )->status() );
+	}
+
+	public function test_an_unmapped_sender_records_a_rejection_audit_entry_without_the_raw_telegram_id(): void {
+		$fixture = $this->conversation_with_a_created_topic();
+		$bot     = $fixture['bot'];
+
+		$this->controller->handle_request(
+			$this->request( $bot->bot_uuid(), $this->active_secret_for( $bot ), 951, '-100123', 88, 'I am not mapped.', 111222333 )
+		);
+
+		$audit_log = new AuditLogRepository( $this->schema_health );
+		$entries   = array_values(
+			array_filter(
+				$audit_log->recent( 50 ),
+				static function ( array $entry ): bool {
+					return 'conversation.operator_reply.rejected_unmapped_sender' === $entry['action'];
+				}
+			)
+		);
+
+		$this->assertCount( 1, $entries );
+
+		$context = (string) $entries[0]['context'];
+		$this->assertStringNotContainsString( '111222333', $context );
+		$this->assertStringContainsString( (string) $fixture['conversation']->id(), $context );
+	}
+
+	public function test_a_sender_with_no_from_field_captures_nothing(): void {
+		$fixture = $this->conversation_with_a_created_topic();
+		$bot     = $fixture['bot'];
+
+		$response = $this->controller->handle_request(
+			$this->request( $bot->bot_uuid(), $this->active_secret_for( $bot ), 952, '-100123', 88, 'No sender.', null )
+		);
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( array(), $this->messages->messages_since( $fixture['conversation']->id(), 0 ) );
 	}
 
 	public function test_wrong_chat_id_captures_nothing_and_matches_the_pre_m05_metadata_only_outcome(): void {

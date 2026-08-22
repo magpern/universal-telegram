@@ -8,6 +8,7 @@ namespace UniversalTelegram\Tests\Integration\Telegram\Inbound;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\OperatorIdentityRepository;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Core\Security\CredentialVault;
@@ -68,7 +69,9 @@ final class WebhookControllerTest extends WP_UnitTestCase {
 			$this->updates,
 			$this->conversations,
 			$messages,
-			new ChatProfileResolver( $this->bots, $this->destinations )
+			new ChatProfileResolver( $this->bots, $this->destinations ),
+			new OperatorIdentityRepository( $schema_health ),
+			$audit_logger
 		);
 	}
 
@@ -186,6 +189,8 @@ final class WebhookControllerTest extends WP_UnitTestCase {
 			$this->conversations,
 			new MessageRepository( new SchemaHealth(), new CredentialVault() ),
 			new ChatProfileResolver( $this->bots, $this->destinations ),
+			new OperatorIdentityRepository( new SchemaHealth() ),
+			new AuditLogger( new SchemaHealth(), new Redactor() ),
 			10
 		);
 
@@ -253,7 +258,9 @@ final class WebhookControllerTest extends WP_UnitTestCase {
 			$updates,
 			new ConversationRepository( $degraded, new CredentialVault(), new VisitorTokenGenerator() ),
 			new MessageRepository( $degraded, new CredentialVault() ),
-			new ChatProfileResolver( $bots, new DestinationRepository( $degraded ) )
+			new ChatProfileResolver( $bots, new DestinationRepository( $degraded ) ),
+			new OperatorIdentityRepository( $degraded ),
+			new AuditLogger( $degraded, new Redactor() )
 		);
 
 		$response = $controller->handle_request( $this->request_for( 'anything', 'anything', '{}' ) );

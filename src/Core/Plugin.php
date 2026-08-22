@@ -629,6 +629,8 @@ final class Plugin {
 			$this->conversation_repository,
 			$this->message_repository,
 			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
+			$this->operator_identity_repository,
+			$this->audit_logger,
 			(int) $settings_values['telegram_webhook_max_body_bytes']
 		);
 		add_action( 'rest_api_init', array( $this->webhook_controller, 'register_routes' ) );
