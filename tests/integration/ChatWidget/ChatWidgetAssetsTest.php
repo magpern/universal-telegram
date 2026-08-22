@@ -216,6 +216,47 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'loginUrl', $output );
 	}
 
+	public function test_config_island_reflects_the_anonymous_chat_setting(): void {
+		update_option(
+			Settings::OPTION_NAME,
+			array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true, 'chat_widget_allow_anonymous' => true ) )
+		);
+		$this->make_eligible_destination();
+		wp_set_current_user( 0 );
+
+		$this->go_to( home_url( '/' ) );
+		$assets = $this->assets();
+
+		ob_start();
+		$assets->print_config();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( '"anonymousChatAllowed":true', $output );
+	}
+
+	public function test_config_island_anonymous_chat_setting_stays_identical_across_two_anonymous_requests(): void {
+		update_option(
+			Settings::OPTION_NAME,
+			array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true, 'chat_widget_allow_anonymous' => true ) )
+		);
+		$this->make_eligible_destination();
+		wp_set_current_user( 0 );
+
+		$this->go_to( home_url( '/' ) );
+		$first_assets = $this->assets();
+		ob_start();
+		$first_assets->print_config();
+		$first = ob_get_clean();
+
+		$this->go_to( home_url( '/' ) );
+		$second_assets = $this->assets();
+		ob_start();
+		$second_assets->print_config();
+		$second = ob_get_clean();
+
+		$this->assertSame( $first, $second );
+	}
+
 	public function test_config_island_reflects_logged_in_state_with_a_nonce(): void {
 		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
 		$this->make_eligible_destination();

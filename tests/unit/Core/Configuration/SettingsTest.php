@@ -49,6 +49,19 @@ final class SettingsTest extends TestCase {
 		$this->assertFalse( $settings->sanitize( array( 'chat_widget_enabled' => '' ) )['chat_widget_enabled'] );
 	}
 
+	public function test_defaults_disables_anonymous_chat(): void {
+		$settings = new Settings();
+
+		$this->assertFalse( $settings->defaults()['chat_widget_allow_anonymous'] );
+	}
+
+	public function test_sanitize_recognizes_chat_widget_allow_anonymous(): void {
+		$settings = new Settings();
+
+		$this->assertTrue( $settings->sanitize( array( 'chat_widget_allow_anonymous' => true ) )['chat_widget_allow_anonymous'] );
+		$this->assertFalse( $settings->sanitize( array( 'chat_widget_allow_anonymous' => '' ) )['chat_widget_allow_anonymous'] );
+	}
+
 	public function test_defaults_include_the_m06_3_presentation_fields(): void {
 		$settings = new Settings();
 		$defaults = $settings->defaults();

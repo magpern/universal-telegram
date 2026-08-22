@@ -114,3 +114,16 @@ Supersedes the M06.3 required-name checklist above (that flow no longer exists).
 - [ ] Archival behaviour (including a conversation stuck in `new`) is
       confirmed via a safe test fixture or dry-run evidence — not a real
       30-day wait.
+
+## M06.3.1 addendum — configurable anonymous chat (docs/plans/m06-3-1-authenticated-chat-access-ux-addendum-v1.md, ADR-0025)
+
+- [ ] With "Allow anonymous chat" OFF (default), the logged-out behaviour above is unchanged —
+      no composer appears.
+- [ ] With "Allow anonymous chat" ON, a logged-out visitor's widget shows an enabled composer
+      immediately (no sign-in prompt, no name field, no "Start chat").
+- [ ] An anonymous conversation's Telegram topic title reads "Visitor · <short reference>" — never
+      a real name, IP, or any other identifying detail.
+- [ ] A logged-in visitor's widget still uses the authenticated flow even when "Allow anonymous
+      chat" is ON (no behavioural difference from it being OFF).
+- [ ] Turning "Allow anonymous chat" OFF while an anonymous conversation is mid-session causes that
+      conversation's next message/poll to end gracefully (the existing "ended" state), not an error.

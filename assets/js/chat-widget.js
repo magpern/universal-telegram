@@ -384,7 +384,11 @@
 		}
 
 		function sendMessage( text ) {
-			if ( ! config.loggedIn ) {
+			// M06.3.1 addendum: an anonymous send is permitted only when the
+			// site owner has explicitly enabled it; a logged-in visitor
+			// always uses the authenticated flow above, regardless of this
+			// setting.
+			if ( ! config.loggedIn && ! config.anonymousChatAllowed ) {
 				handleSignedOut();
 				return Promise.reject( { terminal: true } );
 			}
@@ -542,7 +546,23 @@
 		 */
 		function open() {
 			if ( ! config.loggedIn ) {
-				emit( 'state', { status: 'signed-out' } );
+				if ( ! config.anonymousChatAllowed ) {
+					emit( 'state', { status: 'signed-out' } );
+					return;
+				}
+
+				// Anonymous chat has no cross-session resume — GET
+				// /conversations/mine remains authenticated-only always
+				// (M06.3.1 addendum) — so an anonymous visitor either
+				// resumes this tab's own cached conversation or lands on an
+				// empty composer; nothing is looked up server-side here.
+				var anonymous_conversation = state.getConversation();
+				if ( anonymous_conversation ) {
+					emit( 'state', { status: 'active' } );
+					startPolling();
+				} else {
+					emit( 'state', { status: 'idle' } );
+				}
 				return;
 			}
 
@@ -782,7 +802,9 @@
 			form.hidden = false;
 		}
 
-		( config.loggedIn ? showChat : showSignedOut )();
+		// M06.3.1 addendum: an anonymous-allowed logged-out visitor also gets
+		// the composer immediately, not the sign-in view.
+		( config.loggedIn || config.anonymousChatAllowed ? showChat : showSignedOut )();
 
 		// Accessible "New messages" affordance (M06.3.1, ADR-0025): the log
 		// always keeps the newest message visible UNLESS the visitor has
@@ -924,7 +946,7 @@
 			panel.hidden = false;
 			toggleButton.setAttribute( 'aria-expanded', 'true' );
 			lastFocused = doc.activeElement;
-			( config.loggedIn ? input : signinLink ).focus();
+			( config.loggedIn || config.anonymousChatAllowed ? input : signinLink ).focus();
 			panel.addEventListener( 'keydown', onPanelKeydown );
 			client.open();
 		}
@@ -1025,6 +1047,18 @@
 	 * panel is open, and opening is always the visitor's own action, never
 	 * automatic (privacy-minimal).
 	 */
+	var activeWidget = null;
+
+	/**
+	 * Supported cross-plugin entry: opens the chat panel when the widget is
+	 * mounted on this page. No-op when assets/config are absent.
+	 */
+	function openChatFromExternal() {
+		if ( activeWidget && typeof activeWidget.open === 'function' ) {
+			activeWidget.open();
+		}
+	}
+
 	function boot() {
 		var config = readConfig();
 		if ( ! config || ! window.document || ! window.document.body ) {
@@ -1035,7 +1069,14 @@
 		var client = createClient( state, config );
 		var widget = buildWidget( client, config );
 
+		activeWidget = widget;
 		window.document.body.appendChild( widget.root );
+
+		window.UniversalTelegramChat = {
+			open: openChatFromExternal,
+		};
+
+		window.document.addEventListener( 'universal-telegram:open-chat', openChatFromExternal );
 	}
 
 	if ( window.document ) {

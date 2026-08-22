@@ -631,7 +631,8 @@ final class Plugin {
 			$this->topic_creation_dispatcher,
 			$conversation_outbound_dispatcher,
 			$immediate_delivery_attempt,
-			$prompt_delivery_fallback
+			$prompt_delivery_fallback,
+			$settings
 		);
 		add_action( 'rest_api_init', array( $this->conversations_controller, 'register_routes' ) );
 

@@ -612,3 +612,73 @@ test( 'poll backoff doubles on transient failure and resets on success', async (
 
 	client.stopPolling();
 } );
+
+// -- M06.3.1 addendum: configurable anonymous chat --------------------
+
+const ANONYMOUS_CONFIG = { restUrl: 'https://example.test/wp-json/universal-telegram/v1', loggedIn: false, nonce: null, anonymousChatAllowed: true };
+
+test( 'sendMessage succeeds anonymously when anonymousChatAllowed is true, with no logged-in user', async () => {
+	const fetch = makeFakeFetch();
+	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-anon-1', secret: 'irrelevant' } ) );
+	fetch.queueResponse( jsonResponse( 200, { ok: true } ) );
+
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, ANONYMOUS_CONFIG );
+
+	await client.sendMessage( 'hello anonymously' );
+
+	assert.equal( state.getConversation().uuid, 'uuid-anon-1' );
+} );
+
+test( 'sendMessage is rejected without any fetch when logged out and anonymousChatAllowed is false', async () => {
+	const fetch = makeFakeFetch();
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, { ...ANONYMOUS_CONFIG, anonymousChatAllowed: false } );
+
+	const seen = [];
+	client.on( 'state', ( event ) => seen.push( event.status ) );
+
+	await assert.rejects( client.sendMessage( 'hello' ) );
+
+	assert.equal( fetch.calls.length, 0 );
+	assert.ok( seen.includes( 'signed-out' ) );
+} );
+
+test( 'open() when anonymous chat is allowed never calls GET /conversations/mine', async () => {
+	const fetch = makeFakeFetch();
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, ANONYMOUS_CONFIG );
+
+	const seen = [];
+	client.on( 'state', ( event ) => seen.push( event.status ) );
+
+	client.open();
+
+	assert.equal( fetch.calls.length, 0, 'mine remains authenticated-only and must never be called anonymously' );
+	assert.deepEqual( seen, [ 'idle' ] );
+} );
+
+test( 'open() with an anonymous conversation already cached resumes polling without calling mine', async () => {
+	const fetch = makeFakeFetch();
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	state.setConversation( 'uuid-anon-cached', 'a'.repeat( 64 ) );
+
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, ANONYMOUS_CONFIG );
+
+	fetch.queueResponse( jsonResponse( 200, { ok: true, status: 'open', messages: [] } ) );
+
+	const seen = [];
+	client.on( 'state', ( event ) => seen.push( event.status ) );
+
+	client.open();
+	await flush();
+
+	assert.ok( seen.includes( 'active' ) );
+	assert.ok( fetch.calls.every( ( call ) => ! call.url.includes( '/conversations/mine' ) ) );
+
+	client.stopPolling();
+} );

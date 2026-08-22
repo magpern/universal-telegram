@@ -137,6 +137,10 @@ final class ChatWidgetAssets {
 			'nonce'         => $logged_in ? wp_create_nonce( 'wp_rest' ) : null,
 			'loginUrl'      => $this->account_urls->login_url( $return_url ),
 			'registerUrl'   => $this->account_urls->register_url( $return_url ),
+			// Identical for every anonymous visitor of a given page — a
+			// pure function of stored settings like geometry/preset above,
+			// so it stays cache-safe (M06.3.1 addendum).
+			'anonymousChatAllowed' => (bool) $values['chat_widget_allow_anonymous'],
 		);
 
 		printf(

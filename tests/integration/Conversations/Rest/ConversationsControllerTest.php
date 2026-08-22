@@ -16,6 +16,7 @@ use UniversalTelegram\Conversations\Rest\ConversationsController;
 use UniversalTelegram\Conversations\TopicCreationDispatcher;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Audit\AuditLogger;
+use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
@@ -52,6 +53,13 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 
 	protected function setUp(): void {
 		parent::setUp();
+
+		// Explicit reset, not an assumption: another test's DDL elsewhere in
+		// the same process can defeat WP_UnitTestCase's normal per-test
+		// rollback for plain option writes (see the M06.3.1 migration test
+		// fixes for the same root cause), so this must not rely on the
+		// Settings default alone.
+		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_allow_anonymous' => false ) ) );
 
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
@@ -121,7 +129,8 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 			new TopicCreationDispatcher( $this->conversations, $dispatcher ),
 			new ConversationOutboundDispatcher( $dispatcher ),
 			$immediate_attempt,
-			$prompt_fallback
+			$prompt_fallback,
+			new Settings()
 		);
 	}
 
@@ -177,6 +186,11 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		}
 
 		return $request;
+	}
+
+	private function allow_anonymous_chat( bool $allow ): void {
+		$settings = new Settings();
+		update_option( Settings::OPTION_NAME, array_merge( $settings->get(), array( 'chat_widget_allow_anonymous' => $allow ) ) );
 	}
 
 	private function started_conversation(): array {
@@ -772,5 +786,131 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$response = $this->controller->handle_mine( $this->mine_request() );
 
 		$this->assertNull( $response->get_data()['conversation_uuid'] );
+	}
+
+	// -- M06.3.1 addendum: configurable anonymous chat -------------------
+
+	public function test_start_anonymous_is_rejected_when_the_setting_is_off(): void {
+		$this->allow_anonymous_chat( false );
+		wp_set_current_user( 0 );
+		$this->bots->create( 'Support Bot', 'token' );
+
+		$response = $this->controller->handle_start( $this->start_request( null, null, null, false ) );
+
+		$this->assertSame( 401, $response->get_status() );
+		$this->assertSame( 'auth_required', $response->get_data()['reason'] );
+	}
+
+	public function test_start_anonymous_succeeds_with_no_nonce_when_the_setting_is_on(): void {
+		$this->allow_anonymous_chat( true );
+		wp_set_current_user( 0 );
+		$this->bots->create( 'Support Bot', 'token' );
+
+		$response = $this->controller->handle_start( $this->start_request( null, null, null, false ) );
+		$data     = $response->get_data();
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertNotEmpty( $data['conversation_uuid'] );
+
+		$conversation = $this->conversations->find_by_uuid( $data['conversation_uuid'] );
+		$this->assertNull( $conversation->owner_user_id() );
+		$this->assertSame( 'Visitor', $this->conversations->decrypt_display_name( $conversation ) );
+	}
+
+	public function test_start_never_falls_back_to_anonymous_for_a_logged_in_user_even_when_the_setting_is_on(): void {
+		$this->allow_anonymous_chat( true );
+		$this->bots->create( 'Support Bot', 'token' );
+
+		$response     = $this->controller->handle_start( $this->start_request() );
+		$conversation = $this->conversations->find_by_uuid( $response->get_data()['conversation_uuid'] );
+
+		$this->assertSame( $this->user_id, $conversation->owner_user_id() );
+		$this->assertSame( 'Alice', $this->conversations->decrypt_display_name( $conversation ) );
+	}
+
+	public function test_start_anonymous_replay_does_not_cross_with_an_owned_conversations_key(): void {
+		$this->allow_anonymous_chat( true );
+		$this->bots->create( 'Support Bot', 'token' );
+
+		$key    = wp_generate_uuid4();
+		$secret = bin2hex( random_bytes( 32 ) );
+
+		$owned = $this->controller->handle_start( $this->start_request( null, $key, $secret ) );
+		$this->assertSame( 200, $owned->get_status() );
+
+		wp_set_current_user( 0 );
+		$anonymous_replay = $this->controller->handle_start( $this->start_request( null, $key, $secret, false ) );
+
+		$this->assertSame( 400, $anonymous_replay->get_status() );
+	}
+
+	public function test_anonymous_conversation_message_and_poll_succeed_with_no_nonce_when_the_setting_is_on(): void {
+		$this->allow_anonymous_chat( true );
+		wp_set_current_user( 0 );
+		$this->bots->create( 'Support Bot', 'token' );
+
+		$started = $this->controller->handle_start( $this->start_request( null, null, null, false ) )->get_data();
+
+		$post = $this->controller->handle_post_message(
+			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello' ) ), false )
+		);
+		$this->assertSame( 200, $post->get_status() );
+
+		$poll = $this->controller->handle_poll( $this->poll_request( $started['conversation_uuid'], $started['secret'], 0, false ) );
+		$this->assertSame( 200, $poll->get_status() );
+	}
+
+	public function test_anonymous_conversation_message_is_rejected_uniformly_once_the_setting_is_disabled(): void {
+		$this->allow_anonymous_chat( true );
+		wp_set_current_user( 0 );
+		$this->bots->create( 'Support Bot', 'token' );
+
+		$started = $this->controller->handle_start( $this->start_request( null, null, null, false ) )->get_data();
+
+		$this->allow_anonymous_chat( false );
+
+		$response = $this->controller->handle_post_message(
+			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello' ) ), false )
+		);
+
+		$this->assertSame( 404, $response->get_status() );
+		$this->assertSame(
+			array(
+				'ok'     => false,
+				'reason' => 'conversation_expired',
+			),
+			$response->get_data(),
+			'Disabling anonymous chat must reject with the identical non-disclosing 404, never a distinguishing detail.'
+		);
+	}
+
+	public function test_anonymous_conversation_poll_is_rejected_uniformly_when_the_setting_was_never_enabled(): void {
+		$this->bots->create( 'Support Bot', 'token' );
+		$anonymous = $this->conversations->create( 'uuid-anon-never-enabled', $this->tokens->hash( 'anon-secret' ), 1, null, null, null, 'Visitor' );
+
+		wp_set_current_user( 0 );
+		$response = $this->controller->handle_poll( $this->poll_request( $anonymous->conversation_uuid(), 'anon-secret', 0, false ) );
+
+		$this->assertSame( 404, $response->get_status() );
+	}
+
+	public function test_an_owned_conversation_still_requires_the_nonce_even_when_anonymous_chat_is_on(): void {
+		$this->allow_anonymous_chat( true );
+		$started = $this->started_conversation();
+
+		$response = $this->controller->handle_post_message(
+			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Hello' ) ), false )
+		);
+
+		$this->assertSame( 401, $response->get_status() );
+	}
+
+	public function test_mine_stays_authenticated_only_regardless_of_the_anonymous_setting(): void {
+		$this->allow_anonymous_chat( true );
+		wp_set_current_user( 0 );
+
+		$response = $this->controller->handle_mine( $this->mine_request( null, false ) );
+
+		$this->assertSame( 401, $response->get_status() );
 	}
 }

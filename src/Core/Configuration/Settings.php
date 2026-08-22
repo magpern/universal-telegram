@@ -73,6 +73,7 @@ final class Settings {
 			'chat_widget_motion_default'                  => 'standard',
 			'chat_widget_participant_label_visitor'       => 'You',
 			'chat_widget_participant_label_operator'      => 'Support',
+			'chat_widget_allow_anonymous'                 => false,
 		);
 	}
 
@@ -104,6 +105,7 @@ final class Settings {
 			'visitor_family_commerce',
 			'visitor_exclude_administrators',
 			'chat_widget_enabled',
+			'chat_widget_allow_anonymous',
 		);
 
 		foreach ( $boolean_fields as $field ) {

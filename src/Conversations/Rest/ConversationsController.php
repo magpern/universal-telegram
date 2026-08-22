@@ -22,6 +22,7 @@ use UniversalTelegram\Conversations\PromptDeliveryFallback;
 use UniversalTelegram\Conversations\ResponseReason;
 use UniversalTelegram\Conversations\TopicCreationDispatcher;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
+use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
 use WP_REST_Request;
@@ -56,6 +57,13 @@ final class ConversationsController {
 
 	// Fixed, generic, never username/email/numeric id (M06.3.1, ADR-0025).
 	private const FALLBACK_DISPLAY_NAME = 'Member';
+
+	// Fixed, generic, non-PII identity for an anonymous conversation
+	// (M06.3.1 addendum) — never the visitor's IP, user agent, or anything
+	// else. ConversationDisplay::topic_title() already appends the
+	// non-secret short reference on top of this, producing exactly
+	// "Visitor · <short_ref>".
+	private const ANONYMOUS_DISPLAY_NAME = 'Visitor';
 
 	private const MINE_SCOPE    = 'conv_mine';
 	private const MINE_CAPACITY = 30.0;
@@ -118,6 +126,7 @@ final class ConversationsController {
 	 * @param ConversationOutboundDispatcher $outbound          Queue-before-topic visitor-to-Telegram routing dispatch.
 	 * @param ImmediateDeliveryAttempt       $immediate_attempt  The bounded, claim-protected primary delivery mechanism (M06.2 corrective plan v2 §3.2, ADR-0023 amendment).
 	 * @param PromptDeliveryFallback         $prompt_fallback     The host-independent bounded second-layer fallback (§3.3); owns its own ExpeditedDispatchTrigger reference for the final, demoted best-effort nudge (§3.4).
+	 * @param Settings                       $settings            Reads chat_widget_allow_anonymous (M06.3.1 addendum).
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
@@ -129,7 +138,8 @@ final class ConversationsController {
 		private readonly TopicCreationDispatcher $topic_creation,
 		private readonly ConversationOutboundDispatcher $outbound,
 		private readonly ImmediateDeliveryAttempt $immediate_attempt,
-		private readonly PromptDeliveryFallback $prompt_fallback
+		private readonly PromptDeliveryFallback $prompt_fallback,
+		private readonly Settings $settings
 	) {}
 
 	/**
@@ -209,7 +219,19 @@ final class ConversationsController {
 			);
 		}
 
-		if ( ! $this->authenticate_session( $request ) ) {
+		// Auth-branch selection (M06.3.1 addendum): a logged-in visitor
+		// always uses the authenticated flow, unconditionally — never the
+		// anonymous one, regardless of chat_widget_allow_anonymous. A
+		// logged-out visitor may start anonymously only when that setting
+		// is enabled; no nonce is required or checked on the anonymous
+		// path (a public, cacheable page cannot safely carry one).
+		$anonymous = ! is_user_logged_in();
+
+		if ( $anonymous ) {
+			if ( ! (bool) $this->settings->get()['chat_widget_allow_anonymous'] ) {
+				return $this->auth_required();
+			}
+		} elseif ( ! $this->authenticate_session( $request ) ) {
 			return $this->auth_required();
 		}
 
@@ -274,9 +296,15 @@ final class ConversationsController {
 		$existing = $this->conversations->find_by_start_idempotency_key( $idempotency_key );
 
 		if ( null !== $existing ) {
+			// The expected owner is null for an anonymous replay, or the
+			// current user for an authenticated one — a single condition
+			// that naturally also rejects an anonymous request replaying an
+			// owned conversation's key, and vice versa.
+			$expected_owner = $anonymous ? null : get_current_user_id();
+
 			if ( null === $existing->secret_hash()
 				|| ! $this->tokens->verify( $presented_secret, $existing->secret_hash() )
-				|| $existing->owner_user_id() !== get_current_user_id()
+				|| $existing->owner_user_id() !== $expected_owner
 			) {
 				$this->rate_limiter->try_consume( self::AUTH_FAIL_CLIENT_SCOPE, $this->client_scope_id( 'hour' ), self::AUTH_FAIL_CLIENT_CAPACITY, self::AUTH_FAIL_CLIENT_REFILL );
 
@@ -321,6 +349,43 @@ final class ConversationsController {
 					'reason' => ResponseReason::REQUEST_FAILED->value,
 				),
 				null === $chat_profile ? 503 : 400
+			);
+		}
+
+		if ( $anonymous ) {
+			// The pre-M06.3.1 (M05/M06.2) anonymous model, unchanged: no
+			// owner, no concurrency slot (owner_active_slot's own generated
+			// CASE requires owner_user_id IS NOT NULL, so an anonymous row
+			// never occupies or contends for it), a fixed non-PII identity
+			// — never the visitor's IP, user agent, or anything else
+			// (M06.3.1 addendum).
+			$conversation = $this->conversations->create(
+				$this->tokens->generate_uuid(),
+				$this->tokens->hash( $presented_secret ),
+				$bot->id(),
+				$chat_profile,
+				$idempotency_key,
+				null,
+				self::ANONYMOUS_DISPLAY_NAME
+			);
+
+			if ( null === $conversation ) {
+				return $this->respond(
+					array(
+						'ok'     => false,
+						'reason' => ResponseReason::REQUEST_FAILED->value,
+					),
+					503
+				);
+			}
+
+			return $this->respond(
+				array(
+					'ok'                => true,
+					'conversation_uuid' => $conversation->conversation_uuid(),
+					'secret'            => $presented_secret,
+				),
+				200
 			);
 		}
 
@@ -458,18 +523,25 @@ final class ConversationsController {
 			);
 		}
 
-		if ( ! $this->authenticate_session( $request ) ) {
-			return $this->auth_required();
-		}
-
 		if ( ! $this->rate_limiter->try_consume( self::POST_SITE_SCOPE, 0, self::POST_SITE_CAPACITY, self::POST_SITE_REFILL ) ) {
 			return $this->rate_limited();
 		}
 
+		// Ownership is resolved from the conversation itself, not assumed
+		// up front (M06.3.1 addendum): an owned conversation requires
+		// cookie+nonce+owner match; an anonymous one requires only that
+		// anonymous chat currently be enabled — see
+		// authorize_conversation_access().
 		$conversation = $this->authenticate( $request );
 
 		if ( null === $conversation ) {
 			return $this->controlled_not_found();
+		}
+
+		$authorized = $this->authorize_conversation_access( $conversation, $request );
+
+		if ( true !== $authorized ) {
+			return $authorized;
 		}
 
 		if ( ! $this->rate_limiter->try_consume( self::POST_CONVERSATION_SCOPE, $conversation->id(), self::POST_CONVERSATION_CAPACITY, self::POST_CONVERSATION_REFILL ) ) {
@@ -598,10 +670,6 @@ final class ConversationsController {
 			);
 		}
 
-		if ( ! $this->authenticate_session( $request ) ) {
-			return $this->auth_required();
-		}
-
 		if ( ! $this->rate_limiter->try_consume( self::POLL_SITE_SCOPE, 0, self::POLL_SITE_CAPACITY, self::POLL_SITE_REFILL ) ) {
 			return $this->rate_limited();
 		}
@@ -610,6 +678,12 @@ final class ConversationsController {
 
 		if ( null === $conversation ) {
 			return $this->controlled_not_found();
+		}
+
+		$authorized = $this->authorize_conversation_access( $conversation, $request );
+
+		if ( true !== $authorized ) {
+			return $authorized;
 		}
 
 		if ( ! $this->rate_limiter->try_consume( self::POLL_CONVERSATION_SCOPE, $conversation->id(), self::POLL_CONVERSATION_CAPACITY, self::POLL_CONVERSATION_REFILL ) ) {
@@ -674,18 +748,48 @@ final class ConversationsController {
 			return null;
 		}
 
-		// Ownership check (M06.3.1, ADR-0025): the bearer secret alone is no
-		// longer sufficient. A returning authenticated user must never read
-		// or post to another user's conversation, including via a guessed
-		// UUID or stale session state — this closes that gap even in the
-		// (already narrow) case where a bearer secret is somehow known.
-		// Legacy ownerless rows (owner_user_id === null) never match any
-		// authenticated caller, by construction.
-		if ( $conversation->owner_user_id() !== get_current_user_id() ) {
-			return null;
+		return $conversation;
+	}
+
+	/**
+	 * Decides whether an already bearer-secret-verified conversation (see
+	 * authenticate()) may actually be accessed, and by what rule (M06.3.1
+	 * addendum). An owned conversation (owner_user_id not null) additionally
+	 * requires a valid cookie session + nonce and an owner match — a
+	 * missing/invalid session returns the distinct `auth_required` 401
+	 * (the caller has already proven secret possession, so this reveals
+	 * nothing new), while an owner mismatch returns the uniform, non-
+	 * disclosing controlled_not_found() 404, exactly as before. An
+	 * anonymous conversation (owner_user_id null) requires only that
+	 * chat_widget_allow_anonymous currently be enabled — no nonce is ever
+	 * required for it; if the setting is off (including for a conversation
+	 * created while it was previously on), the identical non-disclosing 404
+	 * is returned, never a distinguishing signal that the conversation
+	 * exists.
+	 *
+	 * @param Conversation     $conversation The bearer-secret-verified conversation.
+	 * @param WP_REST_Request  $request      The inbound request.
+	 *
+	 * @return WP_REST_Response|true True when access is authorized.
+	 */
+	private function authorize_conversation_access( Conversation $conversation, WP_REST_Request $request ) {
+		if ( null !== $conversation->owner_user_id() ) {
+			if ( ! $this->authenticate_session( $request ) ) {
+				return $this->auth_required();
+			}
+
+			if ( $conversation->owner_user_id() !== get_current_user_id() ) {
+				return $this->controlled_not_found();
+			}
+
+			return true;
 		}
 
-		return $conversation;
+		if ( ! (bool) $this->settings->get()['chat_widget_allow_anonymous'] ) {
+			return $this->controlled_not_found();
+		}
+
+		return true;
 	}
 
 	/**

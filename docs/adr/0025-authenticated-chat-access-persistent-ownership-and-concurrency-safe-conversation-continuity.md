@@ -86,6 +86,46 @@ requiring authentication.
   charter's accessibility requirement without regressing the existing keyboard/focus/ARIA/
   reduced-motion posture ADR-0024 already established.
 
+### Addendum — configurable anonymous chat policy
+
+The above authenticated-only model is the unconditional default and remains fully intact. A new
+`Settings` field, `chat_widget_allow_anonymous` (default `false`), lets a site owner additionally
+allow anonymous chat, independent of whether chat is enabled at all. This is a configurable
+*addition*, not a relaxation: every guarantee above (persistent ownership, the concurrency index,
+explicit CSRF, server-derived identity) stays unconditional for every authenticated visitor, in
+every configuration.
+
+- **Per-request branch, not a global mode switch.** `is_user_logged_in()` decides the branch, not
+  the setting alone: a logged-in visitor always uses the authenticated flow above, regardless of
+  `chat_widget_allow_anonymous` — never a fallback to anonymous. A logged-out visitor uses the
+  anonymous flow only when the setting is on; otherwise the unchanged `auth_required` 401.
+- **The anonymous flow is the pre-M06.3.1 (M05/M06.2) bearer-secret model, reused verbatim**, not a
+  new credential mechanism: a client-generated secret via the existing
+  `X-Universal-Telegram-Conversation-Secret` header, the same rate-limit scopes
+  (`START_SITE`/`START_CLIENT_HOUR`/`START_CLIENT_DAY`/`AUTH_FAIL_CLIENT`/`POST_*`/`POLL_*`), and no
+  `X-WP-Nonce` requirement at all — a public, cacheable page cannot safely carry a per-visitor
+  nonce. `owner_user_id` is `null` for these rows, so the generated `owner_active_slot` column's own
+  `CASE` (`owner_user_id IS NOT NULL`) already excludes them from the concurrency guarantee — no
+  schema change, no new index, no new table.
+- **Authorization for `messages`/`poll` is resolved from the conversation itself.** The bearer
+  secret is verified first (unchanged); an owned conversation (`owner_user_id` not null) then
+  requires cookie + nonce + owner match exactly as before; an anonymous conversation
+  (`owner_user_id` null) requires only that `chat_widget_allow_anonymous` currently be `true` — if
+  it is not (including for a conversation created while it was previously on), the identical
+  non-disclosing `controlled_not_found()` 404 is returned, never a distinguishing signal.
+- **`GET /conversations/mine` remains authenticated-only, unconditionally**, in every configuration
+  of this setting — it has no meaning for a per-tab, non-resumable anonymous credential.
+- **No visitor-entered name for either flow.** An anonymous conversation's display name is the
+  fixed literal `"Visitor"` — no PII, ever. The existing `ConversationDisplay::topic_title()`
+  reuse already appends the short reference, producing `Visitor · <short_ref>`.
+- **No merge or claim on later login.** `owner_user_id` is set once at creation and never
+  reassigned by any code path; an anonymous conversation a visitor later authenticates for remains
+  permanently separate, architecturally identical to a legacy M05–M06.3 row.
+- **Cache safety unchanged in kind.** `chat_widget_allow_anonymous`'s value is identical for every
+  anonymous visitor of a given page (a pure function of stored settings, like the existing preset/
+  geometry fields) — safe to add to the static config island as `anonymousChatAllowed`, carrying no
+  personalized data itself.
+
 ## Alternatives
 
 - *Weaken or replace the bearer secret with WordPress authentication alone.* Rejected: the task
@@ -149,8 +189,10 @@ unchanged in shape). ADR-0021 (amended: adds `owner_user_id` and the `owner_acti
 concurrency index to the conversations table; the bearer-secret protocol itself is unchanged).
 ADR-0022 (amended: the config island gains `loggedIn`/`nonce`/`loginUrl`/`registerUrl`; the
 cache-safety guarantee is clarified as scoped to anonymous visitors, who all still see identical
-content). M06.4/M06.5 (inherit `owner_user_id` as a reliable identity key). M07 (inherits a
-guest-chat-free, always-identified conversation model).
+content; the addendum's `anonymousChatAllowed` field is identical among that same anonymous
+audience too). M06.4/M06.5 (inherit `owner_user_id` as a reliable identity key, and note that an
+anonymous conversation's `owner_user_id` stays `null` even where the addendum is enabled). M07
+(inherits a guest-chat-optional, still-account-aware conversation model).
 
 ## Compatibility/Migration Impact
 
@@ -164,3 +206,7 @@ consequence of removing guest chat, not a data-loss event. No existing column is
 removed; `display_name_ciphertext`, `store_display_name()`, and `display_name_required()` remain in
 place as the underlying encryption/write-once primitives, now populated at creation time rather
 than via the removed first-message step.
+
+The addendum itself introduces no schema change: one new `Settings` boolean
+(`chat_widget_allow_anonymous`, default `false`), reusing the existing `owner_user_id IS NULL`
+semantics unchanged. `db_version` stays at 16.

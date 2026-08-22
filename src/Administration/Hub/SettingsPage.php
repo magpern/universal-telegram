@@ -127,6 +127,15 @@ class SettingsPage {
 			checked( ! empty( $values['chat_widget_enabled'] ), true, false ) . ' /> ' .
 			esc_html__( 'Enable chat widget', 'universal-telegram' ) . '</label></p>';
 
+		// Independent of chat_widget_enabled (M06.3.1 addendum): chat can be
+		// enabled site-wide while remaining authenticated-only, which is the
+		// default combination (this checkbox defaults OFF). Logged-in
+		// visitors always use the stronger authenticated flow regardless of
+		// this setting.
+		echo '<p><label><input type="checkbox" name="universal_telegram_settings[chat_widget_allow_anonymous]" value="1" ' .
+			checked( ! empty( $values['chat_widget_allow_anonymous'] ), true, false ) . ' /> ' .
+			esc_html__( 'Allow anonymous chat', 'universal-telegram' ) . '</label></p>';
+
 		echo '<table class="form-table"><tbody>';
 
 		$this->render_select_field(
