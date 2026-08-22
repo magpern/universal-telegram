@@ -13,6 +13,8 @@ use UniversalTelegram\Administration\Automations\RuleBuilderPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderRequestHandler;
 use UniversalTelegram\Administration\Automations\RuleSimulatorPage;
 use UniversalTelegram\Administration\Conversations\ConversationActionHandler;
+use UniversalTelegram\Administration\Conversations\ConversationDetailPage;
+use UniversalTelegram\Administration\Conversations\ConversationInboxPage;
 use UniversalTelegram\Administration\Conversations\OperatorIdentityPage;
 use UniversalTelegram\Administration\Conversations\OperatorIdentityRequestHandler;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
@@ -365,6 +367,20 @@ final class Plugin {
 	 * @var ConversationActionHandler|null
 	 */
 	private ?ConversationActionHandler $conversation_action_handler = null;
+
+	/**
+	 * The operator conversation detail page, constructed by init() (M07, docs/adr/0026).
+	 *
+	 * @var ConversationDetailPage|null
+	 */
+	private ?ConversationDetailPage $conversation_detail_page = null;
+
+	/**
+	 * The operator conversation inbox page, constructed by init() (M07, docs/adr/0026).
+	 *
+	 * @var ConversationInboxPage|null
+	 */
+	private ?ConversationInboxPage $conversation_inbox_page = null;
 
 	/**
 	 * The public visitor conversation REST controller, constructed by init().
@@ -1138,6 +1154,25 @@ final class Plugin {
 		);
 		add_action( 'admin_post_' . ConversationActionHandler::ADMIN_POST_ACTION, array( $this->conversation_action_handler, 'handle_request' ) );
 
+		// Operator inbox + detail view (M07, docs/adr/0026): unread badge,
+		// own-availability control, status-filtered/paginated list, and the
+		// message/note detail view with mark-seen-on-view.
+		$this->conversation_detail_page = new ConversationDetailPage(
+			$this->conversation_repository,
+			$this->message_repository,
+			$this->conversation_note_repository,
+			$this->operator_identity_repository
+		);
+		$this->conversation_inbox_page  = new ConversationInboxPage(
+			$this->conversation_repository,
+			$this->operator_identity_repository,
+			$this->operator_availability_repository,
+			$this->conversation_detail_page
+		);
+		$this->hub_tab_registry->register(
+			new Tab( ConversationInboxPage::TAB_ID, __( 'Conversations', 'universal-telegram' ), CapabilityRegistrar::MANAGE_CONVERSATIONS, array( $this->conversation_inbox_page, 'render_tab_content' ) )
+		);
+
 		$this->hub_tab_registry->register(
 			new Tab( 'diagnostics', __( 'Diagnostics', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->diagnostics_page, 'render_tab_content' ) )
 		);
@@ -1388,6 +1423,20 @@ final class Plugin {
 	 */
 	public function conversation_action_handler(): ?ConversationActionHandler {
 		return $this->conversation_action_handler;
+	}
+
+	/**
+	 * The operator conversation detail page. Available only after init() has run.
+	 */
+	public function conversation_detail_page(): ?ConversationDetailPage {
+		return $this->conversation_detail_page;
+	}
+
+	/**
+	 * The operator conversation inbox page. Available only after init() has run.
+	 */
+	public function conversation_inbox_page(): ?ConversationInboxPage {
+		return $this->conversation_inbox_page;
 	}
 
 	/**

@@ -450,4 +450,88 @@ final class ConversationRepositoryTest extends WP_UnitTestCase {
 		$refreshed = $repo->find( $other_conversation->id() );
 		$this->assertSame( 56, $refreshed->assigned_operator_id() );
 	}
+
+	public function test_mark_seen_records_the_highest_seen_message_id(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-unread-1', 'hash', 1, null );
+
+		$marked = $repo->mark_seen( $conversation->id(), 42 );
+
+		$this->assertTrue( $marked );
+		$this->assertSame( 42, $repo->find( $conversation->id() )->assignee_last_seen_message_id() );
+	}
+
+	public function test_unread_assigned_conversations_includes_a_conversation_with_no_seen_marker(): void {
+		$repo         = $this->repository();
+		$messages     = new \UniversalTelegram\Conversations\MessageRepository( new \UniversalTelegram\Persistence\SchemaHealth(), new \UniversalTelegram\Core\Security\CredentialVault() );
+		$conversation = $repo->create( 'uuid-unread-2', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 60 );
+		$messages->create( $conversation->id(), 'visitor', 'Hello' );
+
+		$unread = $repo->unread_assigned_conversations( 60 );
+
+		$this->assertCount( 1, $unread );
+		$this->assertSame( $conversation->id(), $unread[0]->id() );
+	}
+
+	public function test_unread_assigned_conversations_excludes_a_conversation_fully_seen(): void {
+		$repo         = $this->repository();
+		$messages     = new \UniversalTelegram\Conversations\MessageRepository( new \UniversalTelegram\Persistence\SchemaHealth(), new \UniversalTelegram\Core\Security\CredentialVault() );
+		$conversation = $repo->create( 'uuid-unread-3', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 61 );
+		$message = $messages->create( $conversation->id(), 'visitor', 'Hello' );
+		$repo->mark_seen( $conversation->id(), $message->id() );
+
+		$unread = $repo->unread_assigned_conversations( 61 );
+
+		$this->assertSame( array(), $unread );
+	}
+
+	public function test_unread_assigned_conversations_excludes_another_operators_conversation(): void {
+		$repo         = $this->repository();
+		$messages     = new \UniversalTelegram\Conversations\MessageRepository( new \UniversalTelegram\Persistence\SchemaHealth(), new \UniversalTelegram\Core\Security\CredentialVault() );
+		$conversation = $repo->create( 'uuid-unread-4', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 62 );
+		$messages->create( $conversation->id(), 'visitor', 'Hello' );
+
+		$unread = $repo->unread_assigned_conversations( 63 );
+
+		$this->assertSame( array(), $unread );
+	}
+
+	public function test_reassignment_resets_unread_state_by_clearing_the_seen_marker(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-unread-5', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 70 );
+		$repo->mark_seen( $conversation->id(), 5 );
+
+		// clear_assignment_for_operator is the existing, ADR-0026-specified
+		// mechanism that resets assignee_last_seen_message_id to NULL; the
+		// new assign_with_expected() (WP7) reuses the same reset on every
+		// reassignment.
+		$repo->clear_assignment_for_operator( 70 );
+
+		$this->assertNull( $repo->find( $conversation->id() )->assignee_last_seen_message_id() );
+	}
+
+	public function test_for_inbox_filters_by_status(): void {
+		$repo = $this->repository();
+		$open = $repo->create( 'uuid-inbox-open', 'hash', 1, null );
+		$repo->transition( $open->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+		$repo->create( 'uuid-inbox-new', 'hash', 1, null );
+
+		$found = $repo->for_inbox( ConversationStatus::OPEN );
+
+		$ids = array_map( static fn( $c ) => $c->id(), $found );
+		$this->assertContains( $open->id(), $ids );
+	}
+
+	public function test_for_inbox_with_no_status_returns_every_status(): void {
+		$repo = $this->repository();
+		$repo->create( 'uuid-inbox-all-1', 'hash', 1, null );
+
+		$found = $repo->for_inbox( null, 1000, 0 );
+
+		$this->assertNotEmpty( $found );
+	}
 }

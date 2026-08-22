@@ -743,6 +743,124 @@ class ConversationRepository {
 	}
 
 	/**
+	 * Records that the currently assigned operator has viewed up to a given
+	 * message id — the sole write path for `assignee_last_seen_message_id`
+	 * outside of assignment/reassignment itself (M07, docs/adr/0026
+	 * decision 5). Called when that operator opens the conversation detail
+	 * view.
+	 *
+	 * @param int $id         The conversation's primary key.
+	 * @param int $message_id The highest message id the operator has now seen.
+	 *
+	 * @return bool
+	 */
+	public function mark_seen( int $id, int $message_id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array( 'assignee_last_seen_message_id' => $message_id ),
+			array( 'id' => $id ),
+			array( '%d' ),
+			array( '%d' )
+		);
+
+		return false !== $updated;
+	}
+
+	/**
+	 * Every conversation currently assigned to a given operator with at
+	 * least one visitor message newer than that operator's own
+	 * assignee_last_seen_message_id (or any, if it is still NULL) — the
+	 * sole derivation of "unread" this plugin ever computes; never a
+	 * separately stored flag (M07, docs/adr/0026 decision 5).
+	 *
+	 * @param int $operator_user_id The assigned operator.
+	 *
+	 * @return array<int, Conversation>
+	 */
+	public function unread_assigned_conversations( int $operator_user_id ): array {
+		if ( ! $this->schema_health->is_available() ) {
+			return array();
+		}
+
+		global $wpdb;
+
+		$conversations_table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$messages_table       = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT c.* FROM {$conversations_table} c
+					WHERE c.assigned_operator_id = %d
+					AND EXISTS (
+						SELECT 1 FROM {$messages_table} m
+						WHERE m.conversation_id = c.id
+						AND m.direction = 'visitor'
+						AND ( c.assignee_last_seen_message_id IS NULL OR m.id > c.assignee_last_seen_message_id )
+					)",
+				$operator_user_id
+			),
+			ARRAY_A
+		);
+
+		return array_map( array( $this, 'hydrate' ), null === $rows ? array() : $rows );
+	}
+
+	/**
+	 * A page of conversations for the operator inbox (M07, docs/adr/0026),
+	 * newest-activity first, optionally restricted to one status. Bounded,
+	 * indexable metadata only — never a decrypted-body or decrypted-name
+	 * scan (the sole search surface WP9 later adds is over this same set of
+	 * metadata columns).
+	 *
+	 * @param string|null $status One of ConversationStatus's constants, or null for every status.
+	 * @param int         $limit  Page size.
+	 * @param int         $offset Page offset.
+	 *
+	 * @return array<int, Conversation>
+	 */
+	public function for_inbox( ?string $status, int $limit = 50, int $offset = 0 ): array {
+		if ( ! $this->schema_health->is_available() ) {
+			return array();
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		if ( null === $status ) {
+			$rows = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT * FROM {$table} ORDER BY updated_at DESC LIMIT %d OFFSET %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					$limit,
+					$offset
+				),
+				ARRAY_A
+			);
+		} else {
+			$rows = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT * FROM {$table} WHERE status = %s ORDER BY updated_at DESC LIMIT %d OFFSET %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					$status,
+					$limit,
+					$offset
+				),
+				ARRAY_A
+			);
+		}
+
+		return array_map( array( $this, 'hydrate' ), null === $rows ? array() : $rows );
+	}
+
+	/**
 	 * Every conversation currently `resolved` — retention cleanup's own
 	 * source list for the `resolved -> archived` transition, the sole
 	 * code path in this plugin ever permitted to perform it (M05 plan §7).
