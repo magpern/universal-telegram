@@ -18,6 +18,7 @@ use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\TopicCreationDispatcher;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Persistence\SchemaHealth;
+use UniversalTelegram\Queue\ExpeditedDispatchTrigger;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -81,6 +82,7 @@ final class ConversationsController {
 	 * @param RateLimiter                    $rate_limiter      The two-tier abuse control, shared with the Telegram outbound boundary.
 	 * @param TopicCreationDispatcher        $topic_creation    Idempotent Telegram forum-topic creation dispatch.
 	 * @param ConversationOutboundDispatcher $outbound          Queue-before-topic visitor-to-Telegram routing dispatch.
+	 * @param ExpeditedDispatchTrigger       $expedited_dispatch Guarded, non-blocking request for prompt queue processing (docs/adr/0023).
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
@@ -90,7 +92,8 @@ final class ConversationsController {
 		private readonly ChatProfileResolver $chat_profiles,
 		private readonly RateLimiter $rate_limiter,
 		private readonly TopicCreationDispatcher $topic_creation,
-		private readonly ConversationOutboundDispatcher $outbound
+		private readonly ConversationOutboundDispatcher $outbound,
+		private readonly ExpeditedDispatchTrigger $expedited_dispatch
 	) {}
 
 	/**
@@ -310,6 +313,11 @@ final class ConversationsController {
 		// ever enqueues a topic-creation job (M05 plan §5).
 		$this->topic_creation->maybe_create( $conversation );
 		$this->outbound->route( $message->id(), $conversation->id() );
+
+		// Reached only for a newly accepted, newly enqueued message — both
+		// the idempotent-replay and storage-failure branches above already
+		// returned before this point (docs/adr/0023).
+		$this->expedited_dispatch->trigger();
 
 		return $this->respond( array( 'ok' => true ), 200 );
 	}

@@ -86,6 +86,7 @@ use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
 use UniversalTelegram\Queue\Dispatcher;
+use UniversalTelegram\Queue\ExpeditedDispatchTrigger;
 use UniversalTelegram\Queue\HandlerRegistry;
 use UniversalTelegram\Queue\QueueHealth;
 use UniversalTelegram\Queue\RetryPolicy;
@@ -602,7 +603,8 @@ final class Plugin {
 			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
 			$this->rate_limiter,
 			$this->topic_creation_dispatcher,
-			$conversation_outbound_dispatcher
+			$conversation_outbound_dispatcher,
+			new ExpeditedDispatchTrigger( $this->audit_logger )
 		);
 		add_action( 'rest_api_init', array( $this->conversations_controller, 'register_routes' ) );
 
@@ -662,8 +664,10 @@ final class Plugin {
 			$this->outbound_message_repository,
 			$this->telegram_api_client,
 			$this->webhook_registration_coordinator,
-			$this->message_dispatcher,
-			$this->dispatcher
+			$this->dispatcher,
+			new TelegramApiClient( 8 ),
+			new TelegramFailureClassifier(),
+			$this->audit_logger
 		);
 		add_action( 'admin_post_' . BotManagementController::ADMIN_POST_ACTION, array( $this->bot_management_controller, 'handle_request' ) );
 

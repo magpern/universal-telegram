@@ -48,8 +48,12 @@ class TelegramApiClient {
 	}
 
 	/**
-	 * Calls sendMessage. Used exclusively through the queue
-	 * (Telegram\Outbound\SendMessageHandler), never synchronously.
+	 * Calls sendMessage. Used through the queue
+	 * (Telegram\Outbound\SendMessageHandler) for every ordinary send, and,
+	 * as the one explicitly-authorized exception, synchronously by
+	 * Administration\Telegram\BotManagementController's bounded (≤8s) Test
+	 * Message diagnostic action (docs/adr/0023 §4) — never by any other
+	 * synchronous or visitor-facing caller.
 	 *
 	 * @param string      $token             The bot token.
 	 * @param string      $chat_id            The target chat ID.
