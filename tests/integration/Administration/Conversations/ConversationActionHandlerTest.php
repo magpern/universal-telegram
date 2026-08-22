@@ -8,9 +8,11 @@ namespace UniversalTelegram\Tests\Integration\Administration\Conversations;
 use UniversalTelegram\Administration\Conversations\ConversationActionHandler;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Conversations\ConversationNoteRepository;
+use UniversalTelegram\Conversations\ConversationPurgeService;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\ConversationStatus;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
+use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\OperatorAvailability;
 use UniversalTelegram\Conversations\OperatorAvailabilityRepository;
 use UniversalTelegram\Conversations\OperatorIdentityRepository;
@@ -18,6 +20,7 @@ use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
+use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use WP_UnitTestCase;
 
 final class ConversationActionHandlerTest extends WP_UnitTestCase {
@@ -39,7 +42,7 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * @return array{0: ConversationActionHandler, 1: OperatorAvailabilityRepository, 2: OperatorIdentityRepository, 3: ConversationRepository, 4: ConversationNoteRepository, 5: AuditLogger}
+	 * @return array{0: ConversationActionHandler, 1: OperatorAvailabilityRepository, 2: OperatorIdentityRepository, 3: ConversationRepository, 4: ConversationNoteRepository, 5: AuditLogger, 6: MessageRepository, 7: DestinationRepository}
 	 */
 	private function fixture(): array {
 		$schema_health = new SchemaHealth();
@@ -47,9 +50,12 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$identities    = new OperatorIdentityRepository( $schema_health );
 		$conversations = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );
 		$notes         = new ConversationNoteRepository( $schema_health, new CredentialVault() );
+		$messages      = new MessageRepository( $schema_health, new CredentialVault() );
+		$destinations  = new DestinationRepository( $schema_health );
+		$purge_service = new ConversationPurgeService( $conversations, $messages, $destinations );
 		$audit         = new AuditLogger( $schema_health, new Redactor() );
 
-		$handler = new class( $availability, $identities, $conversations, $notes, $audit ) extends ConversationActionHandler {
+		$handler = new class( $availability, $identities, $conversations, $notes, $purge_service, $audit ) extends ConversationActionHandler {
 			public ?string $redirected_to = null;
 
 			protected function redirect_and_exit( string $url ): void {
@@ -57,7 +63,7 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 			}
 		};
 
-		return array( $handler, $availability, $identities, $conversations, $notes, $audit );
+		return array( $handler, $availability, $identities, $conversations, $notes, $audit, $messages, $destinations );
 	}
 
 	public function test_missing_capability_is_denied_even_with_a_valid_nonce(): void {
@@ -413,6 +419,63 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$this->assertCount( 1, $saved );
 		$this->assertSame( 'Called the customer back.', $notes->decrypt( $saved[0] ) );
 		$this->assertSame( $operator, $saved[0]->operator_user_id() );
+	}
+
+	public function test_delete_archived_purges_an_archived_conversation(): void {
+		$operator = self::factory()->user->create();
+		$role     = get_role( 'subscriber' );
+		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_set_current_user( $operator );
+
+		list( $handler, , , $conversations, , , $messages ) = $this->fixture();
+		$conversation = $conversations->create( 'uuid-handler-delete-1', 'hash', 1, null );
+		$conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+		$conversations->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::RESOLVED );
+		$conversations->transition( $conversation->id(), ConversationStatus::RESOLVED, ConversationStatus::ARCHIVED );
+		$message = $messages->create( $conversation->id(), 'visitor', 'Hello' );
+
+		$nonce                    = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']        = $nonce;
+		$_REQUEST['_wpnonce']     = $nonce;
+		$_POST['op']              = 'delete_archived';
+		$_POST['conversation_id'] = (string) $conversation->id();
+
+		try {
+			$handler->handle_request();
+		} finally {
+			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		}
+
+		$this->assertNull( $conversations->find( $conversation->id() ) );
+		$this->assertNull( $messages->find( $message->id() ) );
+		$this->assertActionRecorded( 'conversation.deleted_manually' );
+	}
+
+	public function test_delete_archived_never_deletes_a_non_archived_conversation(): void {
+		$operator = self::factory()->user->create();
+		$role     = get_role( 'subscriber' );
+		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_set_current_user( $operator );
+
+		list( $handler, , , $conversations ) = $this->fixture();
+		$conversation = $conversations->create( 'uuid-handler-delete-2', 'hash', 1, null );
+		$conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+		$conversations->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::RESOLVED );
+
+		$nonce                    = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']        = $nonce;
+		$_REQUEST['_wpnonce']     = $nonce;
+		$_POST['op']              = 'delete_archived';
+		$_POST['conversation_id'] = (string) $conversation->id();
+
+		try {
+			$handler->handle_request();
+		} finally {
+			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		}
+
+		$this->assertNotNull( $conversations->find( $conversation->id() ) );
+		$this->assertSame( ConversationStatus::RESOLVED, $conversations->find( $conversation->id() )->status() );
 	}
 
 	private function assertActionRecorded( string $action ): void {

@@ -12,6 +12,7 @@ namespace UniversalTelegram\Administration\Conversations;
 use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Conversations\ConversationNoteRepository;
+use UniversalTelegram\Conversations\ConversationPurgeService;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\ConversationStatus;
 use UniversalTelegram\Conversations\OperatorAvailability;
@@ -45,6 +46,7 @@ class ConversationActionHandler {
 	 * @param OperatorIdentityRepository     $identities    Operator identity mappings, used to verify a target operator is actually mapped.
 	 * @param ConversationRepository         $conversations Assignment and lifecycle transitions.
 	 * @param ConversationNoteRepository     $notes         Internal notes.
+	 * @param ConversationPurgeService       $purge_service Shared permanent-deletion sequence (WP8, ADR-0026), the same one scheduled retention uses.
 	 * @param AuditLogger                    $audit         Records every successful state change.
 	 */
 	public function __construct(
@@ -52,6 +54,7 @@ class ConversationActionHandler {
 		private readonly OperatorIdentityRepository $identities,
 		private readonly ConversationRepository $conversations,
 		private readonly ConversationNoteRepository $notes,
+		private readonly ConversationPurgeService $purge_service,
 		private readonly AuditLogger $audit
 	) {}
 
@@ -85,6 +88,9 @@ class ConversationActionHandler {
 				break;
 			case 'add_note':
 				$this->add_note();
+				break;
+			case 'delete_archived':
+				$this->delete_archived();
 				break;
 		}
 
@@ -346,6 +352,43 @@ class ConversationActionHandler {
 			),
 			Classification::INTERNAL
 		);
+	}
+
+	/**
+	 * Manually deletes a conversation, restricted to `archived` status only
+	 * (ADR-0026 decision 9). Audited before execution — the entry is
+	 * written first, and only then is the shared ConversationPurgeService
+	 * (the same one scheduled retention cleanup uses) invoked, so a delete
+	 * that is ever attempted is always evidenced regardless of what the
+	 * purge itself does. Never contacts the Telegram Bot API.
+	 */
+	private function delete_archived(): void {
+		if ( ! current_user_can( CapabilityRegistrar::MANAGE_CONVERSATIONS ) ) {
+			return;
+		}
+
+		$conversation_id = isset( $_POST['conversation_id'] ) ? (int) $_POST['conversation_id'] : 0;
+
+		if ( $conversation_id <= 0 ) {
+			return;
+		}
+
+		$conversation = $this->conversations->find( $conversation_id );
+
+		if ( null === $conversation || ConversationStatus::ARCHIVED !== $conversation->status() ) {
+			return;
+		}
+
+		$this->audit->record(
+			'conversation.deleted_manually',
+			'operator',
+			get_current_user_id(),
+			array( 'conversation_id' => $conversation_id ),
+			array( 'conversation_id' => Classification::INTERNAL ),
+			Classification::INTERNAL
+		);
+
+		$this->purge_service->purge( $conversation_id, $conversation->destination_id() );
 	}
 
 	/**
