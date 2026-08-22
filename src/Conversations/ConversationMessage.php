@@ -31,6 +31,7 @@ final class ConversationMessage {
 	 * @param string      $delivery_state         stored|sent|failed.
 	 * @param string      $created_at             Creation timestamp.
 	 * @param string|null $idempotency_key        Client-supplied per-message idempotency key, or null (M06 plan §0, ADR-0021 amendment).
+	 * @param int|null    $telegram_sender_user_id The raw Telegram numeric sender id for an accepted mapped-operator reply, or null. SENSITIVE personal data — a protected join key only, never rendered (M07, docs/adr/0026).
 	 */
 	public function __construct(
 		private readonly int $id,
@@ -42,7 +43,8 @@ final class ConversationMessage {
 		private readonly ?int $telegram_message_id,
 		private readonly string $delivery_state,
 		private readonly string $created_at,
-		private readonly ?string $idempotency_key = null
+		private readonly ?string $idempotency_key = null,
+		private readonly ?int $telegram_sender_user_id = null
 	) {}
 
 	/**
@@ -136,5 +138,18 @@ final class ConversationMessage {
 	 */
 	public function idempotency_key(): ?string {
 		return $this->idempotency_key;
+	}
+
+	/**
+	 * The raw Telegram numeric sender id for an accepted mapped-operator
+	 * reply, or null. SENSITIVE personal data — this accessor exists only
+	 * for MessageRepository's own join-key use against
+	 * OperatorIdentityRepository; never render, URL-expose, or search-filter
+	 * this value (M07, docs/adr/0026).
+	 *
+	 * @return int|null
+	 */
+	public function telegram_sender_user_id(): ?int {
+		return $this->telegram_sender_user_id;
 	}
 }

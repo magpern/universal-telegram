@@ -424,4 +424,30 @@ final class ConversationRepositoryTest extends WP_UnitTestCase {
 		$refreshed = $repo->find( $other->id() );
 		$this->assertSame( 109, $refreshed->owner_user_id() );
 	}
+
+	public function test_clear_assignment_for_operator_clears_assignment_and_unread_state(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-assignment-1', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 55 );
+
+		$cleared = $repo->clear_assignment_for_operator( 55 );
+
+		$this->assertTrue( $cleared );
+		$refreshed = $repo->find( $conversation->id() );
+		$this->assertNull( $refreshed->assigned_operator_id() );
+		$this->assertNull( $refreshed->assignee_last_seen_message_id() );
+	}
+
+	public function test_clear_assignment_for_operator_never_touches_another_operators_assignment(): void {
+		$repo               = $this->repository();
+		$conversation       = $repo->create( 'uuid-assignment-2', 'hash', 1, null );
+		$other_conversation = $repo->create( 'uuid-assignment-3', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 55 );
+		$repo->assign( $other_conversation->id(), 56 );
+
+		$repo->clear_assignment_for_operator( 55 );
+
+		$refreshed = $repo->find( $other_conversation->id() );
+		$this->assertSame( 56, $refreshed->assigned_operator_id() );
+	}
 }

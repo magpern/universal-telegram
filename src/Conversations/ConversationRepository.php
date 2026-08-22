@@ -708,6 +708,41 @@ class ConversationRepository {
 	}
 
 	/**
+	 * Sets `assigned_operator_id` and `assignee_last_seen_message_id` to
+	 * NULL on every conversation currently assigned to a given operator —
+	 * part of the operator-account-deletion cleanup (ADR-0026 decision
+	 * 12c). Conversation content and status are untouched; only the
+	 * assignment/unread bookkeeping is cleared.
+	 *
+	 * @param int $operator_user_id The operator (WordPress user id) whose assignments are being cleared.
+	 *
+	 * @return bool
+	 */
+	public function clear_assignment_for_operator( int $operator_user_id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'assigned_operator_id'          => null,
+				'assignee_last_seen_message_id' => null,
+				'updated_at'                     => current_time( 'mysql', true ),
+			),
+			array( 'assigned_operator_id' => $operator_user_id ),
+			array( '%s', '%s', '%s' ),
+			array( '%d' )
+		);
+
+		return false !== $updated;
+	}
+
+	/**
 	 * Every conversation currently `resolved` — retention cleanup's own
 	 * source list for the `resolved -> archived` transition, the sole
 	 * code path in this plugin ever permitted to perform it (M05 plan §7).
@@ -811,7 +846,8 @@ class ConversationRepository {
 			null === $row['start_idempotency_key'] ? null : (string) $row['start_idempotency_key'],
 			null === $row['topic_claim_expires_at'] ? null : (string) $row['topic_claim_expires_at'],
 			null === $row['display_name_ciphertext'] ? null : (string) $row['display_name_ciphertext'],
-			isset( $row['owner_user_id'] ) ? (int) $row['owner_user_id'] : null
+			isset( $row['owner_user_id'] ) ? (int) $row['owner_user_id'] : null,
+			isset( $row['assignee_last_seen_message_id'] ) ? (int) $row['assignee_last_seen_message_id'] : null
 		);
 	}
 

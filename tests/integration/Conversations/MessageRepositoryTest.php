@@ -138,4 +138,42 @@ final class MessageRepositoryTest extends WP_UnitTestCase {
 		$this->assertNotNull( $first );
 		$this->assertNotNull( $second );
 	}
+
+	public function test_create_persists_the_telegram_sender_user_id(): void {
+		$repo            = $this->repository();
+		$conversation_id = $this->conversation_id();
+
+		$created = $repo->create( $conversation_id, 'operator', 'Hello', 'stored', null, null, 999888777 );
+
+		$this->assertSame( 999888777, $created->telegram_sender_user_id() );
+	}
+
+	public function test_create_without_a_telegram_sender_user_id_leaves_it_null(): void {
+		$repo            = $this->repository();
+		$conversation_id = $this->conversation_id();
+
+		$created = $repo->create( $conversation_id, 'visitor', 'Hello' );
+
+		$this->assertNull( $created->telegram_sender_user_id() );
+	}
+
+	public function test_clear_sender_attribution_nulls_the_matching_rows_only(): void {
+		$repo             = $this->repository();
+		$conversation_id  = $this->conversation_id();
+		$other_conversation_id = $this->conversation_id();
+
+		$matching     = $repo->create( $conversation_id, 'operator', 'reply one', 'stored', null, null, 999888777 );
+		$also_matching = $repo->create( $other_conversation_id, 'operator', 'reply two', 'stored', null, null, 999888777 );
+		$unrelated    = $repo->create( $conversation_id, 'operator', 'reply three', 'stored', null, null, 111222333 );
+
+		$result = $repo->clear_sender_attribution( 999888777 );
+
+		$this->assertTrue( $result );
+		$this->assertNull( $repo->find( $matching->id() )->telegram_sender_user_id() );
+		$this->assertNull( $repo->find( $also_matching->id() )->telegram_sender_user_id() );
+		$this->assertSame( 111222333, $repo->find( $unrelated->id() )->telegram_sender_user_id() );
+
+		// Message body/ciphertext is untouched — only the join key is cleared.
+		$this->assertNotNull( $repo->find( $matching->id() )->body_ciphertext() );
+	}
 }

@@ -42,6 +42,7 @@ final class Conversation {
 	 * @param string|null $topic_claim_expires_at   When the currently held topic-creation claim/lease expires, or null if unclaimed (M06.2 corrective plan v2, ADR-0023 amendment).
 	 * @param string|null $display_name_ciphertext  Encrypted visitor display name, or null if none is stored yet (M06.3, ADR-0024).
 	 * @param int|null    $owner_user_id            The authenticated WordPress user this conversation belongs to, or null for a legacy/ownerless row or one whose owner account was deleted (M06.3.1, ADR-0025).
+	 * @param int|null    $assignee_last_seen_message_id The highest message id the currently assigned operator has viewed, or null if unset/reset on reassignment (M07, docs/adr/0026).
 	 */
 	public function __construct(
 		private readonly int $id,
@@ -64,7 +65,8 @@ final class Conversation {
 		private readonly ?string $start_idempotency_key = null,
 		private readonly ?string $topic_claim_expires_at = null,
 		private readonly ?string $display_name_ciphertext = null,
-		private readonly ?int $owner_user_id = null
+		private readonly ?int $owner_user_id = null,
+		private readonly ?int $assignee_last_seen_message_id = null
 	) {}
 
 	/**
@@ -278,5 +280,16 @@ final class Conversation {
 	 */
 	public function owner_user_id(): ?int {
 		return $this->owner_user_id;
+	}
+
+	/**
+	 * The highest message id the currently assigned operator has viewed, or
+	 * null if unset or reset on reassignment. Unread state is always
+	 * derived from this value, never separately stored (M07, docs/adr/0026).
+	 *
+	 * @return int|null
+	 */
+	public function assignee_last_seen_message_id(): ?int {
+		return $this->assignee_last_seen_message_id;
 	}
 }
