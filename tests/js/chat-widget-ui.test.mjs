@@ -37,6 +37,24 @@ test( 'describeUiState maps every known status to the correct input-disabled fla
 	assert.equal( describe( 'unavailable' ).inputDisabled, true );
 	assert.equal( describe( 'transient-failure' ).inputDisabled, false );
 	assert.equal( describe( 'ended' ).inputDisabled, true );
+	assert.equal( describe( 'pending' ).inputDisabled, false );
+	assert.equal( describe( 'rate-limited' ).inputDisabled, false );
+} );
+
+test( 'pending and rate-limited are distinct, non-transient-failure states with their own announcement', () => {
+	const sandbox = makeSandbox();
+	const describe = sandbox.__UT_CHAT_WIDGET_UI_DESCRIBE_STATE__;
+
+	const pending = describe( 'pending' );
+	const rateLimited = describe( 'rate-limited' );
+	const transientFailure = describe( 'transient-failure' );
+
+	assert.equal( pending.status, 'pending' );
+	assert.equal( rateLimited.status, 'rate-limited' );
+	assert.notEqual( pending.announce, transientFailure.announce );
+	assert.notEqual( rateLimited.announce, transientFailure.announce );
+	assert.notEqual( pending.announce, '' );
+	assert.notEqual( rateLimited.announce, '' );
 } );
 
 test( 'describeUiState never claims a Telegram-delivery-confirmed announcement', () => {

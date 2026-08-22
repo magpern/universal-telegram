@@ -15,6 +15,7 @@ use UniversalTelegram\Queue\Dispatcher;
 use UniversalTelegram\Queue\JobEnvelope;
 use UniversalTelegram\Queue\WorkerRunner;
 use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
+use UniversalTelegram\Telegram\Outbound\OutboundMessage;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
 
 /**
@@ -76,7 +77,7 @@ class ConversationOutboundHandler {
 		}
 
 		if ( 'created' === $conversation->topic_creation_state() && null !== $conversation->destination_id() ) {
-			$this->send( $message, $conversation );
+			$this->create_and_route( $message, $conversation );
 			return;
 		}
 
@@ -89,19 +90,29 @@ class ConversationOutboundHandler {
 	}
 
 	/**
-	 * Hands the message off to the existing, unmodified outbound pipeline.
+	 * Hands the message off to the existing, unmodified outbound pipeline:
+	 * decrypts, durably stores the outbound row, enqueues the durable send
+	 * job, and marks the visitor message routed. Public so the in-process
+	 * immediate-delivery attempt (M06.2 corrective plan v2 §3.2, ADR-0023
+	 * amendment) can reuse the exact same store-then-enqueue sequence
+	 * before immediately attempting `SendMessageHandler::try_once()` on the
+	 * row it just created — the durable job and row always exist first, so
+	 * a bounded synchronous attempt that doesn't deliver never loses the
+	 * message.
 	 *
 	 * @param ConversationMessage $message      The visitor message to route.
 	 * @param Conversation        $conversation The owning conversation, with its topic already created.
 	 *
+	 * @return OutboundMessage|null The newly created outbound row, or null if the message's own body could not be decrypted (already marked delivery_state='failed').
+	 *
 	 * @throws RuntimeException On a transient storage failure, so WorkerRunner's own generic retry sequence runs.
 	 */
-	private function send( ConversationMessage $message, Conversation $conversation ): void {
+	public function create_and_route( ConversationMessage $message, Conversation $conversation ): ?OutboundMessage {
 		$plaintext = $this->messages->decrypt( $message );
 
 		if ( null === $plaintext ) {
 			$this->messages->mark_delivery_failed( $message->id() );
-			return;
+			return null;
 		}
 
 		$outbound = $this->outbound_messages->create( $conversation->bot_id(), (int) $conversation->destination_id(), $plaintext, null );
@@ -127,6 +138,8 @@ class ConversationOutboundHandler {
 		$this->dispatcher->enqueue( $envelope );
 
 		$this->messages->mark_routed( $message->id(), $outbound->message_uuid() );
+
+		return $outbound;
 	}
 
 	/**

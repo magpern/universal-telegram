@@ -32,7 +32,7 @@ final class MigratorConversationIdempotencySchemaTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 13, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 14, (int) get_option( 'universal_telegram_db_version' ) );
 
 		$conversations_columns = $wpdb->get_col(
 			$wpdb->prepare(
@@ -60,6 +60,6 @@ final class MigratorConversationIdempotencySchemaTest extends WP_UnitTestCase {
 		update_option( 'universal_telegram_db_version', 12 );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 13, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 14, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 }

@@ -232,41 +232,63 @@ class ConversationRepository {
 	}
 
 	/**
-	 * The single atomic compare-and-set guard that makes topic creation
-	 * idempotent and concurrency-safe: only the caller whose UPDATE
-	 * actually matches a row (topic_creation_state still 'none') may
-	 * enqueue a TopicCreationHandler job (M05 plan §5, docs/adr/0021).
-	 * Retries, duplicate first-message submissions, or concurrent requests
-	 * can therefore never produce two topics for one conversation.
+	 * The atomic compare-and-set guard that makes topic creation idempotent
+	 * and concurrency-safe: only the caller whose UPDATE actually matches a
+	 * row may proceed to call `createForumTopic` (M05 plan §5,
+	 * docs/adr/0021). Beyond the original `none -> pending` case, also
+	 * allows reclaiming a `pending` row whose own lease has already
+	 * expired — a prior claimant crashed after winning the guard but
+	 * before ever reaching a terminal state (M06.2 corrective plan v2 §3.1,
+	 * ADR-0023 amendment). Terminal states (`created`/`failed`) are never
+	 * matched by either branch — once reached, no claim can ever be
+	 * re-acquired. Retries, duplicate first-message submissions, or
+	 * concurrent requests can therefore never produce two topics for one
+	 * conversation.
 	 *
-	 * @param int $id The conversation's primary key.
+	 * Uses a literal raw-SQL `UPDATE ... WHERE ... OR (...)` rather than
+	 * `$wpdb->update()`'s compound-WHERE helper, because that helper can
+	 * only AND its WHERE columns together — the reclaim-on-expiry branch
+	 * genuinely requires an OR.
 	 *
-	 * @return bool True only if this call won the compare-and-set.
+	 * @param int $id            The conversation's primary key.
+	 * @param int $lease_seconds How long this caller's claim remains valid.
+	 *
+	 * @return string|null The won claim's own lease-expiry timestamp
+	 *                       (threaded into the enqueued job so it can later
+	 *                       verify it still owns this specific claim window
+	 *                       — M06.2 corrective plan v2 §3.1), or null if
+	 *                       this call did not win the compare-and-set.
 	 */
-	public function try_begin_topic_creation( int $id ): bool {
+	public function try_begin_topic_creation( int $id, int $lease_seconds = 15 ): ?string {
 		if ( ! $this->schema_health->is_available() ) {
-			return false;
+			return null;
 		}
 
 		global $wpdb;
 
-		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$table        = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$now          = current_time( 'mysql', true );
+		$lease_expiry = gmdate( 'Y-m-d H:i:s', strtotime( $now ) + $lease_seconds );
 
-		$updated = $wpdb->update(
-			$table,
-			array(
-				'topic_creation_state' => 'pending',
-				'updated_at'           => current_time( 'mysql', true ),
-			),
-			array(
-				'id'                   => $id,
-				'topic_creation_state' => 'none',
-			),
-			array( '%s', '%s' ),
-			array( '%d', '%s' )
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"UPDATE {$table}
+					SET topic_creation_state = %s, topic_claim_expires_at = %s, updated_at = %s
+					WHERE id = %d
+					  AND ( topic_creation_state = %s
+					        OR ( topic_creation_state = %s AND topic_claim_expires_at IS NOT NULL AND topic_claim_expires_at < %s ) )",
+				'pending',
+				$lease_expiry,
+				$now,
+				$id,
+				'none',
+				'pending',
+				$now
+			)
 		);
 
-		return false !== $updated && $updated > 0;
+		return ( false !== $updated && $updated > 0 ) ? $lease_expiry : null;
 	}
 
 	/**
@@ -292,13 +314,14 @@ class ConversationRepository {
 		$updated = $wpdb->update(
 			$table,
 			array(
-				'topic_creation_state' => 'created',
-				'telegram_topic_id'    => $telegram_topic_id,
-				'destination_id'       => $destination_id,
-				'updated_at'           => current_time( 'mysql', true ),
+				'topic_creation_state'   => 'created',
+				'telegram_topic_id'      => $telegram_topic_id,
+				'destination_id'         => $destination_id,
+				'topic_claim_expires_at' => null,
+				'updated_at'             => current_time( 'mysql', true ),
 			),
 			array( 'id' => $id ),
-			array( '%s', '%d', '%d', '%s' ),
+			array( '%s', '%d', '%d', '%s', '%s' ),
 			array( '%d' )
 		);
 
@@ -331,11 +354,46 @@ class ConversationRepository {
 		$updated = $wpdb->update(
 			$table,
 			array(
-				'topic_creation_state' => 'failed',
-				'updated_at'           => current_time( 'mysql', true ),
+				'topic_creation_state'   => 'failed',
+				'topic_claim_expires_at' => null,
+				'updated_at'             => current_time( 'mysql', true ),
 			),
 			array( 'id' => $id ),
-			array( '%s', '%s' ),
+			array( '%s', '%s', '%s' ),
+			array( '%d' )
+		);
+
+		return false !== $updated;
+	}
+
+	/**
+	 * Gracefully releases a held topic-creation claim without waiting out
+	 * its lease, reverting the row to `none` so the next attempt (an
+	 * in-process fallback or the durable queue) may reclaim immediately
+	 * (M06.2 corrective plan v2 §3.1).
+	 *
+	 * @param int $id The conversation's primary key.
+	 *
+	 * @return bool
+	 */
+	public function release_topic_claim( int $id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'topic_creation_state'   => 'none',
+				'topic_claim_expires_at' => null,
+				'updated_at'             => current_time( 'mysql', true ),
+			),
+			array( 'id' => $id ),
+			array( '%s', '%s', '%s' ),
 			array( '%d' )
 		);
 
@@ -541,7 +599,8 @@ class ConversationRepository {
 			(string) $row['updated_at'],
 			null === $row['resolved_at'] ? null : (string) $row['resolved_at'],
 			null === $row['expires_at'] ? null : (string) $row['expires_at'],
-			null === $row['start_idempotency_key'] ? null : (string) $row['start_idempotency_key']
+			null === $row['start_idempotency_key'] ? null : (string) $row['start_idempotency_key'],
+			null === $row['topic_claim_expires_at'] ? null : (string) $row['topic_claim_expires_at']
 		);
 	}
 }

@@ -142,13 +142,26 @@ if [ -z "$(m06_column_exists "conversation_messages" "idempotency_key")" ]; then
 fi
 echo "OK: universal_telegram_conversation_messages.idempotency_key column exists."
 
-echo "== Verifying db_version reached 13 =="
-DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "13" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=13, got ${DB_VERSION}" >&2
+echo "== Verifying M06.2 v2's claim/lease columns exist (ADR-0023 amendment) =="
+if [ -z "$(m06_column_exists "outbound_messages" "claim_expires_at")" ]; then
+	echo "FAIL: universal_telegram_outbound_messages.claim_expires_at column was not created on activation" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 13."
+echo "OK: universal_telegram_outbound_messages.claim_expires_at column exists."
+
+if [ -z "$(m06_column_exists "conversations" "topic_claim_expires_at")" ]; then
+	echo "FAIL: universal_telegram_conversations.topic_claim_expires_at column was not created on activation" >&2
+	exit 1
+fi
+echo "OK: universal_telegram_conversations.topic_claim_expires_at column exists."
+
+echo "== Verifying db_version reached 14 =="
+DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
+if [ "14" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=14, got ${DB_VERSION}" >&2
+	exit 1
+fi
+echo "OK: universal_telegram_db_version is 14."
 
 echo "== Verifying M02 event emission projects only PUBLIC fields into event_history =="
 wp eval '

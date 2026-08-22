@@ -13,6 +13,7 @@ use RuntimeException;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Core\Security\CredentialState;
 use UniversalTelegram\Privacy\Classification;
+use UniversalTelegram\Queue\AttemptOutcome;
 use UniversalTelegram\Queue\RetryPolicy;
 use UniversalTelegram\Queue\WorkerRunner;
 use UniversalTelegram\Telegram\Client\FailureClassification;
@@ -86,7 +87,11 @@ class SendMessageHandler {
 	) {}
 
 	/**
-	 * The Action Scheduler job handler.
+	 * The Action Scheduler job handler. A thin wrapper around try_once():
+	 * resolves the message/bot/destination, applies the pending-ceiling
+	 * safety valve, then translates the shared AttemptOutcome into this
+	 * queue's own existing scheduling behavior (M06.2 corrective plan v2
+	 * §3.2, ADR-0023 amendment).
 	 *
 	 * @param array{job_id: string, job_type: string, attempt: int, payload: array<string, mixed>} $job The job.
 	 *
@@ -116,34 +121,77 @@ class SendMessageHandler {
 			return;
 		}
 
-		try {
-			$this->circuit_breaker->assert_may_attempt( 'bot', $bot_id );
-		} catch ( CircuitOpenException $exception ) {
-			$this->defer_or_dead_letter( $message, $bot_id, $destination_id, $exception, 'telegram_bot_circuit_open' );
+		$outcome = $this->try_once( $message, $bot, $destination, (int) $job['attempt'] );
+
+		if ( AttemptOutcome::ALREADY_CLAIMED === $outcome ) {
+			$this->reschedule_after_observed_lease( $message, $job );
 			return;
 		}
 
+		if ( AttemptOutcome::PENDING_RETRY === $outcome ) {
+			throw new RuntimeException( 'telegram_send_failed' );
+		}
+
+		// DELIVERED, DEFERRED, TERMINAL: already fully handled, no throw.
+	}
+
+	/**
+	 * One non-throwing delivery attempt, shared unmodified between this
+	 * queue handler and the in-process immediate/fallback attempt layers
+	 * (M06.2 corrective plan v2 §3.1–§3.2, ADR-0023 amendment). Never
+	 * schedules a durable retry itself for a RETRYABLE outcome — that
+	 * remains the caller's own concern (handle_job's throw drives
+	 * WorkerRunner's generic backoff; an in-process caller simply treats
+	 * anything other than DELIVERED as "not delivered yet").
+	 *
+	 * @param OutboundMessage $message     The message to attempt.
+	 * @param BotProfile      $bot         The owning bot.
+	 * @param Destination     $destination The target destination.
+	 * @param int             $attempt     The current attempt number, for exhaustion accounting only.
+	 *
+	 * @return AttemptOutcome
+	 *
+	 * @throws RuntimeException If the bot's token or the message body cannot be decrypted — a
+	 *                           genuine configuration error, not an ordinary delivery outcome.
+	 */
+	public function try_once( OutboundMessage $message, BotProfile $bot, Destination $destination, int $attempt ): AttemptOutcome {
+		if ( in_array( $message->status(), array( OutboundMessageStatus::SENT, OutboundMessageStatus::DEAD_LETTER, OutboundMessageStatus::PURGED ), true ) ) {
+			// Already resolved by another claimant (or a prior call) — a
+			// terminal status is never re-claimable, so treat this as a
+			// clean no-op rather than repeatedly discovering ALREADY_CLAIMED
+			// against a lease that will never again advance.
+			return OutboundMessageStatus::SENT === $message->status() ? AttemptOutcome::DELIVERED : AttemptOutcome::TERMINAL;
+		}
+
+		$bot_id         = $bot->id();
+		$destination_id = $destination->id();
+
+		try {
+			$this->circuit_breaker->assert_may_attempt( 'bot', $bot_id );
+		} catch ( CircuitOpenException $exception ) {
+			return $this->defer_or_dead_letter( $message, $bot_id, $destination_id, $exception, 'telegram_bot_circuit_open' );
+		}
+
 		if ( ! $this->rate_limiter->try_consume( 'bot', $bot_id, self::BOT_RATE_CAPACITY, self::BOT_RATE_REFILL_PER_SECOND ) ) {
-			$this->defer_locally( $message, 'telegram_bot_rate_limited' );
-			return;
+			$this->defer_locally( $message, $attempt, 'telegram_bot_rate_limited' );
+			return AttemptOutcome::DEFERRED;
 		}
 
 		try {
 			$this->circuit_breaker->assert_may_attempt( 'destination', $destination_id );
 		} catch ( CircuitOpenException $exception ) {
-			$this->defer_or_dead_letter( $message, $bot_id, $destination_id, $exception, 'telegram_destination_circuit_open' );
-			return;
+			return $this->defer_or_dead_letter( $message, $bot_id, $destination_id, $exception, 'telegram_destination_circuit_open' );
 		}
 
 		if ( ! $this->rate_limiter->try_consume( 'destination', $destination_id, self::DESTINATION_RATE_CAPACITY, self::DESTINATION_RATE_REFILL ) ) {
-			$this->defer_locally( $message, 'telegram_destination_rate_limited' );
-			return;
+			$this->defer_locally( $message, $attempt, 'telegram_destination_rate_limited' );
+			return AttemptOutcome::DEFERRED;
 		}
 
 		if ( $this->is_group_kind( $destination )
 			&& ! $this->rate_limiter->try_consume( 'destination_group', $destination_id, self::GROUP_RATE_CAPACITY, self::GROUP_RATE_REFILL_PER_SECOND ) ) {
-			$this->defer_locally( $message, 'telegram_destination_group_rate_limited' );
-			return;
+			$this->defer_locally( $message, $attempt, 'telegram_destination_group_rate_limited' );
+			return AttemptOutcome::DEFERRED;
 		}
 
 		$token_result = $this->bots->decrypt_token( $bot );
@@ -158,7 +206,9 @@ class SendMessageHandler {
 			throw new RuntimeException( 'telegram_send_body_unavailable' );
 		}
 
-		$this->messages->mark_sending( $message->id() );
+		if ( ! $this->messages->try_claim_for_sending( $message->id() ) ) {
+			return AttemptOutcome::ALREADY_CLAIMED;
+		}
 
 		$result = $this->client->send_message(
 			$token_result->plaintext(),
@@ -177,59 +227,60 @@ class SendMessageHandler {
 				: null;
 
 			$this->messages->mark_sent( $message->id(), $telegram_message_id );
-			return;
+			return AttemptOutcome::DELIVERED;
 		}
 
 		if ( $result->is_network_error() ) {
 			$this->messages->set_possible_duplicate_delivery( $message->id() );
 		}
 
-		$this->handle_failure( $job, $message, $bot, $destination, $result );
+		return $this->handle_failure( $message, $bot, $destination, $attempt, $result );
 	}
 
 	/**
 	 * Dispatches a failed result to its classified handling path.
 	 *
-	 * @param array{job_id: string, job_type: string, attempt: int, payload: array<string, mixed>} $job         The job.
-	 * @param OutboundMessage                                                                      $message     The message.
-	 * @param BotProfile                                                                           $bot         The bot.
-	 * @param Destination                                                                          $destination The destination.
-	 * @param TelegramApiResult                                                                    $result      The failed API result.
+	 * @param OutboundMessage   $message     The message.
+	 * @param BotProfile        $bot         The bot.
+	 * @param Destination       $destination The destination.
+	 * @param int               $attempt     The current attempt number.
+	 * @param TelegramApiResult $result      The failed API result.
 	 *
-	 * @throws RuntimeException On RETRYABLE, so the generic retry sequence runs.
+	 * @return AttemptOutcome
 	 */
-	private function handle_failure( array $job, OutboundMessage $message, BotProfile $bot, Destination $destination, TelegramApiResult $result ): void {
+	private function handle_failure( OutboundMessage $message, BotProfile $bot, Destination $destination, int $attempt, TelegramApiResult $result ): AttemptOutcome {
 		$classification = $this->classifier->classify( $result );
 
 		if ( FailureClassification::RATE_LIMITED === $classification ) {
 			$wait = $result->retry_after() ?? $this->rate_limit_fallback_wait_seconds;
-			$this->reschedule_job( $job, $wait );
-			return;
+			$this->messages->release_claim_for_retry( $message->id() );
+			$this->reschedule_job( $message, $attempt, $wait );
+			return AttemptOutcome::DEFERRED;
 		}
 
 		if ( FailureClassification::TERMINAL === $classification ) {
 			$this->dead_letter( $message->id(), $bot->id(), $destination->id(), 'telegram_terminal_rejection' );
-			return;
+			return AttemptOutcome::TERMINAL;
 		}
 
 		if ( FailureClassification::TOKEN_INVALID === $classification ) {
 			$this->circuit_breaker->open_indefinitely( 'bot', $bot->id() );
 			$this->bots->set_status( $bot->id(), BotStatus::INVALID );
 			$this->dead_letter( $message->id(), $bot->id(), $destination->id(), 'telegram_token_invalid' );
-			return;
+			return AttemptOutcome::TERMINAL;
 		}
 
 		// RETRYABLE.
 		$this->circuit_breaker->record_failure( 'bot', $bot->id(), self::BOT_CIRCUIT_THRESHOLD, self::CIRCUIT_WINDOW_SECONDS );
 		$this->circuit_breaker->record_failure( 'destination', $destination->id(), self::DESTINATION_CIRCUIT_THRESHOLD, self::CIRCUIT_WINDOW_SECONDS );
 
-		if ( (int) $job['attempt'] >= $this->retry_policy->max_attempts() ) {
+		if ( $attempt >= $this->retry_policy->max_attempts() ) {
 			$this->dead_letter( $message->id(), $bot->id(), $destination->id(), 'telegram_retryable_attempts_exhausted' );
-		} else {
-			$this->messages->mark_retry_scheduled( $message->id() );
+			return AttemptOutcome::TERMINAL;
 		}
 
-		throw new RuntimeException( 'telegram_send_failed' );
+		$this->messages->mark_retry_scheduled( $message->id() );
+		return AttemptOutcome::PENDING_RETRY;
 	}
 
 	/**
@@ -268,14 +319,17 @@ class SendMessageHandler {
 	 * @param int                  $destination_id The destination's primary key.
 	 * @param CircuitOpenException $exception      The breaker's own refusal.
 	 * @param string               $reason_code     A fixed stable code for dead-letter/audit use.
+	 *
+	 * @return AttemptOutcome
 	 */
-	private function defer_or_dead_letter( OutboundMessage $message, int $bot_id, int $destination_id, CircuitOpenException $exception, string $reason_code ): void {
+	private function defer_or_dead_letter( OutboundMessage $message, int $bot_id, int $destination_id, CircuitOpenException $exception, string $reason_code ): AttemptOutcome {
 		if ( null === $exception->next_probe_at() ) {
 			$this->dead_letter( $message->id(), $bot_id, $destination_id, $reason_code );
-			return;
+			return AttemptOutcome::TERMINAL;
 		}
 
-		$this->defer_locally( $message, $reason_code, $exception->next_probe_at() );
+		$this->defer_locally( $message, 1, $reason_code, $exception->next_probe_at() );
+		return AttemptOutcome::DEFERRED;
 	}
 
 	/**
@@ -283,16 +337,17 @@ class SendMessageHandler {
 	 * (unincremented-attempt) job at a future time via Action Scheduler's
 	 * own public scheduling function.
 	 *
-	 * @param OutboundMessage $message   The message, left untouched (still pending).
+	 * @param OutboundMessage $message     The message, left untouched (still pending).
+	 * @param int             $attempt     The attempt number to carry into the rescheduled job.
 	 * @param string          $reason_code A fixed stable code, audited only.
 	 * @param int|null        $at          The absolute timestamp to run at; defaults to a short local wait.
 	 */
-	private function defer_locally( OutboundMessage $message, string $reason_code, ?int $at = null ): void {
+	private function defer_locally( OutboundMessage $message, int $attempt, string $reason_code, ?int $at = null ): void {
 		$args = array(
 			array(
 				'job_id'   => $message->message_uuid(),
 				'job_type' => MessageDispatcher::JOB_TYPE,
-				'attempt'  => 1,
+				'attempt'  => $attempt,
 				'payload'  => array(
 					'message_uuid'   => $message->message_uuid(),
 					'bot_id'         => $message->bot_id(),
@@ -314,14 +369,44 @@ class SendMessageHandler {
 	}
 
 	/**
-	 * Reschedules the current job (via WorkerRunner's own hook/group) at a
-	 * given delay, honoring a Telegram-provided flood-control wait.
+	 * Reschedules the same (unincremented-attempt) job at a given delay,
+	 * honoring a Telegram-provided flood-control wait.
 	 *
-	 * @param array{job_id: string, job_type: string, attempt: int, payload: array<string, mixed>} $job The job to reschedule.
-	 * @param int                                                                                  $wait_seconds The delay, in seconds.
+	 * @param OutboundMessage $message      The message.
+	 * @param int             $attempt      The attempt number to carry into the rescheduled job.
+	 * @param int             $wait_seconds The delay, in seconds.
 	 */
-	private function reschedule_job( array $job, int $wait_seconds ): void {
-		as_schedule_single_action( time() + $wait_seconds, WorkerRunner::HOOK, array( $job ), WorkerRunner::GROUP );
+	private function reschedule_job( OutboundMessage $message, int $attempt, int $wait_seconds ): void {
+		$args = array(
+			array(
+				'job_id'   => $message->message_uuid(),
+				'job_type' => MessageDispatcher::JOB_TYPE,
+				'attempt'  => $attempt,
+				'payload'  => array(
+					'message_uuid'   => $message->message_uuid(),
+					'bot_id'         => $message->bot_id(),
+					'destination_id' => $message->destination_id(),
+				),
+			),
+		);
+
+		as_schedule_single_action( time() + $wait_seconds, WorkerRunner::HOOK, $args, WorkerRunner::GROUP );
+	}
+
+	/**
+	 * Reads the other claimant's observed lease expiry and self-reschedules
+	 * this job to check back exactly once, just after that lease should
+	 * have expired — never busy-polling, never dropping the job silently
+	 * (M06.2 corrective plan v2 §3.1, ADR-0023 amendment).
+	 *
+	 * @param OutboundMessage                                                                      $message The message currently claimed by another caller.
+	 * @param array{job_id: string, job_type: string, attempt: int, payload: array<string, mixed>} $job     The current job, rescheduled unchanged.
+	 */
+	private function reschedule_after_observed_lease( OutboundMessage $message, array $job ): void {
+		$lease_expiry = $message->claim_expires_at();
+		$at           = null !== $lease_expiry ? strtotime( $lease_expiry . ' UTC' ) + 1 : time() + 1;
+
+		as_schedule_single_action( $at, WorkerRunner::HOOK, array( $job ), WorkerRunner::GROUP );
 	}
 
 	/**

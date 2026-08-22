@@ -120,3 +120,99 @@ rather than a new mechanism).
 ## Compatibility/Migration Impact
 
 None. No schema change; additive code only.
+
+## Amendment (M06.2 corrective plan v2): Claim-Protected Immediate Delivery Replaces Expedited Dispatch as the Primary Mechanism
+
+**Status:** Accepted (M06.2 corrective v2).
+
+**Context.** Live testing on `dev.biopentra.eu` — a real, busy, multi-plugin WordPress install sharing
+one Action Scheduler queue — showed that `ExpeditedDispatchTrigger` alone does not deliver the latency
+this ADR originally decided on: a real chat message sat 33 seconds before its outbound send even began,
+because both the expedited loopback and ordinary cron cadence depend on the same contended, shared
+Action Scheduler batch slot. Separately, this ADR's original design left a latent double-send exposure:
+neither `OutboundMessageRepository::mark_sending()` (an unconditional `UPDATE`) nor
+`ConversationRepository::try_begin_topic_creation()`'s `none → pending` compare-and-set (no expiry)
+prevents two callers from both completing a send/topic-creation for the same row if one crashes
+mid-flight. A widget bug also caused `ensureStarted()` to mint a fresh idempotency key/secret pair on
+every retry instead of reusing `utChatPendingStart`'s own pair, so retries never reached the server's
+idempotent-replay branch and instead exhausted the per-IP daily start-rate-limit bucket, surfacing as an
+undifferentiated `{"ok":false}`. The administrator's bounded synchronous "Test message" send (Decision
+point 4 above) was confirmed fast and correct in the same testing and is unaffected by this amendment.
+
+**Decision — primary mechanism replaced.** Sections 1–3 of this ADR's original Decision are superseded
+for the *primary* interactive-latency mechanism:
+
+1. Primary interactive latency now comes from a **bounded, in-process, claim-protected synchronous
+   delivery attempt**, not from triggering Action Scheduler's own async loopback. A persisted,
+   atomic, leased claim (`outbound_messages.claim_expires_at`, `conversations.topic_claim_expires_at`,
+   both `DATETIME NULL`, 15-second lease) ensures at most one caller — the immediate in-process
+   attempt, the durable queue worker, or a later reclaim after crash/expiry — is ever active on a given
+   row at once. `SendMessageHandler`/`TopicCreationHandler` each expose a non-throwing
+   `try_once(...): AttemptOutcome`, shared unmodified between the immediate attempt and the durable
+   queue worker; `handle_job()` becomes a thin wrapper around it. A queue worker that observes another
+   claimant's unexpired lease does not silently drop its one-shot job: it self-reschedules to check back
+   just after that lease's observed expiry, so a claimant crash is reclaimed automatically without
+   busy-polling or premature dead-lettering.
+2. **The delivery guarantee this ADR provides is at-least-once, not exactly-once.** The claim prevents
+   duplicate sends on every normal path (concurrent claim contention, ordinary retries, crash before the
+   Telegram call, crash after the terminal write). A duplicate remains possible only in the one
+   unavoidable window a lease can never close: a claimant crashing *after* Telegram has accepted the
+   send/topic-creation request but *before* the local terminal-state write commits. This window is rare,
+   accepted, and not otherwise detectable — no column or marker records it, and the crash that causes it
+   is exactly the kind of event that would prevent recording one. This corrects, and replaces, any prior
+   "exactly-once" framing.
+3. A **second, bounded fallback attempt layer** runs synchronously, still inside the same REST callback
+   invocation, before the response object is returned to WordPress — identically on every supported PHP
+   host, independent of Action Scheduler's shared batch slot and independent of any SAPI-specific
+   early-response mechanism (`fastcgi_finish_request()` is explicitly not used inside the REST callback:
+   a `WP_REST_Server` callback returns a response object that WordPress itself serializes and emits
+   afterward, so nothing can reliably flush the JSON body early from inside it without risking corrupting
+   or duplicating that output). Every Telegram API call's own timeout is capped by its attempt's
+   remaining wall-clock budget (`min(3.0, remaining_budget - 0.2s)`), not a fixed value, so a first
+   message's two-call sequence (topic creation, then send) cannot exceed its stated budget. The normal
+   case still returns in well under a second; the rare case where the primary bounded attempt (4s budget)
+   does not complete may take up to ~9 seconds total (4s primary + 5s fallback) before the visitor gets a
+   response — an accepted, bounded, honestly-stated cost, never hidden behind an early-flush trick.
+4. `Queue\ExpeditedDispatchTrigger` (Decision point 1 above) is **retained, unchanged**, but demoted:
+   called only from the final-fallback branch after both bounded layers above complete, never as the
+   primary mechanism. Action Scheduler's own queue plus the 5-minute external cron remain the durable
+   recovery layer — never the sole interactive fallback, which is the defect this amendment corrects.
+5. Start-idempotency replay (`ConversationsController::handle_start()`) is now checked, and its secret
+   verified via `password_verify()`, **before** any new-conversation rate-limit token is consumed. The
+   per-IP new-start limit is split into an hourly bucket (`conv_start_ip_hr`, 10/hour) and a renamed
+   daily bucket (`conv_start_ip_day`, 50/day, was `conv_start_ip`); a new, independent per-IP
+   auth/secret-failure bucket (`conv_auth_fail_ip`, 20/hour) is consumed only on a genuine secret
+   mismatch against a valid idempotency-key replay, never on ordinary success. The site-wide
+   `conv_start_site` cap and the existing `conv_post`/`conv_post_site` message-sending caps are
+   unchanged.
+6. A new, optional `reason` field (`rate_limited` | `conversation_expired` | `request_failed` |
+   `temporary_delivery_pending`) is added to existing response shapes, response-only, no schema impact.
+   ADR-0021's uniform-404 guarantee is preserved exactly: `conversation_expired` is attached uniformly to
+   every `controlled_not_found()` 404 regardless of underlying cause, so the body remains byte-for-byte
+   identical across every failure cause.
+
+**Alternatives considered (in addition to this ADR's original list).** *Raising Action Scheduler's
+global concurrent-batch filter* — rejected: affects every other plugin on the shared site and still does
+not guarantee winning against unrelated jobs. *Retrying the expedited loopback itself* — rejected: still
+depends on the same contended shared resource that caused the original 33-second delay. *Unbounded
+synchronous blocking* — rejected: reintroduces exactly the risk ADR-0012/ADR-0021 exist to prevent. *A
+single re-read-then-write guard instead of a leased claim* — rejected: does not survive a mid-flight
+crash between the external Telegram call and the local status write, which a lease-based claim does.
+*An early-response/detached-worker trick using `fastcgi_finish_request()` inside the REST callback* —
+rejected: incompatible with the WP REST response lifecycle described in point 3 above.
+
+**Security/privacy impact.** Unchanged token/secret handling. The new per-IP rate-limit granularities
+reuse the existing per-install HMAC secret and hashing pattern already accepted for
+`Events\Visitor\IngestController` — no new raw-IP persistence.
+
+**Compatibility/migration impact.** One additive `Migrator` step, two nullable columns
+(`outbound_messages.claim_expires_at`, `conversations.topic_claim_expires_at`), `db_version` `13 → 14`.
+Per this project's own stated independence of `db_version` from the plugin's SemVer string, this remains
+a patch-level correctness/reliability fix (`0.6.1 → 0.6.2`) to an already-shipped capability, not a new
+one.
+
+**Affected documents/milestones.** `docs/plans/m06-2-interactive-telegram-delivery-plan-v2.md` (this
+amendment's originating plan); `docs/closure/m06-2-interactive-telegram-delivery-closure.md` (gains a
+corrective addendum recording this amendment's freeze/PR/merge/closure evidence, following the
+M06.1 closure record's own addendum precedent); M07 (any future interactive job should follow this
+amended claim-protected pattern, not the original expedited-dispatch-only pattern this supersedes).

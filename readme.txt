@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.6.1
+Stable tag: 0.6.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -41,6 +41,27 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.6.2 =
+* Interactive Telegram delivery corrective pass (M06.2 corrective plan v2, ADR-0023 amendment):
+  live testing found the 0.6.1 mechanism did not hold up on a busy, multi-plugin Action Scheduler
+  install (a real chat message sat 33 seconds before its outbound send even began). Primary
+  interactive latency now comes from a bounded (4-second), claim-protected, in-process synchronous
+  attempt sharing the exact same delivery logic as the durable queue worker, with a further bounded
+  (5-second) in-process fallback layer that does not depend on Action Scheduler's shared batch slot
+  at all; the previous expedited-dispatch trigger is retained but demoted to a final best-effort
+  nudge after both bounded layers. A persisted, atomic, time-leased claim on both outbound sends and
+  topic creation prevents two callers from ever being concurrently active on the same row, with
+  automatic crash recovery via lease expiry; the delivery guarantee this now honestly documents is
+  at-least-once, not exactly-once. A widget bug that minted a fresh idempotency key on every retry,
+  compounded by checking rate limits before the idempotency-replay lookup, is fixed: the per-IP new
+  conversation limit is split into hourly and daily buckets, a start-idempotency replay is checked
+  and its secret verified before any new-conversation rate-limit token is consumed, and a wrong
+  secret against a valid replay key now consumes a dedicated, independent auth-failure bucket
+  instead. Responses gain an optional, fixed-value `reason` field and messages gain a
+  `delivery_state` in the poll response, so the widget can show a truthful pending/rate-limited state
+  instead of one generic failure. Adds `db_version` 14 (two new nullable lease columns; no other
+  schema impact). Patch release; no other behavior change.
 
 = 0.6.1 =
 * Interactive Telegram delivery (M06.2, ADR-0023): removes the avoidable multi-minute delivery

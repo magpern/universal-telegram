@@ -149,4 +149,62 @@ final class ConversationRepositoryTest extends WP_UnitTestCase {
 		$this->assertNotNull( $first );
 		$this->assertNull( $second );
 	}
+
+	public function test_try_begin_topic_creation_concurrent_race_exactly_one_wins(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-claim-race', 'hash', 1, null );
+
+		$first  = $repo->try_begin_topic_creation( $conversation->id() );
+		$second = $repo->try_begin_topic_creation( $conversation->id() );
+
+		$this->assertNotNull( $first );
+		$this->assertNull( $second );
+		$this->assertSame( 'pending', $repo->find( $conversation->id() )->topic_creation_state() );
+	}
+
+	public function test_try_begin_topic_creation_reclaims_only_after_the_lease_expires(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-claim-expiry', 'hash', 1, null );
+
+		$this->assertNotNull( $repo->try_begin_topic_creation( $conversation->id(), 15 ) );
+
+		// Still within the lease: no reclaim.
+		$this->assertNull( $repo->try_begin_topic_creation( $conversation->id(), 15 ) );
+
+		// Simulate an already-expired lease directly, as a crashed prior
+		// claimant would leave it.
+		global $wpdb;
+		$table = $wpdb->prefix . \UniversalTelegram\Persistence\Migrator::CONVERSATIONS_TABLE;
+		$wpdb->update(
+			$table,
+			array( 'topic_claim_expires_at' => gmdate( 'Y-m-d H:i:s', time() - 1 ) ),
+			array( 'id' => $conversation->id() )
+		);
+
+		$reclaimed = $repo->try_begin_topic_creation( $conversation->id(), 15 );
+		$this->assertNotNull( $reclaimed );
+	}
+
+	public function test_try_begin_topic_creation_never_reclaims_a_terminal_state(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-claim-terminal', 'hash', 1, null );
+
+		$repo->try_begin_topic_creation( $conversation->id() );
+		$repo->mark_topic_failed( $conversation->id() );
+
+		// Even with an expired lease left behind, 'failed' is never
+		// re-enterable.
+		global $wpdb;
+		$table = $wpdb->prefix . \UniversalTelegram\Persistence\Migrator::CONVERSATIONS_TABLE;
+		$wpdb->update(
+			$table,
+			array(
+				'topic_creation_state'   => 'failed',
+				'topic_claim_expires_at' => gmdate( 'Y-m-d H:i:s', time() - 100 ),
+			),
+			array( 'id' => $conversation->id() )
+		);
+
+		$this->assertNull( $repo->try_begin_topic_creation( $conversation->id() ) );
+	}
 }
