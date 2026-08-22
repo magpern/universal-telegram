@@ -311,7 +311,15 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 	}
 
 	public function test_start_falls_back_to_a_generic_name_when_the_display_name_is_empty(): void {
-		$blank_user = self::factory()->user->create( array( 'display_name' => '' ) );
+		$blank_user = self::factory()->user->create();
+
+		// wp_insert_user() itself refuses to leave display_name empty (it
+		// defaults to user_login) — this bypasses that default to exercise
+		// a genuinely blank value, however it might arise in practice.
+		global $wpdb;
+		$wpdb->update( $wpdb->users, array( 'display_name' => '' ), array( 'ID' => $blank_user ) );
+		clean_user_cache( $blank_user );
+
 		wp_set_current_user( $blank_user );
 		$this->nonce = wp_create_nonce( 'wp_rest' );
 		$this->bots->create( 'Support Bot', 'token' );

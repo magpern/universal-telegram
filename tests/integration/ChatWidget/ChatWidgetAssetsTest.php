@@ -106,7 +106,13 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 		$this->assertSame( 1, substr_count( $output, '</script>' ) );
 	}
 
-	public function test_config_island_is_identical_across_two_anonymous_requests(): void {
+	public function test_config_island_is_identical_across_two_anonymous_requests_to_the_same_page(): void {
+		// The cache-safety guarantee is scoped to repeated requests for the
+		// *same* page (M06.3.1, ADR-0025): loginUrl/registerUrl now
+		// legitimately vary by page (the return URL), so two different
+		// pages are no longer expected to produce byte-identical output —
+		// what a cache must be able to rely on is that the same URL always
+		// renders identically for every anonymous visitor.
 		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
 		$this->make_eligible_destination();
 		wp_set_current_user( 0 );
@@ -117,13 +123,28 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 		$first_assets->print_config();
 		$first = ob_get_clean();
 
-		$this->go_to( home_url( '/some-other-page' ) );
+		$this->go_to( home_url( '/' ) );
 		$second_assets = $this->assets();
 		ob_start();
 		$second_assets->print_config();
 		$second = ob_get_clean();
 
 		$this->assertSame( $first, $second );
+	}
+
+	public function test_config_island_login_url_reflects_the_current_page(): void {
+		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
+		$this->make_eligible_destination();
+		wp_set_current_user( 0 );
+
+		$this->go_to( home_url( '/some-other-page' ) );
+		$assets = $this->assets();
+
+		ob_start();
+		$assets->print_config();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'some-other-page', $output );
 	}
 
 	public function test_enqueue_selects_the_stylesheet_matching_the_stored_preset(): void {
