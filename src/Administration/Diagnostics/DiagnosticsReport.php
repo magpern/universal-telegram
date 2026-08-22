@@ -78,6 +78,9 @@ final class DiagnosticsReport {
 	 *     woocommerce_event_emitters_registered: bool,
 	 *     queue_pending: int,
 	 *     queue_failed: int,
+	 *     queue_oldest_pending_age_seconds: int,
+	 *     queue_expedited_dispatch_declined_concurrency_24h: int,
+	 *     queue_expedited_dispatch_unavailable_24h: int,
 	 *     telegram_bot_count: int,
 	 *     telegram_destination_count: int,
 	 *     telegram_dead_letter_count: int,
@@ -131,6 +134,14 @@ final class DiagnosticsReport {
 			'woocommerce_event_emitters_registered'  => $this->woocommerce_support->is_active(),
 			'queue_pending'                          => $this->schema_health->is_available() ? $this->queue_health->pending_count() : 0,
 			'queue_failed'                           => $this->schema_health->is_available() ? $this->queue_health->failed_count() : 0,
+			'queue_oldest_pending_age_seconds'       => $this->schema_health->is_available() ? $this->queue_health->oldest_pending_age_seconds() : 0,
+			// Truthful, non-content signals only (docs/adr/0023 §3): the
+			// routine-success path is never audited, so its absence here is
+			// not itself a signal — combine with queue age and each
+			// message's own recorded delivery outcome, never these two
+			// counts alone.
+			'queue_expedited_dispatch_declined_concurrency_24h' => $this->audit_log_repository->count_by_action_24h( 'expedited_dispatch_declined_concurrency' ),
+			'queue_expedited_dispatch_unavailable_24h' => $this->audit_log_repository->count_by_action_24h( 'expedited_dispatch_unavailable' ),
 			'telegram_bot_count'                     => count( $bots ),
 			'telegram_destination_count'             => $destination_count,
 			'telegram_dead_letter_count'             => $alert_details['dead_letter_count'],
