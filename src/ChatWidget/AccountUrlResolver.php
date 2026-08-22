@@ -84,8 +84,8 @@ final class AccountUrlResolver {
 			return null;
 		}
 
-		$url = wc_get_page_permalink( 'myaccount' );
+		$url = (string) wc_get_page_permalink( 'myaccount' );
 
-		return ( is_string( $url ) && '' !== $url ) ? $url : null;
+		return '' !== $url ? $url : null;
 	}
 }

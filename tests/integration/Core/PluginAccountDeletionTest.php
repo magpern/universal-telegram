@@ -27,10 +27,11 @@ final class PluginAccountDeletionTest extends WP_UnitTestCase {
 		$conversation = $conversations->create( 'uuid-account-deletion', 'hash', 1, null, null, $user_id, 'Deleted User' );
 		$this->assertNotNull( $conversation );
 
-		// Fires the same hook wp_delete_user() fires, without depending on
-		// wp-admin/includes/user.php being loaded in this test bootstrap —
-		// this test's own subject is the `deleted_user` wiring in
-		// Plugin::init(), not WordPress core's own deletion routine.
+		// Fires the same *core* hook wp_delete_user() fires, without
+		// depending on wp-admin/includes/user.php being loaded in this test
+		// bootstrap — this test's own subject is the `deleted_user` wiring
+		// in Plugin::init(), not WordPress core's own deletion routine.
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.HookCommentWrongStyle, WooCommerce.Commenting.CommentHooks.MissingHookComment, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
 		do_action( 'deleted_user', $user_id );
 
 		$refreshed = $conversations->find( $conversation->id() );

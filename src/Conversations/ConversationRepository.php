@@ -29,9 +29,9 @@ class ConversationRepository {
 	/**
 	 * Constructor.
 	 *
-	 * @param SchemaHealth           $schema_health Checked before every operation.
-	 * @param CredentialVault        $vault         Encrypts/decrypts the visitor display name (M06.3, ADR-0024).
-	 * @param VisitorTokenGenerator  $tokens        Mints a fresh bearer secret when resuming a conversation (M06.3.1, ADR-0025).
+	 * @param SchemaHealth          $schema_health Checked before every operation.
+	 * @param CredentialVault       $vault         Encrypts/decrypts the visitor display name (M06.3, ADR-0024).
+	 * @param VisitorTokenGenerator $tokens        Mints a fresh bearer secret when resuming a conversation (M06.3.1, ADR-0025).
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
@@ -133,13 +133,13 @@ class ConversationRepository {
 	 * should have already been caught by the caller's own replay lookup)
 	 * surfaces as null, unchanged from create()'s own contract.
 	 *
-	 * @param string $conversation_uuid      Public, opaque identifier for a fresh row.
-	 * @param string $secret_hash            password_hash() of the client-presented bearer secret.
-	 * @param int    $bot_id                 The Telegram bot this conversation belongs to.
+	 * @param string      $conversation_uuid      Public, opaque identifier for a fresh row.
+	 * @param string      $secret_hash            password_hash() of the client-presented bearer secret.
+	 * @param int         $bot_id                 The Telegram bot this conversation belongs to.
 	 * @param string|null $chat_profile      The configured profile requested at start, if any.
-	 * @param string $start_idempotency_key  The client-supplied start idempotency key.
-	 * @param int    $owner_user_id          The authenticated WordPress user.
-	 * @param string $display_name_plaintext The server-derived display name.
+	 * @param string      $start_idempotency_key  The client-supplied start idempotency key.
+	 * @param int         $owner_user_id          The authenticated WordPress user.
+	 * @param string      $display_name_plaintext The server-derived display name.
 	 *
 	 * @return array{conversation: Conversation, secret: string|null, resumed: bool}|null
 	 */
@@ -811,7 +811,7 @@ class ConversationRepository {
 			null === $row['start_idempotency_key'] ? null : (string) $row['start_idempotency_key'],
 			null === $row['topic_claim_expires_at'] ? null : (string) $row['topic_claim_expires_at'],
 			null === $row['display_name_ciphertext'] ? null : (string) $row['display_name_ciphertext'],
-			isset( $row['owner_user_id'] ) && null !== $row['owner_user_id'] ? (int) $row['owner_user_id'] : null
+			isset( $row['owner_user_id'] ) ? (int) $row['owner_user_id'] : null
 		);
 	}
 

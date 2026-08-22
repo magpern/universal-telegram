@@ -397,13 +397,25 @@ final class ConversationsController {
 		$bot = null === $chat_profile ? $this->chat_profiles->default_bot() : $this->chat_profiles->find_by_profile( $chat_profile );
 
 		if ( null === $bot ) {
-			return $this->respond( array( 'ok' => true, 'conversation_uuid' => null ), 200 );
+			return $this->respond(
+				array(
+					'ok'                => true,
+					'conversation_uuid' => null,
+				),
+				200
+			);
 		}
 
 		$existing = $this->conversations->find_active_for_owner( get_current_user_id(), $bot->id() );
 
 		if ( null === $existing ) {
-			return $this->respond( array( 'ok' => true, 'conversation_uuid' => null ), 200 );
+			return $this->respond(
+				array(
+					'ok'                => true,
+					'conversation_uuid' => null,
+				),
+				200
+			);
 		}
 
 		$secret = $this->conversations->rotate_secret( $existing->id() );

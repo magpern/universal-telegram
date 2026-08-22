@@ -128,13 +128,25 @@ final class MigratorConversationOwnershipSchemaTest extends WP_UnitTestCase {
 
 		$resolved = $wpdb->insert(
 			$table,
-			array_merge( $base, array( 'conversation_uuid' => 'uuid-owner-resolved', 'status' => 'resolved' ) )
+			array_merge(
+				$base,
+				array(
+					'conversation_uuid' => 'uuid-owner-resolved',
+					'status'            => 'resolved',
+				)
+			)
 		);
 		$this->assertNotFalse( $resolved );
 
 		$fresh = $wpdb->insert(
 			$table,
-			array_merge( $base, array( 'conversation_uuid' => 'uuid-owner-fresh', 'status' => 'new' ) )
+			array_merge(
+				$base,
+				array(
+					'conversation_uuid' => 'uuid-owner-fresh',
+					'status'            => 'new',
+				)
+			)
 		);
 		$this->assertNotFalse( $fresh, 'A resolved row must not occupy the owner_active_slot, freeing it for one fresh active conversation.' );
 	}

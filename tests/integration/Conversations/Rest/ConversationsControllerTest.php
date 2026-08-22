@@ -186,8 +186,6 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		return $response->get_data();
 	}
 
-	// -- authentication/CSRF boundary -----------------------------------
-
 	public function test_start_without_a_logged_in_user_returns_auth_required(): void {
 		wp_set_current_user( 0 );
 		$this->bots->create( 'Support Bot', 'token' );
@@ -195,7 +193,13 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$response = $this->controller->handle_start( $this->start_request() );
 
 		$this->assertSame( 401, $response->get_status() );
-		$this->assertSame( array( 'ok' => false, 'reason' => 'auth_required' ), $response->get_data() );
+		$this->assertSame(
+			array(
+				'ok'     => false,
+				'reason' => 'auth_required',
+			),
+			$response->get_data()
+		);
 	}
 
 	public function test_start_with_a_missing_nonce_returns_auth_required(): void {
@@ -254,8 +258,6 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$this->assertArrayNotHasKey( 'Access-Control-Allow-Origin', $headers );
 	}
 
-	// -- ownership boundary -----------------------------------------------
-
 	public function test_post_message_from_a_different_authenticated_user_returns_the_identical_404(): void {
 		$started    = $this->started_conversation();
 		$other_user = self::factory()->user->create();
@@ -267,7 +269,13 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		);
 
 		$this->assertSame( 404, $response->get_status() );
-		$this->assertSame( array( 'ok' => false, 'reason' => 'conversation_expired' ), $response->get_data() );
+		$this->assertSame(
+			array(
+				'ok'     => false,
+				'reason' => 'conversation_expired',
+			),
+			$response->get_data()
+		);
 	}
 
 	public function test_poll_from_a_different_authenticated_user_returns_the_identical_404(): void {
@@ -291,8 +299,6 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 
 		$this->assertSame( 404, $response->get_status() );
 	}
-
-	// -- server-derived identity ------------------------------------------
 
 	public function test_start_derives_the_display_name_from_the_authenticated_wordpress_user(): void {
 		$this->bots->create( 'Support Bot', 'token' );
@@ -335,8 +341,6 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$poll = $this->controller->handle_poll( $this->poll_request( $started['conversation_uuid'], $started['secret'] ) );
 		$this->assertArrayNotHasKey( 'display_name_required', $poll->get_data() );
 	}
-
-	// -- start/message flow, idempotency, and existing behaviour ----------
 
 	public function test_start_without_any_configured_bot_returns_503(): void {
 		$response = $this->controller->handle_start( $this->start_request() );
@@ -702,8 +706,6 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 
 		$this->assertSame( 0, $this->expedited_dispatch->calls );
 	}
-
-	// -- GET /conversations/mine ------------------------------------------
 
 	public function test_mine_returns_null_when_no_active_conversation_exists(): void {
 		$this->bots->create( 'Support Bot', 'token' );
