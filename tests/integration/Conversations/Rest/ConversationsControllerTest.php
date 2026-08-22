@@ -640,13 +640,21 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 			)
 		);
 
-		// A fresh controller/rate-limiter for the second poll: the shared
-		// controller's per-conversation poll limiter (capacity 1) was
-		// already consumed by $before above, and this assertion is about
-		// display_name_required, not rate limiting (covered separately by
+		// A fresh controller with a clock forced 100 seconds into the future
+		// for the second poll: the shared controller's per-conversation poll
+		// limiter (capacity 1, refill 0.5/sec) was already consumed by
+		// $before above, and this assertion is about display_name_required,
+		// not rate limiting (covered separately by
 		// test_poll_per_conversation_minimum_interval_trips_on_rapid_polling).
+		// A fresh RateLimiter object alone would not suffice: bucket state
+		// is persisted per (scope, conversation id) in the database, not on
+		// the object, so only forcing the clock forward reliably refills it
+		// regardless of real wall-clock timing.
 		$schema_health     = new SchemaHealth();
-		$second_controller = $this->build_controller( $schema_health, new RateLimiter( $schema_health ), new SpyExpeditedDispatchTrigger( new AuditLogger( $schema_health, new Redactor() ) ) );
+		$future_clock      = static function (): int {
+			return time() + 100;
+		};
+		$second_controller = $this->build_controller( $schema_health, new RateLimiter( $schema_health, $future_clock ), new SpyExpeditedDispatchTrigger( new AuditLogger( $schema_health, new Redactor() ) ) );
 
 		$after = $second_controller->handle_poll( $this->poll_request( $started['conversation_uuid'], $started['secret'] ) );
 		$this->assertFalse( $after->get_data()['display_name_required'] );
