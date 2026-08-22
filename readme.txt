@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.6.2
+Stable tag: 0.7.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -41,6 +41,29 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.7.0 =
+* Chat identity, lifecycle, and presentation (M06.3, ADR-0024): the chat widget now requires a
+  visitor display name (1-80 characters) before the first message can be persisted or routed —
+  encrypted at rest, write-once, never exposed back to the client beyond a `display_name_required`
+  boolean on the start/poll responses so a page reload correctly re-derives whether the name step is
+  still needed. The name feeds the Telegram forum-topic title (a Unicode-safe truncated name plus a
+  short, non-secret reference, bounded to Telegram's 128-character cap) and a one-time context header
+  on the conversation's first forwarded message only. Pre-existing conversations remain fully
+  functional with no name and no invented replacement. Adds three compiled, static presentation
+  presets (classic/modern/minimal; modern default), geometry and motion-default appearance tokens on
+  a documented, stable `.ut-chat-widget` selector contract, and configurable participant labels
+  (default "You"/"Support") — no custom-CSS editor, external stylesheet URL, or runtime-generated
+  stylesheet; a global preset/appearance change becomes visible after the site's own page-cache purge
+  or expiry, not instantly. The visitor's own reduced-motion preference is always honoured regardless
+  of the admin's motion-default setting. Conversations inactive for 30 days (no visitor or operator
+  message) now auto-resolve through the existing status-transition map and are then archived by the
+  existing daily retention pass — never a raw status write, never reopening an already-archived
+  conversation, and still no manual delete control. Chat-widget-created Telegram topic destinations no
+  longer appear in the Bots tab's manually configured destination list or expose a "Send test message"
+  action; they are shown separately, read-only. Adds `db_version` 15 (one new nullable, encrypted
+  column on the conversations table). Email collection, transcript delivery, and logged-in WooCommerce
+  order context remain deferred to future milestones.
 
 = 0.6.2 =
 * Interactive Telegram delivery corrective pass (M06.2 corrective plan v2, ADR-0023 amendment):
