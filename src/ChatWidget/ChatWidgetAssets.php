@@ -41,17 +41,19 @@ final class ChatWidgetAssets {
 	 *
 	 * @var array<int, string>
 	 */
-	private const VALID_PRESETS = array( 'classic', 'modern', 'minimal' );
+	private const VALID_PRESETS = array( 'theme', 'classic', 'modern', 'minimal' );
 
 	/**
 	 * Constructor.
 	 *
-	 * @param ChatWidgetAvailability $availability Whether the widget should run on this request at all.
-	 * @param Settings               $settings     Reads the current preset/geometry/motion/participant-label configuration.
+	 * @param ChatWidgetAvailability $availability   Whether the widget should run on this request at all.
+	 * @param Settings               $settings       Reads the current preset/geometry/motion/participant-label configuration.
+	 * @param AccountUrlResolver     $account_urls   Resolves the logged-out login/registration links (M06.3.1, ADR-0025).
 	 */
 	public function __construct(
 		private readonly ChatWidgetAvailability $availability,
-		private readonly Settings $settings
+		private readonly Settings $settings,
+		private readonly AccountUrlResolver $account_urls
 	) {}
 
 	/**
@@ -97,7 +99,7 @@ final class ChatWidgetAssets {
 	private function preset(): string {
 		$preset = (string) $this->settings->get()['chat_widget_preset'];
 
-		return in_array( $preset, self::VALID_PRESETS, true ) ? $preset : 'modern';
+		return in_array( $preset, self::VALID_PRESETS, true ) ? $preset : 'theme';
 	}
 
 	/**
@@ -115,6 +117,15 @@ final class ChatWidgetAssets {
 
 		$values = $this->settings->get();
 
+		// loggedIn/nonce/loginUrl/registerUrl are per-request (M06.3.1,
+		// ADR-0025): identical among anonymous visitors of the same page
+		// (still cache-safe for that audience — no full-page-cache layer
+		// exists for authenticated requests in this stack), and personalized
+		// only once a visitor is actually authenticated. The nonce is never
+		// printed for a logged-out request.
+		$return_url = $this->account_urls->current_url();
+		$logged_in  = is_user_logged_in();
+
 		$config = array(
 			'restUrl'       => rest_url( 'universal-telegram/v1' ),
 			'namespace'     => 'universal-telegram/v1',
@@ -122,6 +133,10 @@ final class ChatWidgetAssets {
 			'motionDefault' => in_array( $values['chat_widget_motion_default'], array( 'standard', 'reduced' ), true ) ? $values['chat_widget_motion_default'] : 'standard',
 			'labelVisitor'  => (string) $values['chat_widget_participant_label_visitor'],
 			'labelOperator' => (string) $values['chat_widget_participant_label_operator'],
+			'loggedIn'      => $logged_in,
+			'nonce'         => $logged_in ? wp_create_nonce( 'wp_rest' ) : null,
+			'loginUrl'      => $this->account_urls->login_url( $return_url ),
+			'registerUrl'   => $this->account_urls->register_url( $return_url ),
 		);
 
 		printf(

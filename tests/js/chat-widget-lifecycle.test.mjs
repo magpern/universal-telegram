@@ -86,7 +86,7 @@ function makeSandbox( overrides ) {
 	return sandbox;
 }
 
-const CONFIG = { restUrl: 'https://example.test/wp-json/universal-telegram/v1' };
+const CONFIG = { restUrl: 'https://example.test/wp-json/universal-telegram/v1', loggedIn: true, nonce: 'test-nonce' };
 
 async function flush() {
 	await Promise.resolve();
@@ -143,7 +143,22 @@ test( '404 during poll is terminal: clears state, stops polling, emits ended', a
 	assert.equal( state.getConversation(), null );
 } );
 
-test( 'endConversation clears local state, stops polling, and emits ended without calling any additional endpoint', async () => {
+// M06.3.1 (ADR-0025): the visible "End conversation" control and the
+// client's own endConversation() method are removed entirely — a
+// conversation only ever ends server-side (404/resolved/archived, already
+// covered above), never via a local-only client action.
+
+test( 'no endConversation method is exposed on the client', async () => {
+	const fetch = makeFakeFetch();
+	const sandbox = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
+
+	assert.equal( typeof client.endConversation, 'undefined' );
+} );
+
+test( 'a new sendMessage after a server-driven end starts an entirely new conversation', async () => {
 	const fetch = makeFakeFetch();
 	const sandbox = makeSandbox( { fetch } );
 	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
@@ -151,31 +166,11 @@ test( 'endConversation clears local state, stops polling, and emits ended withou
 
 	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
 
-	fetch.queueResponse( jsonResponse( 200, { ok: true, status: 'open', messages: [] } ) );
+	fetch.queueResponse( { status: 404, json: () => Promise.resolve( { ok: false } ) } );
 	client.open();
 	await flush();
 
-	const callsBeforeEnd = fetch.calls.length;
-
-	const seen = [];
-	client.on( 'state', ( event ) => seen.push( event.status ) );
-
-	client.endConversation();
-
-	assert.ok( seen.includes( 'ended' ) );
 	assert.equal( state.getConversation(), null );
-	assert.equal( state.getPendingStart(), null );
-	assert.equal( fetch.calls.length, callsBeforeEnd, 'endConversation must not issue any network request' );
-} );
-
-test( 'a new sendMessage after endConversation starts an entirely new conversation', async () => {
-	const fetch = makeFakeFetch();
-	const sandbox = makeSandbox( { fetch } );
-	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
-	state.setConversation( 'uuid-1', 'a'.repeat( 64 ) );
-
-	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
-	client.endConversation();
 
 	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-2', secret: 'irrelevant' } ) );
 	fetch.queueResponse( jsonResponse( 200, { ok: true } ) );

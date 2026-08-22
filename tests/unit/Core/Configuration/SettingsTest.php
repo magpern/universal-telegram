@@ -53,7 +53,7 @@ final class SettingsTest extends TestCase {
 		$settings = new Settings();
 		$defaults = $settings->defaults();
 
-		$this->assertSame( 'modern', $defaults['chat_widget_preset'] );
+		$this->assertSame( 'theme', $defaults['chat_widget_preset'] );
 		$this->assertSame( 'round', $defaults['chat_widget_geometry'] );
 		$this->assertSame( 'standard', $defaults['chat_widget_motion_default'] );
 		$this->assertSame( 'You', $defaults['chat_widget_participant_label_visitor'] );
@@ -70,7 +70,13 @@ final class SettingsTest extends TestCase {
 	public function test_sanitize_falls_back_to_the_default_preset_for_an_unrecognized_value(): void {
 		$settings = new Settings();
 
-		$this->assertSame( 'modern', $settings->sanitize( array( 'chat_widget_preset' => 'made-up' ) )['chat_widget_preset'] );
+		$this->assertSame( 'theme', $settings->sanitize( array( 'chat_widget_preset' => 'made-up' ) )['chat_widget_preset'] );
+	}
+
+	public function test_sanitize_recognizes_the_theme_preset(): void {
+		$settings = new Settings();
+
+		$this->assertSame( 'theme', $settings->sanitize( array( 'chat_widget_preset' => 'theme' ) )['chat_widget_preset'] );
 	}
 
 	public function test_sanitize_recognizes_a_valid_geometry(): void {

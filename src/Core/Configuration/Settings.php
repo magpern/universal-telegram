@@ -68,7 +68,7 @@ final class Settings {
 			'visitor_click_target_allowlist'              => array(),
 			'visitor_exclude_administrators'              => true,
 			'chat_widget_enabled'                         => false,
-			'chat_widget_preset'                          => 'modern',
+			'chat_widget_preset'                          => 'theme',
 			'chat_widget_geometry'                        => 'round',
 			'chat_widget_motion_default'                  => 'standard',
 			'chat_widget_participant_label_visitor'       => 'You',
@@ -116,7 +116,7 @@ final class Settings {
 			$sanitized['visitor_consent_mode'] = $input['visitor_consent_mode'];
 		}
 
-		if ( isset( $input['chat_widget_preset'] ) && in_array( $input['chat_widget_preset'], array( 'classic', 'modern', 'minimal' ), true ) ) {
+		if ( isset( $input['chat_widget_preset'] ) && in_array( $input['chat_widget_preset'], array( 'theme', 'classic', 'modern', 'minimal' ), true ) ) {
 			$sanitized['chat_widget_preset'] = $input['chat_widget_preset'];
 		}
 

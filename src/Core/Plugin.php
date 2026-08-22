@@ -36,6 +36,7 @@ use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Automations\RuleEvaluator;
 use UniversalTelegram\Automations\RuleSimulator;
 use UniversalTelegram\Automations\TemplateRenderer;
+use UniversalTelegram\ChatWidget\AccountUrlResolver;
 use UniversalTelegram\ChatWidget\ChatWidgetAssets;
 use UniversalTelegram\ChatWidget\ChatWidgetAvailability;
 use UniversalTelegram\Conversations\ChatProfileResolver;
@@ -847,7 +848,8 @@ final class Plugin {
 				$settings,
 				new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository )
 			),
-			$settings
+			$settings,
+			new AccountUrlResolver()
 		);
 		add_action( 'wp_enqueue_scripts', array( $chat_widget_assets, 'enqueue' ) );
 		add_action( 'wp_footer', array( $chat_widget_assets, 'print_config' ), 5 );

@@ -133,6 +133,7 @@ class SettingsPage {
 			'chat_widget_preset',
 			__( 'Chat widget style preset', 'universal-telegram' ),
 			array(
+				'theme'   => __( 'Theme (matches your site)', 'universal-telegram' ),
 				'classic' => __( 'Classic', 'universal-telegram' ),
 				'modern'  => __( 'Modern', 'universal-telegram' ),
 				'minimal' => __( 'Minimal', 'universal-telegram' ),

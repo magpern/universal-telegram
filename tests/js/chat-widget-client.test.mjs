@@ -121,7 +121,7 @@ function makeSandbox( overrides ) {
 	return { sandbox, timers };
 }
 
-const CONFIG = { restUrl: 'https://example.test/wp-json/universal-telegram/v1' };
+const CONFIG = { restUrl: 'https://example.test/wp-json/universal-telegram/v1', loggedIn: true, nonce: 'test-nonce' };
 
 async function flush() {
 	await Promise.resolve();
@@ -451,24 +451,12 @@ test( 'a conversation status of resolved ends the conversation and clears state'
 	assert.equal( state.getConversation(), null );
 } );
 
-test( 'sendMessage with a displayName includes display_name in the message post body', async () => {
+// -- M06.3.1 (ADR-0025): authenticated access, invisible start-then-message,
+// server-derived identity, and cross-session resume via /conversations/mine.
+
+test( 'sendMessage never includes a display_name field in the message post body', async () => {
 	const fetch = makeFakeFetch();
-	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-1', secret: 'irrelevant', display_name_required: true } ) );
-	fetch.queueResponse( jsonResponse( 200, { ok: true } ) );
-
-	const { sandbox } = makeSandbox( { fetch } );
-	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
-	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
-
-	await client.sendMessage( 'hello', 'Alice' );
-
-	const messageCall = fetch.calls[ 1 ];
-	assert.equal( JSON.parse( messageCall.init.body ).display_name, 'Alice' );
-} );
-
-test( 'sendMessage without a displayName omits display_name from the message post body', async () => {
-	const fetch = makeFakeFetch();
-	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-1', secret: 'irrelevant', display_name_required: false } ) );
+	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-1', secret: 'irrelevant' } ) );
 	fetch.queueResponse( jsonResponse( 200, { ok: true } ) );
 
 	const { sandbox } = makeSandbox( { fetch } );
@@ -481,24 +469,113 @@ test( 'sendMessage without a displayName omits display_name from the message pos
 	assert.equal( 'display_name' in JSON.parse( messageCall.init.body ), false );
 } );
 
-test( 'a successful start emits displayNameRequired from the response, never the name itself', async () => {
+test( 'every authenticated request carries the X-WP-Nonce header', async () => {
 	const fetch = makeFakeFetch();
-	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-1', secret: 'irrelevant', display_name_required: true } ) );
+	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-1', secret: 'irrelevant' } ) );
 	fetch.queueResponse( jsonResponse( 200, { ok: true } ) );
 
 	const { sandbox } = makeSandbox( { fetch } );
 	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
 	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
 
-	const seen = [];
-	client.on( 'displayNameRequired', ( required ) => seen.push( required ) );
-
 	await client.sendMessage( 'hello' );
 
-	assert.deepEqual( seen, [ true ] );
+	assert.equal( fetch.calls[ 0 ].init.headers[ 'X-WP-Nonce' ], 'test-nonce' );
+	assert.equal( fetch.calls[ 1 ].init.headers[ 'X-WP-Nonce' ], 'test-nonce' );
+	assert.equal( fetch.calls[ 0 ].init.credentials, 'same-origin' );
 } );
 
-test( 'reload: opening an existing conversation emits displayNameRequired from the hydration poll response', async () => {
+test( 'sendMessage when logged out never calls fetch and emits signed-out', async () => {
+	const fetch = makeFakeFetch();
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, { ...CONFIG, loggedIn: false } );
+
+	const seen = [];
+	client.on( 'state', ( event ) => seen.push( event.status ) );
+
+	await assert.rejects( client.sendMessage( 'hello' ) );
+
+	assert.equal( fetch.calls.length, 0 );
+	assert.ok( seen.includes( 'signed-out' ) );
+} );
+
+test( 'open() when logged out never calls fetch and emits signed-out', async () => {
+	const fetch = makeFakeFetch();
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, { ...CONFIG, loggedIn: false } );
+
+	const seen = [];
+	client.on( 'state', ( event ) => seen.push( event.status ) );
+
+	client.open();
+
+	assert.deepEqual( seen, [ 'signed-out' ] );
+	assert.equal( fetch.calls.length, 0 );
+} );
+
+test( 'open() with no cached conversation calls GET /conversations/mine and resumes the returned one', async () => {
+	const fetch = makeFakeFetch();
+	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-resumed', secret: 'b'.repeat( 64 ) } ) );
+	fetch.queueResponse( jsonResponse( 200, { ok: true, status: 'open', messages: [] } ) );
+
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
+
+	const seen = [];
+	client.on( 'state', ( event ) => seen.push( event.status ) );
+
+	client.open();
+	await flush();
+	await flush();
+
+	assert.equal( fetch.calls[ 0 ].url, CONFIG.restUrl + '/conversations/mine' );
+	assert.equal( state.getConversation().uuid, 'uuid-resumed' );
+	assert.ok( seen.includes( 'active' ) );
+
+	client.stopPolling();
+} );
+
+test( 'open() with no cached conversation and no resumable one lands on idle, never creating a conversation', async () => {
+	const fetch = makeFakeFetch();
+	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: null } ) );
+
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
+
+	const seen = [];
+	client.on( 'state', ( event ) => seen.push( event.status ) );
+
+	client.open();
+	await flush();
+	await flush();
+
+	assert.equal( fetch.calls.length, 1, 'only the mine lookup — never a start call' );
+	assert.equal( state.getConversation(), null );
+	assert.ok( seen.includes( 'idle' ) );
+} );
+
+test( 'a 401 on start clears state and emits signed-out', async () => {
+	const fetch = makeFakeFetch();
+	fetch.queueResponse( jsonResponse( 401, { ok: false, reason: 'auth_required' } ) );
+
+	const { sandbox } = makeSandbox( { fetch } );
+	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
+
+	const seen = [];
+	client.on( 'state', ( event ) => seen.push( event.status ) );
+
+	await assert.rejects( client.sendMessage( 'hello' ) );
+
+	assert.ok( seen.includes( 'signed-out' ) );
+	assert.equal( state.getPendingStart(), null );
+} );
+
+test( 'a 401 on poll clears the cached conversation and emits signed-out', async () => {
 	const fetch = makeFakeFetch();
 	const { sandbox } = makeSandbox( { fetch } );
 	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
@@ -506,32 +583,17 @@ test( 'reload: opening an existing conversation emits displayNameRequired from t
 
 	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
 
-	fetch.queueResponse( jsonResponse( 200, { ok: true, status: 'open', messages: [], display_name_required: false } ) );
+	fetch.queueResponse( jsonResponse( 401, { ok: false, reason: 'auth_required' } ) );
 
 	const seen = [];
-	client.on( 'displayNameRequired', ( required ) => seen.push( required ) );
+	client.on( 'state', ( event ) => seen.push( event.status ) );
 
 	client.open();
 	await flush();
+	await flush();
 
-	assert.deepEqual( seen, [ false ] );
-
-	client.stopPolling();
-} );
-
-test( 'opening with no existing conversation emits displayNameRequired true (a fresh conversation always requires a name)', async () => {
-	const fetch = makeFakeFetch();
-	const { sandbox } = makeSandbox( { fetch } );
-	const state = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
-
-	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, CONFIG );
-
-	const seen = [];
-	client.on( 'displayNameRequired', ( required ) => seen.push( required ) );
-
-	client.open();
-
-	assert.deepEqual( seen, [ true ] );
+	assert.ok( seen.includes( 'signed-out' ) );
+	assert.equal( state.getConversation(), null );
 } );
 
 test( 'poll backoff doubles on transient failure and resets on success', async () => {
