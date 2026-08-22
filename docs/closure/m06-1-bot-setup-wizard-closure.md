@@ -125,11 +125,96 @@ and green CI, all present above.
 
 **PASS**, pending Product Owner acceptance below.
 
+## Addendum — wizard/manual-view hotfix, new-user guided setup, and any-bot configuration
+
+After the PR #14 merge above, a live walkthrough on the BioPentra site surfaced a defect and two
+follow-on scope corrections, all delivered on branch `fix/m06-1-wizard-manual-view`
+([PR #15](https://github.com/magpern/universal-telegram/pull/15), merged via merge commit
+`8422134`).
+
+### Defect: wizard and manual view rendered simultaneously
+
+`BotManagementPage::render_tab_content()` unconditionally called `render_bot_list()` and
+`render_create_bot_form()` regardless of which view (wizard or manual) it also rendered. For a
+completed default bot this showed the wizard *and* the manual "Add a bot" form on the same page —
+duplicating the sensitive token-entry form and muddying multi-bot management. Fixed by making the
+branch exclusive: wizard-only when incomplete or `?view=wizard` is requested, manual-view-only
+(with a persistent "Setup wizard" link) otherwise.
+
+### Corrective addendum 1: new-user landing choice
+
+The wizard's step 1 always jumped straight to the BotFather-walkthrough-then-token form, with no way
+to distinguish "I already have a bot" from "walk me through creating one." Step 1 now shows a
+choice — **Set up an existing bot** / **Create and set up a new bot** — for a brand-new setup (no
+bot configured at all).
+
+### Corrective addendum 2: wizard can configure any bot
+
+A live test on BioPentra showed that once any bot existed, the landing choice could never resurface
+and there was no way to run the checklist against a second bot. The wizard's entry point
+("Setup wizard" link) now always presents a top-level choice — create a new bot, or configure an
+existing one (a picker across every configured bot, skipped straight through when there is exactly
+one) — regardless of whether the default bot is already complete. The bare Bots-tab URL still
+auto-resumes an incomplete default bot's own checklist directly, unchanged, since that remains the
+common single-bot case. `BotSetupWizardState`'s completion methods now take an explicit
+`BotProfile` instead of always resolving the default bot internally, so any selected bot's own
+progress can be derived — the chat widget itself stays wired to exactly one bot
+(`ChatProfileResolver::default_bot()`); selecting or creating a bot through the wizard never
+changes that, and step 5 requires only a registered webhook (not widget activation) for a
+non-default bot. Creating a bot through the wizard's own form (a hidden `from_wizard` marker
+honored by the existing `create_bot` redirect) returns into the wizard with that new bot selected;
+it is simply added to the bot list, never auto-promoted to default.
+
+### Merge conflict with M06.2
+
+`fix/m06-1-wizard-manual-view` branched before M06.2 (PR #16, docs/closure/m06-2-interactive-telegram-delivery-closure.md)
+merged to `main`, and both touched `BotManagementController.php`, `BotManagementPage.php`, and
+`BotManagementControllerTest.php`. Resolved by merging `origin/main` into the branch: combined the
+`from_wizard` redirect with M06.2's `test_message_result` redirect (both conditions, mutually
+exclusive by `$op` in practice); kept this branch's exclusive wizard/manual-view branching while
+adding M06.2's `render_test_message_notice()` call (M06.2 had built on the pre-hotfix code, since
+this branch wasn't merged yet, and so reintroduced the unconditional `render_bot_list()` call this
+hotfix removes); and reconciled the test file by dropping this branch's redundant
+`controller_capturing_redirect()` helper in favor of M06.2's already-built-in `last_redirect_url`
+capture on its updated `controller()` helper. Merge commit `970308c`.
+
+### Implementation commits (branch `fix/m06-1-wizard-manual-view`)
+
+- `70a2475` — fix(admin): render only the wizard or the manual bots view, never both (M06.1)
+- `01d081b` — fix(test): target wizard step 1 for the duplicate-form regression check
+- `820a23d` — fix(test): update package-acceptance Bots-tab smoke check for the wizard-only default view
+- `32f5655` — chore: retrigger CI for M06.1 wizard/manual-view hotfix
+- `b47727d` — feat(admin): add new-user landing choice to wizard step 1 (M06.1 addendum)
+- `e19c17b` — feat(admin): wizard can create a new bot or configure any existing bot (M06.1 addendum)
+- `970308c` — Merge remote-tracking branch 'origin/main' into fix/m06-1-wizard-manual-view
+
+### Lean validation and CI evidence (PR #15)
+
+- PHPCS, scoped to every changed file across all commits including the merge resolution: clean.
+- PHPStan, scoped to the same files: `[OK] No errors`.
+- Every directly affected integration test file run individually (multi-file `phpunit` CLI
+  invocations were found to silently run only the first file — each file was verified separately
+  as a result): `BotManagementPageTest` (15 tests), `BotSetupWizardRendererTest` (20 tests),
+  `BotSetupWizardStateTest` (14 tests), `BotManagementControllerTest` (13 tests, including M06.2's
+  own Test Message tests plus this branch's wizard-redirect tests) — 62 tests, 181 assertions,
+  0 failures, after fixing one stale-object test-fixture bug (a `BotProfile` value object must be
+  re-fetched after a repository mutation to observe it) and several HTML-entity-encoding mismatches
+  in string assertions (`esc_html()` renders `'` as `&#039;`).
+- GitHub Actions full matrix on PR #15 (merge commit `970308c`): `build`,
+  `integration-wc-present-current`, `integration-wp-only-current`, `integration-wp-only-floor`,
+  `js-behavioural`, `package-acceptance` (6.9/8.1, 7.1/8.3, 7.1/8.3/WC 11.0.1), `phpcs`,
+  `static-analysis`, `unit` (8.1, 8.3, 8.4) — all **pass**. (GitHub Actions did not queue any
+  check-suite at all on this PR for several pushes/close-reopens until the merge conflict against
+  `main` was actually resolved — worth knowing if a future PR's checks similarly never appear.)
+
+### Final `main` SHA (after PR #15)
+
+`8422134` (verified `main == origin/main`, clean working tree, immediately after merge).
+
 ## Product Owner acceptance
 
-**Pending.** Awaiting a real Bots-tab walkthrough of the five-step wizard (create bot → create
-support group → add bot as administrator → connect group → activate chat widget) against a live
-bot/group, including the manual-view toggle and multi-bot behavior, before this closure is finalized.
+**Pending.** Awaiting final sign-off following the live BioPentra walkthrough that already
+identified and fed back the two corrective addenda above.
 
 - Name:
 - Date:
