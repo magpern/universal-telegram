@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.0] - Unreleased
+
+### Added
+
+- Bot setup wizard (M06.1): replaces the static "Set up a Telegram bot" guidance panel on
+  Telegram Hub → Bots with a progress-driven, five-step wizard (create bot, create support
+  group, add bot as administrator, connect group, activate chat widget), server-rendered with
+  no JavaScript, SPA, or new build system. Progress is derived entirely from already-persisted
+  state (`BotSetupWizardState`) — no new capability, table, migration, or settings field.
+  Steps 2 and 3 (creating the Telegram group and adding the bot as its administrator) are
+  labelled as external manual prerequisites and are never falsely marked complete, since
+  WordPress has no way to observe or verify them. Step 5 links to the existing Settings tab
+  to enable the chat widget rather than duplicating that form. A shared `TelegramFormFields`
+  collaborator extracts the add-bot, create-destination, and single-op button forms so the
+  manual Bots page and the wizard reuse one implementation. No ADR required (no architecture,
+  persistence, or public-contract change); no database schema change.
+
 ## [0.2.0] - Unreleased
 
 ### Added
