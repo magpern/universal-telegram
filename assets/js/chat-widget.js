@@ -787,19 +787,31 @@
 			log.appendChild( separator );
 		}
 
+		// Sets both the native `hidden` attribute and an explicit inline
+		// `display` style. The inline style is defense-in-depth against a
+		// host theme's own global CSS (observed in the field: a rule with
+		// enough specificity to defeat the bare `[hidden]` selector) —
+		// otherwise a stale/half-hidden section can render alongside the
+		// intended one, showing e.g. the sign-in prompt next to an already-
+		// populated composer and message log.
+		function setVisible( element, visible ) {
+			element.hidden = ! visible;
+			element.style.display = visible ? '' : 'none';
+		}
+
 		function showSignedOut() {
-			signin.hidden = false;
-			log.hidden = true;
-			newMessagesButton.hidden = true;
-			statusRegion.hidden = true;
-			form.hidden = true;
+			setVisible( signin, true );
+			setVisible( log, false );
+			setVisible( newMessagesButton, false );
+			setVisible( statusRegion, false );
+			setVisible( form, false );
 		}
 
 		function showChat() {
-			signin.hidden = true;
-			log.hidden = false;
-			statusRegion.hidden = false;
-			form.hidden = false;
+			setVisible( signin, false );
+			setVisible( log, true );
+			setVisible( statusRegion, true );
+			setVisible( form, true );
 		}
 
 		// M06.3.1 addendum: an anonymous-allowed logged-out visitor also gets
@@ -816,7 +828,7 @@
 
 		newMessagesButton.addEventListener( 'click', function () {
 			log.scrollTop = log.scrollHeight;
-			newMessagesButton.hidden = true;
+			setVisible( newMessagesButton, false );
 		} );
 
 		function appendMessage( message, forceScroll ) {
@@ -860,9 +872,9 @@
 
 			if ( wasAtBottom ) {
 				log.scrollTop = log.scrollHeight;
-				newMessagesButton.hidden = true;
+				setVisible( newMessagesButton, false );
 			} else {
-				newMessagesButton.hidden = false;
+				setVisible( newMessagesButton, true );
 			}
 		}
 
@@ -877,6 +889,17 @@
 				showSignedOut();
 			}
 
+			// 'idle' means: authenticated, no conversation yet — the visitor
+			// has never sent a message in this one. A personalized greeting
+			// there is friendlier than a bare, empty textarea; every later
+			// state (an existing conversation, or a genuinely anonymous
+			// visitor) keeps the generic placeholder.
+			if ( 'idle' === described.status && config.loggedIn && config.firstName ) {
+				input.placeholder = 'What’s on your mind, ' + config.firstName + '?';
+			} else if ( 'idle' === described.status ) {
+				input.placeholder = 'What’s on your mind?';
+			}
+
 			if ( 'ended' === described.status && ! statusRegion.querySelector( '.ut-chat-widget__restart' ) ) {
 				var restart = doc.createElement( 'button' );
 				restart.type = 'button';
@@ -887,7 +910,7 @@
 					pendingVisitorTexts = [];
 					lastRenderedDateKey = null;
 					log.textContent = '';
-					newMessagesButton.hidden = true;
+					setVisible( newMessagesButton, false );
 					statusRegion.textContent = '';
 					statusRegion.className = 'ut-chat-widget__status';
 					input.disabled = false;

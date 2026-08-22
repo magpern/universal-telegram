@@ -137,6 +137,10 @@ final class ChatWidgetAssets {
 			'nonce'                => $logged_in ? wp_create_nonce( 'wp_rest' ) : null,
 			'loginUrl'             => $this->account_urls->login_url( $return_url ),
 			'registerUrl'          => $this->account_urls->register_url( $return_url ),
+			// First name only, never a full name/username/email — a purely
+			// cosmetic greeting, personalized only for an actually-
+			// authenticated request exactly like loggedIn/nonce above.
+			'firstName'            => $logged_in ? $this->resolve_first_name() : null,
 			// Identical for every anonymous visitor of a given page — a
 			// pure function of stored settings like geometry/preset above,
 			// so it stays cache-safe (M06.3.1 addendum).
@@ -148,6 +152,32 @@ final class ChatWidgetAssets {
 			esc_attr( self::CONFIG_ID ),
 			wp_json_encode( $config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT )
 		);
+	}
+
+	/**
+	 * A short, purely cosmetic first name for the widget's greeting —
+	 * never the full display name, username, or email. Falls back to the
+	 * first word of the WordPress display name when no first name is set
+	 * on the account, and to null (no personalized greeting) when neither
+	 * yields anything usable.
+	 *
+	 * @return string|null
+	 */
+	private function resolve_first_name(): ?string {
+		$user       = wp_get_current_user();
+		$first_name = trim( (string) $user->first_name );
+
+		if ( '' === $first_name ) {
+			$display_name = trim( (string) $user->display_name );
+			$first_word   = strtok( $display_name, " \t\n" );
+			$first_name   = false === $first_word ? '' : trim( $first_word );
+		}
+
+		if ( '' === $first_name ) {
+			return null;
+		}
+
+		return mb_substr( $first_name, 0, 40, 'UTF-8' );
 	}
 
 	/**
