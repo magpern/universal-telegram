@@ -55,6 +55,7 @@ final class BotManagementPage {
 		}
 
 		$this->render_bot_list();
+		$this->render_bot_setup_guidance();
 		$this->render_create_bot_form();
 		$this->render_dead_letter_list();
 	}
@@ -184,6 +185,49 @@ final class BotManagementPage {
 		echo '<input type="number" name="message_thread_id" placeholder="' . esc_attr__( 'Topic ID (supergroup only)', 'universal-telegram' ) . '" /> ';
 		submit_button( __( 'Add destination', 'universal-telegram' ), 'secondary', 'submit', false );
 		echo '</form>';
+	}
+
+	/**
+	 * Renders the "Set up a Telegram bot" onboarding guidance panel shown
+	 * immediately above the add-bot form.
+	 */
+	private function render_bot_setup_guidance(): void {
+		echo '<div class="card" style="max-width:none;">';
+		echo '<h2>' . esc_html__( 'Set up a Telegram bot', 'universal-telegram' ) . '</h2>';
+		echo '<p>' . esc_html__( 'Create a bot and connect it to a Telegram forum group before adding it here.', 'universal-telegram' ) . '</p>';
+
+		echo '<ol>';
+
+		echo '<li><strong>' . esc_html__( 'Create a bot', 'universal-telegram' ) . '</strong>';
+		echo '<p>' . esc_html__( 'Open BotFather in Telegram, run /newbot, and copy the token it provides.', 'universal-telegram' ) . '</p>';
+		printf(
+			'<p><a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s</a></p>',
+			esc_url( 'https://core.telegram.org/bots#6-botfather' ),
+			esc_html__( 'How to get a bot token', 'universal-telegram' )
+		);
+		echo '</li>';
+
+		echo '<li><strong>' . esc_html__( 'Prepare the support group', 'universal-telegram' ) . '</strong>';
+		echo '<p>' . esc_html__( 'Create or choose a Telegram supergroup. Enable Topics. Add the bot as an administrator and allow it to manage topics.', 'universal-telegram' ) . '</p>';
+		echo '</li>';
+
+		echo '<li><strong>' . esc_html__( 'Add the bot and destination', 'universal-telegram' ) . '</strong>';
+		echo '<p>' . esc_html__( 'Enter the bot name and token below. Then configure an enabled supergroup destination for that bot.', 'universal-telegram' ) . '</p>';
+		printf(
+			'<p><a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s</a></p>',
+			esc_url( 'https://telegram.me/chatIDrobot' ),
+			esc_html__( 'How to find a chat ID', 'universal-telegram' )
+		);
+		echo '<p>' . esc_html__( 'The group ID must belong to the intended support supergroup.', 'universal-telegram' ) . '</p>';
+		echo '</li>';
+
+		echo '</ol>';
+
+		echo '<div class="notice notice-warning inline"><p>' .
+			esc_html__( 'Keep your bot token private. Anyone with it can control the bot.', 'universal-telegram' ) .
+			'</p></div>';
+
+		echo '</div>';
 	}
 
 	/**
