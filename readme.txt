@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.5.0
+Stable tag: 0.6.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -41,6 +41,19 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.6.1 =
+* Interactive Telegram delivery (M06.2, ADR-0023): removes the avoidable multi-minute delivery
+  delay for interactive Telegram operations. A visitor chat message is still persisted and
+  durably enqueued exactly as before (no visitor-facing REST request ever calls Telegram directly
+  or creates a topic synchronously); a new, guarded, non-blocking request now also asks Action
+  Scheduler's own existing async runner to process the queue sooner, bypassing only the
+  admin-context gate that runner's own convenience hook otherwise applies — every ordinary job
+  keeps Action Scheduler's default priority, so this cannot starve normal notification/event
+  traffic. If unavailable or declined, the durable job and normal cron cadence are entirely
+  unaffected. The administrator's Test Message action is now a single bounded (<=8 second)
+  synchronous send with an immediate, fixed, non-content result shown in wp-admin, instead of a
+  silent queued send. No schema or database-version change.
 
 = 0.5.0 =
 * Chat widget core (M06 core slice, ADR-0022, ADR-0021 amendment): a lightweight, accessible,
