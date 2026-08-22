@@ -6,6 +6,8 @@
 namespace UniversalTelegram\Tests\Integration\Core;
 
 use UniversalTelegram\Core\Plugin;
+use UniversalTelegram\Persistence\MigrationLock;
+use UniversalTelegram\Persistence\Migrator;
 use WP_UnitTestCase;
 
 /**
@@ -20,6 +22,16 @@ use WP_UnitTestCase;
 final class PluginAccountDeletionTest extends WP_UnitTestCase {
 
 	public function test_deleting_a_user_clears_ownership_and_revokes_the_secret(): void {
+		global $wpdb;
+
+		// Guards against another test in the same process having left
+		// db_version artificially low (some Migrator tests deliberately
+		// simulate an old version) — a real activation only ever migrates
+		// once, cleanly. This forces the schema current before exercising
+		// the real, already-booted composition root.
+		( new Migrator( new MigrationLock() ) )->maybe_migrate();
+		$wpdb->db_connect( true );
+
 		$conversations = Plugin::instance()->conversation_repository();
 		$this->assertNotNull( $conversations );
 
