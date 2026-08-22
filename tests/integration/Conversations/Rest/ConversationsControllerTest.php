@@ -47,7 +47,7 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
 
-		$this->conversations      = new ConversationRepository( $schema_health, new CredentialVault() );
+		$this->conversations      = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );
 		$this->messages           = new MessageRepository( $schema_health, $vault );
 		$this->tokens             = new VisitorTokenGenerator();
 		$this->bots               = new BotProfileRepository( $schema_health, $vault );

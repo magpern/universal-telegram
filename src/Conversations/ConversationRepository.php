@@ -29,12 +29,14 @@ class ConversationRepository {
 	/**
 	 * Constructor.
 	 *
-	 * @param SchemaHealth    $schema_health Checked before every operation.
-	 * @param CredentialVault $vault         Encrypts/decrypts the visitor display name (M06.3, ADR-0024).
+	 * @param SchemaHealth           $schema_health Checked before every operation.
+	 * @param CredentialVault        $vault         Encrypts/decrypts the visitor display name (M06.3, ADR-0024).
+	 * @param VisitorTokenGenerator  $tokens        Mints a fresh bearer secret when resuming a conversation (M06.3.1, ADR-0025).
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
-		private readonly CredentialVault $vault
+		private readonly CredentialVault $vault,
+		private readonly VisitorTokenGenerator $tokens
 	) {}
 
 	/**
@@ -62,13 +64,26 @@ class ConversationRepository {
 	 * @param int         $bot_id                The Telegram bot this conversation belongs to.
 	 * @param string|null $chat_profile          The configured profile requested at start, if any.
 	 * @param string|null $start_idempotency_key The client-supplied start idempotency key, if any (M06 plan §0).
+	 * @param int|null    $owner_user_id         The authenticated WordPress user this conversation belongs to (M06.3.1, ADR-0025).
+	 * @param string|null $display_name_plaintext The server-derived display name to store atomically with this row, if any (M06.3.1, ADR-0025).
 	 *
 	 * @return Conversation|null Null if the schema is unavailable or the write failed
-	 *                           (including a unique-constraint collision on start_idempotency_key).
+	 *                           (including a unique-constraint collision on start_idempotency_key
+	 *                           or, for an owned conversation, the owner_active_slot index).
 	 */
-	public function create( string $conversation_uuid, string $secret_hash, int $bot_id, ?string $chat_profile, ?string $start_idempotency_key = null ): ?Conversation {
+	public function create( string $conversation_uuid, string $secret_hash, int $bot_id, ?string $chat_profile, ?string $start_idempotency_key = null, ?int $owner_user_id = null, ?string $display_name_plaintext = null ): ?Conversation {
 		if ( ! $this->schema_health->is_available() ) {
 			return null;
+		}
+
+		$display_name_ciphertext = null;
+
+		if ( null !== $display_name_plaintext ) {
+			try {
+				$display_name_ciphertext = $this->vault->encrypt( $display_name_plaintext, $this->display_name_context( $conversation_uuid ) );
+			} catch ( CredentialUnavailableException $exception ) {
+				return null;
+			}
 		}
 
 		global $wpdb;
@@ -79,19 +94,21 @@ class ConversationRepository {
 		$inserted = $wpdb->insert(
 			$table,
 			array(
-				'conversation_uuid'      => $conversation_uuid,
-				'secret_hash'            => $secret_hash,
-				'bot_id'                 => $bot_id,
-				'chat_profile'           => $chat_profile,
-				'status'                 => ConversationStatus::NEW,
-				'topic_creation_state'   => 'none',
-				'ai_participation_state' => 'none',
-				'consent_state'          => 'unknown',
-				'start_idempotency_key'  => $start_idempotency_key,
-				'created_at'             => $now,
-				'updated_at'             => $now,
+				'conversation_uuid'       => $conversation_uuid,
+				'secret_hash'             => $secret_hash,
+				'bot_id'                  => $bot_id,
+				'chat_profile'            => $chat_profile,
+				'status'                  => ConversationStatus::NEW,
+				'topic_creation_state'    => 'none',
+				'ai_participation_state'  => 'none',
+				'consent_state'           => 'unknown',
+				'start_idempotency_key'   => $start_idempotency_key,
+				'owner_user_id'           => $owner_user_id,
+				'display_name_ciphertext' => $display_name_ciphertext,
+				'created_at'              => $now,
+				'updated_at'              => $now,
 			),
-			array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
+			array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s' )
 		);
 
 		if ( false === $inserted ) {
@@ -99,6 +116,179 @@ class ConversationRepository {
 		}
 
 		return $this->find( (int) $wpdb->insert_id );
+	}
+
+	/**
+	 * The sole entry point the authenticated start route uses (M06.3.1,
+	 * ADR-0025). Attempts exactly one insert via create(). On success,
+	 * returns the new row. On a duplicate-key collision against the
+	 * owner_active_slot unique index — meaning another concurrent request
+	 * already won the race for this (owner_user_id, bot_id) — this method
+	 * never retries the insert and never creates a second row: it instead
+	 * looks up the existing active conversation and rotates its bearer
+	 * secret through the safe rotate_secret() path, returning that row and
+	 * the freshly issued plaintext secret for the caller to present in
+	 * place of its own presented-but-unused one. Any other insert failure
+	 * (schema unavailable, a genuine start_idempotency_key collision that
+	 * should have already been caught by the caller's own replay lookup)
+	 * surfaces as null, unchanged from create()'s own contract.
+	 *
+	 * @param string $conversation_uuid      Public, opaque identifier for a fresh row.
+	 * @param string $secret_hash            password_hash() of the client-presented bearer secret.
+	 * @param int    $bot_id                 The Telegram bot this conversation belongs to.
+	 * @param string|null $chat_profile      The configured profile requested at start, if any.
+	 * @param string $start_idempotency_key  The client-supplied start idempotency key.
+	 * @param int    $owner_user_id          The authenticated WordPress user.
+	 * @param string $display_name_plaintext The server-derived display name.
+	 *
+	 * @return array{conversation: Conversation, secret: string|null, resumed: bool}|null
+	 */
+	public function create_or_resume_owned( string $conversation_uuid, string $secret_hash, int $bot_id, ?string $chat_profile, string $start_idempotency_key, int $owner_user_id, string $display_name_plaintext ): ?array {
+		$conversation = $this->create( $conversation_uuid, $secret_hash, $bot_id, $chat_profile, $start_idempotency_key, $owner_user_id, $display_name_plaintext );
+
+		if ( null !== $conversation ) {
+			return array(
+				'conversation' => $conversation,
+				'secret'       => null,
+				'resumed'      => false,
+			);
+		}
+
+		$existing = $this->find_active_for_owner( $owner_user_id, $bot_id );
+
+		if ( null === $existing ) {
+			return null;
+		}
+
+		$fresh_secret = $this->rotate_secret( $existing->id() );
+
+		if ( null === $fresh_secret ) {
+			return null;
+		}
+
+		return array(
+			'conversation' => $this->find( $existing->id() ) ?? $existing,
+			'secret'       => $fresh_secret,
+			'resumed'      => true,
+		);
+	}
+
+	/**
+	 * The current owner's single active conversation for a given bot, if
+	 * any — "active" is exactly the four statuses the owner_active_slot
+	 * generated column itself uses (`new`, `open`, `waiting_for_visitor`,
+	 * `waiting_for_operator`), so this query and the database constraint can
+	 * never disagree (M06.3.1, ADR-0025). The sole lookup path for
+	 * `GET /conversations/mine` and duplicate-key recovery.
+	 *
+	 * @param int $owner_user_id The authenticated WordPress user.
+	 * @param int $bot_id        The Telegram bot to scope the lookup to.
+	 *
+	 * @return Conversation|null
+	 */
+	public function find_active_for_owner( int $owner_user_id, int $bot_id ): ?Conversation {
+		if ( ! $this->schema_health->is_available() ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT * FROM {$table} WHERE owner_user_id = %d AND bot_id = %d
+					AND status IN ('new', 'open', 'waiting_for_visitor', 'waiting_for_operator')
+					ORDER BY id DESC LIMIT 1",
+				$owner_user_id,
+				$bot_id
+			),
+			ARRAY_A
+		);
+
+		return null === $row ? null : $this->hydrate( $row );
+	}
+
+	/**
+	 * Mints and stores a fresh bearer secret for an existing conversation —
+	 * the only channel that ever re-issues a secret to a returning,
+	 * authenticated browser that does not already hold one (M06.3.1,
+	 * ADR-0025). The previous secret is unconditionally invalidated by this
+	 * overwrite. Returns the plaintext exactly once; nothing beyond this
+	 * call ever sees it again.
+	 *
+	 * @param int $id The conversation's primary key.
+	 *
+	 * @return string|null The fresh plaintext secret, or null on failure.
+	 */
+	public function rotate_secret( int $id ): ?string {
+		if ( ! $this->schema_health->is_available() ) {
+			return null;
+		}
+
+		$generated = $this->tokens->generate();
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'secret_hash' => $generated['secret_hash'],
+				'updated_at'  => current_time( 'mysql', true ),
+			),
+			array( 'id' => $id ),
+			array( '%s', '%s' ),
+			array( '%d' )
+		);
+
+		return false !== $updated ? $generated['secret'] : null;
+	}
+
+	/**
+	 * On WordPress account deletion: revokes the bearer secret (the existing
+	 * revoke_secret() path, also used by the resolved->archived sweep) and
+	 * clears owner_user_id for every conversation the deleted account owned
+	 * — never just the secret alone — so the numeric id is never retained
+	 * and can never be coincidentally matched by a future, even reused, id
+	 * (M06.3.1, ADR-0025). Message rows and existing retention-age handling
+	 * are untouched; the rows become the same read-only, unreachable shape
+	 * as a legacy ownerless conversation.
+	 *
+	 * @param int $owner_user_id The WordPress user id being deleted.
+	 */
+	public function release_owner_conversations( int $owner_user_id ): void {
+		if ( ! $this->schema_health->is_available() ) {
+			return;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$ids   = $wpdb->get_col(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT id FROM {$table} WHERE owner_user_id = %d",
+				$owner_user_id
+			)
+		);
+
+		foreach ( $ids as $id ) {
+			$this->revoke_secret( (int) $id );
+
+			$wpdb->update(
+				$table,
+				array(
+					'owner_user_id' => null,
+					'updated_at'    => current_time( 'mysql', true ),
+				),
+				array( 'id' => (int) $id ),
+				array( '%s', '%s' ),
+				array( '%d' )
+			);
+		}
 	}
 
 	/**
@@ -620,7 +810,8 @@ class ConversationRepository {
 			null === $row['expires_at'] ? null : (string) $row['expires_at'],
 			null === $row['start_idempotency_key'] ? null : (string) $row['start_idempotency_key'],
 			null === $row['topic_claim_expires_at'] ? null : (string) $row['topic_claim_expires_at'],
-			null === $row['display_name_ciphertext'] ? null : (string) $row['display_name_ciphertext']
+			null === $row['display_name_ciphertext'] ? null : (string) $row['display_name_ciphertext'],
+			isset( $row['owner_user_id'] ) && null !== $row['owner_user_id'] ? (int) $row['owner_user_id'] : null
 		);
 	}
 
@@ -716,9 +907,19 @@ class ConversationRepository {
 
 		global $wpdb;
 
-		$table    = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
-		$cutoff   = gmdate( 'Y-m-d H:i:s', strtotime( current_time( 'mysql', true ) ) - ( $days * DAY_IN_SECONDS ) );
-		$statuses = array( ConversationStatus::OPEN, ConversationStatus::WAITING_FOR_VISITOR, ConversationStatus::WAITING_FOR_OPERATOR );
+		$table  = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$cutoff = gmdate( 'Y-m-d H:i:s', strtotime( current_time( 'mysql', true ) ) - ( $days * DAY_IN_SECONDS ) );
+
+		// `new` is included (M06.3.1, ADR-0025): since it now also occupies
+		// the owner_active_slot concurrency index, a conversation whose
+		// topic creation permanently failed (topic_creation_state='failed',
+		// status stuck at `new` forever — an existing, pre-M06.3.1
+		// possibility) would otherwise block that owner's slot forever.
+		// RetentionCleanupHandler routes a matched `new` row through the
+		// two legal transitions (`new`->`open`->`resolved`) rather than
+		// treating this as a fifth transition the frozen map would need to
+		// grow.
+		$statuses = array( ConversationStatus::NEW, ConversationStatus::OPEN, ConversationStatus::WAITING_FOR_VISITOR, ConversationStatus::WAITING_FOR_OPERATOR );
 
 		$placeholders = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
 

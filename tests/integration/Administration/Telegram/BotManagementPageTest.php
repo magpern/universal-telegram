@@ -12,6 +12,7 @@ use UniversalTelegram\ChatWidget\ChatWidgetAvailability;
 use UniversalTelegram\Administration\Telegram\TelegramFormFields;
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Security\CredentialVault;
@@ -69,7 +70,7 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 			$forms,
 			$wizard_state,
 			new BotSetupWizardRenderer( $wizard_state, $forms, $bots ),
-			new ConversationRepository( $schema_health, $vault )
+			new ConversationRepository( $schema_health, $vault, new VisitorTokenGenerator() )
 		);
 	}
 
@@ -423,7 +424,7 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		$vault         = new CredentialVault();
 		$bots          = new BotProfileRepository( $schema_health, $vault );
 		$destinations  = new DestinationRepository( $schema_health );
-		$conversations = new ConversationRepository( $schema_health, $vault );
+		$conversations = new ConversationRepository( $schema_health, $vault, new VisitorTokenGenerator() );
 
 		$bot = $bots->create( 'Bot', 'token' );
 		$this->complete_setup_for( $bots, $destinations, $bot->id(), '-100999' );

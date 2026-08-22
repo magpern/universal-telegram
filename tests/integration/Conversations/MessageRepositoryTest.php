@@ -6,6 +6,7 @@
 namespace UniversalTelegram\Tests\Integration\Conversations;
 
 use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
@@ -18,7 +19,7 @@ final class MessageRepositoryTest extends WP_UnitTestCase {
 	}
 
 	private function conversation_id(): int {
-		$conversations = new ConversationRepository( new SchemaHealth(), new CredentialVault() );
+		$conversations = new ConversationRepository( new SchemaHealth(), new CredentialVault(), new VisitorTokenGenerator() );
 
 		return $conversations->create( wp_generate_uuid4(), 'hashed-secret', 1, null )->id();
 	}

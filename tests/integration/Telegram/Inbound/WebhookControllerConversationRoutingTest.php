@@ -8,6 +8,7 @@ namespace UniversalTelegram\Tests\Integration\Telegram\Inbound;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Conversations\ConversationStatus;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Core\Security\CredentialVault;
@@ -46,7 +47,7 @@ final class WebhookControllerConversationRoutingTest extends WP_UnitTestCase {
 		$audit_logger        = new AuditLogger( $this->schema_health, new Redactor() );
 
 		$this->bots          = new BotProfileRepository( $this->schema_health, $vault );
-		$this->conversations = new ConversationRepository( $this->schema_health, new CredentialVault() );
+		$this->conversations = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
 		$this->messages      = new MessageRepository( $this->schema_health, $vault );
 		$this->destinations  = new DestinationRepository( $this->schema_health );
 		$updates             = new UpdateRepository( $this->schema_health );

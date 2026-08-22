@@ -61,7 +61,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 15;
+		return 16;
 	}
 
 	/**
@@ -145,6 +145,7 @@ class Migrator {
 			13 => array( array( $this, 'step_13_add_conversation_idempotency_columns' ), array( $this, 'verify_step_13' ) ),
 			14 => array( array( $this, 'step_14_add_claim_lease_columns' ), array( $this, 'verify_step_14' ) ),
 			15 => array( array( $this, 'step_15_add_conversation_display_name_column' ), array( $this, 'verify_step_15' ) ),
+			16 => array( array( $this, 'step_16_add_conversation_ownership_and_concurrency_index' ), array( $this, 'verify_step_16' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -995,5 +996,93 @@ class Migrator {
 			$wpdb->prefix . self::CONVERSATIONS_TABLE,
 			array( 'display_name_ciphertext' )
 		);
+	}
+
+	/**
+	 * Adds `owner_user_id` (the authenticated WordPress user a conversation
+	 * belongs to, nullable — legacy M05-M06.3 rows and any row whose owner
+	 * account was later deleted stay NULL forever, never backfilled) and a
+	 * generated, indexed `owner_active_slot` column that enforces one active
+	 * conversation per (owner_user_id, bot_id) at the database level (M06.3.1,
+	 * ADR-0025). "Active" deliberately includes `new` alongside `open`/
+	 * `waiting_for_visitor`/`waiting_for_operator`: a conversation is created
+	 * in `new` and only reaches `open` once its Telegram topic is created
+	 * (ConversationRepository::mark_topic_created()), so excluding `new`
+	 * would let two concurrent first-Send requests each insert a `new` row
+	 * before either transitions, defeating the guarantee this index exists
+	 * to provide. `resolved`/`archived` are excluded, so the slot frees
+	 * itself the moment a conversation is resolved, allowing exactly one
+	 * fresh active conversation afterward. MySQL/MariaDB unique indexes
+	 * never collide on NULL, so ownerless and resolved/archived rows are
+	 * always unconstrained by this index.
+	 */
+	private function step_16_add_conversation_ownership_and_concurrency_index(): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::CONVERSATIONS_TABLE;
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( ! $this->table_has_columns( $table, array( 'owner_user_id' ) ) ) {
+			$wpdb->query( "ALTER TABLE {$table} ADD COLUMN owner_user_id BIGINT UNSIGNED NULL" );
+		}
+
+		if ( ! $this->table_has_columns( $table, array( 'owner_active_slot' ) ) ) {
+			$wpdb->query(
+				"ALTER TABLE {$table} ADD COLUMN owner_active_slot VARCHAR(191)
+					GENERATED ALWAYS AS (
+						CASE WHEN owner_user_id IS NOT NULL
+							AND status IN ('new', 'open', 'waiting_for_visitor', 'waiting_for_operator')
+						THEN CONCAT(owner_user_id, ':', bot_id)
+						ELSE NULL END
+					) STORED"
+			);
+		}
+
+		if ( ! $this->table_has_index( $table, 'owner_active_slot' ) ) {
+			$wpdb->query( "ALTER TABLE {$table} ADD UNIQUE KEY owner_active_slot (owner_active_slot)" );
+		}
+
+		if ( ! $this->table_has_index( $table, 'owner_user_id' ) ) {
+			$wpdb->query( "ALTER TABLE {$table} ADD KEY owner_user_id (owner_user_id)" );
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_16(): bool {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::CONVERSATIONS_TABLE;
+
+		return $this->table_has_columns( $table, array( 'owner_user_id', 'owner_active_slot' ) )
+			&& $this->table_has_index( $table, 'owner_active_slot' )
+			&& $this->table_has_index( $table, 'owner_user_id' );
+	}
+
+	/**
+	 * Whether a given table has an index (of any kind) with the given name.
+	 *
+	 * @param string $table The fully-prefixed table name.
+	 * @param string $index_name The index name.
+	 *
+	 * @return bool
+	 */
+	private function table_has_index( string $table, string $index_name ): bool {
+		global $wpdb;
+
+		$found = $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND INDEX_NAME = %s',
+				$wpdb->dbname,
+				$table,
+				$index_name
+			)
+		);
+
+		return null !== $found && (int) $found > 0;
 	}
 }

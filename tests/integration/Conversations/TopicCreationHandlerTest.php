@@ -8,6 +8,7 @@ namespace UniversalTelegram\Tests\Integration\Conversations;
 use RuntimeException;
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Conversations\TopicCreationHandler;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
@@ -90,7 +91,7 @@ final class TopicCreationHandlerTest extends WP_UnitTestCase {
 	public function test_success_creates_the_destination_row_marks_the_topic_created_and_opens_the_conversation(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
-		$conversations = new ConversationRepository( $schema_health, new CredentialVault() );
+		$conversations = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );
 		$bots          = new BotProfileRepository( $schema_health, $vault );
 		$destinations  = new DestinationRepository( $schema_health );
 
@@ -123,7 +124,7 @@ final class TopicCreationHandlerTest extends WP_UnitTestCase {
 	public function test_a_job_for_a_conversation_no_longer_pending_is_a_noop(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
-		$conversations = new ConversationRepository( $schema_health, new CredentialVault() );
+		$conversations = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );
 		$bots          = new BotProfileRepository( $schema_health, $vault );
 		$destinations  = new DestinationRepository( $schema_health );
 
@@ -141,7 +142,7 @@ final class TopicCreationHandlerTest extends WP_UnitTestCase {
 	public function test_failure_below_the_retry_ceiling_rethrows_and_leaves_state_pending(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
-		$conversations = new ConversationRepository( $schema_health, new CredentialVault() );
+		$conversations = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );
 		$bots          = new BotProfileRepository( $schema_health, $vault );
 		$destinations  = new DestinationRepository( $schema_health );
 
@@ -172,7 +173,7 @@ final class TopicCreationHandlerTest extends WP_UnitTestCase {
 	public function test_failure_at_the_retry_ceiling_marks_the_topic_failed_without_throwing(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
-		$conversations = new ConversationRepository( $schema_health, new CredentialVault() );
+		$conversations = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );
 		$bots          = new BotProfileRepository( $schema_health, $vault );
 		$destinations  = new DestinationRepository( $schema_health );
 
@@ -199,7 +200,7 @@ final class TopicCreationHandlerTest extends WP_UnitTestCase {
 	public function test_no_configured_conversation_chat_marks_the_topic_failed_at_the_ceiling(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
-		$conversations = new ConversationRepository( $schema_health, new CredentialVault() );
+		$conversations = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );
 		$bots          = new BotProfileRepository( $schema_health, $vault );
 		$destinations  = new DestinationRepository( $schema_health );
 
@@ -215,7 +216,7 @@ final class TopicCreationHandlerTest extends WP_UnitTestCase {
 	public function test_topic_title_uses_the_pre_m06_3_literal_when_no_display_name_is_stored(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
-		$conversations = new ConversationRepository( $schema_health, $vault );
+		$conversations = new ConversationRepository( $schema_health, $vault, new VisitorTokenGenerator() );
 		$bots          = new BotProfileRepository( $schema_health, $vault );
 		$destinations  = new DestinationRepository( $schema_health );
 
@@ -243,7 +244,7 @@ final class TopicCreationHandlerTest extends WP_UnitTestCase {
 	public function test_topic_title_includes_the_stored_display_name_and_short_reference(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
-		$conversations = new ConversationRepository( $schema_health, $vault );
+		$conversations = new ConversationRepository( $schema_health, $vault, new VisitorTokenGenerator() );
 		$bots          = new BotProfileRepository( $schema_health, $vault );
 		$destinations  = new DestinationRepository( $schema_health );
 

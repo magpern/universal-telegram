@@ -560,7 +560,7 @@ final class Plugin {
 		);
 		$this->handler_registry->register( MessageDispatcher::JOB_TYPE, array( $send_message_handler, 'handle_job' ) );
 
-		$this->conversation_repository = new ConversationRepository( $this->schema_health, $this->credential_vault );
+		$this->conversation_repository = new ConversationRepository( $this->schema_health, $this->credential_vault, new VisitorTokenGenerator() );
 		$this->message_repository      = new MessageRepository( $this->schema_health, $this->credential_vault );
 
 		$this->update_repository       = new UpdateRepository( $this->schema_health );

@@ -6,6 +6,7 @@
 namespace UniversalTelegram\Tests\Integration\Conversations;
 
 use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Conversations\ConversationStatus;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\RetentionCleanupHandler;
@@ -27,7 +28,7 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 		parent::setUp();
 
 		$this->schema_health = new SchemaHealth();
-		$this->conversations = new ConversationRepository( $this->schema_health, new CredentialVault() );
+		$this->conversations = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
 		$this->messages      = new MessageRepository( $this->schema_health, new CredentialVault() );
 		$this->destinations  = new DestinationRepository( $this->schema_health );
 
@@ -177,9 +178,23 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 		$this->assertSame( ConversationStatus::ARCHIVED, $this->conversations->find( $conversation->id() )->status() );
 	}
 
-	public function test_run_never_touches_a_new_conversation_regardless_of_inactivity(): void {
-		$conversation = $this->conversations->create( 'uuid-new-inactive', 'hash', 1, null );
+	public function test_run_auto_resolves_and_archives_a_stale_new_conversation_via_the_legal_two_hop_chain(): void {
+		// M06.3.1, ADR-0025: `new` now occupies the owner_active_slot
+		// concurrency index, so a conversation stuck in `new` forever (e.g.
+		// its topic creation permanently failed) must eventually free that
+		// slot too — via the two individually-valid transitions
+		// new->open->resolved, then the existing resolved->archived sweep,
+		// in the same pass.
+		$conversation = $this->conversations->create( 'uuid-new-inactive', 'hash', 1, null, null, 555, 'Kim' );
 		$this->set_conversation_updated_at( $conversation->id(), 31 );
+
+		$this->handler->run();
+
+		$this->assertSame( ConversationStatus::ARCHIVED, $this->conversations->find( $conversation->id() )->status() );
+	}
+
+	public function test_run_leaves_a_recently_created_new_conversation_untouched(): void {
+		$conversation = $this->conversations->create( 'uuid-new-fresh', 'hash', 1, null );
 
 		$this->handler->run();
 
