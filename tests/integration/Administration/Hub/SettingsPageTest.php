@@ -55,6 +55,11 @@ final class SettingsPageTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'universal_telegram_settings[event_retention_days]', $output );
 		$this->assertStringContainsString( 'universal_telegram_settings[chat_widget_enabled]', $output );
 		$this->assertStringContainsString( 'Enable chat widget', $output );
+		$this->assertStringContainsString( 'universal_telegram_settings[chat_widget_preset]', $output );
+		$this->assertStringContainsString( 'universal_telegram_settings[chat_widget_geometry]', $output );
+		$this->assertStringContainsString( 'universal_telegram_settings[chat_widget_motion_default]', $output );
+		$this->assertStringContainsString( 'universal_telegram_settings[chat_widget_participant_label_visitor]', $output );
+		$this->assertStringContainsString( 'universal_telegram_settings[chat_widget_participant_label_operator]', $output );
 	}
 
 	public function test_handle_request_denies_a_user_lacking_the_capability(): void {
@@ -115,6 +120,33 @@ final class SettingsPageTest extends WP_UnitTestCase {
 		$this->saving_page()->handle_request();
 
 		$this->assertFalse( ( new Settings() )->get()['chat_widget_enabled'] );
+
+		unset( $_POST['universal_telegram_settings'], $_POST['_wpnonce'], $_REQUEST['_wpnonce'] );
+	}
+
+	public function test_saving_the_presentation_fields_persists_them(): void {
+		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $admin_id );
+
+		$_POST['universal_telegram_settings'] = array(
+			'chat_widget_preset'                     => 'minimal',
+			'chat_widget_geometry'                    => 'square',
+			'chat_widget_motion_default'               => 'reduced',
+			'chat_widget_participant_label_visitor'   => 'Me',
+			'chat_widget_participant_label_operator'  => 'Team',
+		);
+		$nonce                                = wp_create_nonce( SettingsPage::NONCE_ACTION );
+		$_POST['_wpnonce']                    = $nonce;
+		$_REQUEST['_wpnonce']                 = $nonce;
+
+		$this->saving_page()->handle_request();
+
+		$saved = ( new Settings() )->get();
+		$this->assertSame( 'minimal', $saved['chat_widget_preset'] );
+		$this->assertSame( 'square', $saved['chat_widget_geometry'] );
+		$this->assertSame( 'reduced', $saved['chat_widget_motion_default'] );
+		$this->assertSame( 'Me', $saved['chat_widget_participant_label_visitor'] );
+		$this->assertSame( 'Team', $saved['chat_widget_participant_label_operator'] );
 
 		unset( $_POST['universal_telegram_settings'], $_POST['_wpnonce'], $_REQUEST['_wpnonce'] );
 	}

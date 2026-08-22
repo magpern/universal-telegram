@@ -49,6 +49,83 @@ final class SettingsTest extends TestCase {
 		$this->assertFalse( $settings->sanitize( array( 'chat_widget_enabled' => '' ) )['chat_widget_enabled'] );
 	}
 
+	public function test_defaults_include_the_m06_3_presentation_fields(): void {
+		$settings = new Settings();
+		$defaults = $settings->defaults();
+
+		$this->assertSame( 'modern', $defaults['chat_widget_preset'] );
+		$this->assertSame( 'round', $defaults['chat_widget_geometry'] );
+		$this->assertSame( 'standard', $defaults['chat_widget_motion_default'] );
+		$this->assertSame( 'You', $defaults['chat_widget_participant_label_visitor'] );
+		$this->assertSame( 'Support', $defaults['chat_widget_participant_label_operator'] );
+	}
+
+	public function test_sanitize_recognizes_a_valid_chat_widget_preset(): void {
+		$settings = new Settings();
+
+		$this->assertSame( 'classic', $settings->sanitize( array( 'chat_widget_preset' => 'classic' ) )['chat_widget_preset'] );
+		$this->assertSame( 'minimal', $settings->sanitize( array( 'chat_widget_preset' => 'minimal' ) )['chat_widget_preset'] );
+	}
+
+	public function test_sanitize_falls_back_to_the_default_preset_for_an_unrecognized_value(): void {
+		$settings = new Settings();
+
+		$this->assertSame( 'modern', $settings->sanitize( array( 'chat_widget_preset' => 'made-up' ) )['chat_widget_preset'] );
+	}
+
+	public function test_sanitize_recognizes_a_valid_geometry(): void {
+		$settings = new Settings();
+
+		$this->assertSame( 'square', $settings->sanitize( array( 'chat_widget_geometry' => 'square' ) )['chat_widget_geometry'] );
+	}
+
+	public function test_sanitize_falls_back_to_the_default_geometry_for_an_unrecognized_value(): void {
+		$settings = new Settings();
+
+		$this->assertSame( 'round', $settings->sanitize( array( 'chat_widget_geometry' => 'triangular' ) )['chat_widget_geometry'] );
+	}
+
+	public function test_sanitize_recognizes_a_valid_motion_default(): void {
+		$settings = new Settings();
+
+		$this->assertSame( 'reduced', $settings->sanitize( array( 'chat_widget_motion_default' => 'reduced' ) )['chat_widget_motion_default'] );
+	}
+
+	public function test_sanitize_falls_back_to_the_default_motion_for_an_unrecognized_value(): void {
+		$settings = new Settings();
+
+		$this->assertSame( 'standard', $settings->sanitize( array( 'chat_widget_motion_default' => 'wild' ) )['chat_widget_motion_default'] );
+	}
+
+	/**
+	 * @dataProvider participant_label_field_provider
+	 */
+	public function test_sanitize_trims_and_accepts_a_valid_participant_label( string $field, string $default ): void {
+		$settings = new Settings();
+
+		$this->assertSame( 'Hi there', $settings->sanitize( array( $field => '  Hi there  ' ) )[ $field ] );
+	}
+
+	/**
+	 * @dataProvider participant_label_field_provider
+	 */
+	public function test_sanitize_falls_back_to_default_for_an_empty_or_oversized_participant_label( string $field, string $default ): void {
+		$settings = new Settings();
+
+		$this->assertSame( $default, $settings->sanitize( array( $field => '   ' ) )[ $field ] );
+		$this->assertSame( $default, $settings->sanitize( array( $field => str_repeat( 'a', 41 ) ) )[ $field ] );
+	}
+
+	/**
+	 * @return array<int, array{0: string, 1: string}>
+	 */
+	public function participant_label_field_provider(): array {
+		return array(
+			array( 'chat_widget_participant_label_visitor', 'You' ),
+			array( 'chat_widget_participant_label_operator', 'Support' ),
+		);
+	}
+
 	public function test_defaults_include_the_frozen_m01_numeric_defaults(): void {
 		$settings = new Settings();
 		$defaults = $settings->defaults();
