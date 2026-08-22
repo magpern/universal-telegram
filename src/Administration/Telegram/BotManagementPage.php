@@ -61,6 +61,8 @@ final class BotManagementPage {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'universal-telegram' ) );
 		}
 
+		$this->render_test_message_notice();
+
 		$default_bot    = $this->wizard_state->default_bot();
 		$setup_complete = null !== $default_bot && $this->wizard_state->is_complete( $default_bot );
 
@@ -100,6 +102,45 @@ final class BotManagementPage {
 		}
 
 		$this->render_dead_letter_list();
+	}
+
+	/**
+	 * Renders the bounded synchronous Test Message action's immediate
+	 * result, read once from `?test_message_result=` on the redirect
+	 * BotManagementController::handle_request() builds. Always one of a
+	 * fixed set of non-content codes — never raw Telegram error text, a
+	 * token, a secret, or ciphertext (docs/adr/0023 §4).
+	 */
+	private function render_test_message_notice(): void {
+		$result = isset( $_GET['test_message_result'] ) ? sanitize_key( wp_unslash( (string) $_GET['test_message_result'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+		if ( '' === $result ) {
+			return;
+		}
+
+		if ( 'ok' === $result ) {
+			printf(
+				'<div class="notice notice-success is-dismissible"><p>%s</p></div>',
+				esc_html__( 'Test message sent.', 'universal-telegram' )
+			);
+			return;
+		}
+
+		$messages = array(
+			'error_not_found'         => __( 'Test message not sent: bot or destination not found.', 'universal-telegram' ),
+			'error_token_unavailable' => __( 'Test message not sent: bot token unavailable.', 'universal-telegram' ),
+			'failed_rate_limited'     => __( 'Test message not sent: Telegram is rate-limiting this bot right now. Try again shortly.', 'universal-telegram' ),
+			'failed_terminal'         => __( 'Test message not sent: Telegram rejected the destination (e.g. chat not found, or the bot was removed).', 'universal-telegram' ),
+			'failed_token_invalid'    => __( 'Test message not sent: the bot token is invalid.', 'universal-telegram' ),
+			'failed_retryable'        => __( 'Test message not sent: a temporary network or server error occurred. Try again shortly.', 'universal-telegram' ),
+		);
+
+		$message = $messages[ $result ] ?? __( 'Test message not sent.', 'universal-telegram' );
+
+		printf(
+			'<div class="notice notice-error is-dismissible"><p>%s</p></div>',
+			esc_html( $message )
+		);
 	}
 
 	/**
