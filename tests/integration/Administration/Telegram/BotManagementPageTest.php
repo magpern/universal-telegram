@@ -6,6 +6,7 @@
 namespace UniversalTelegram\Tests\Integration\Administration\Telegram;
 
 use UniversalTelegram\Administration\Telegram\BotManagementPage;
+use UniversalTelegram\Administration\Telegram\TelegramFormFields;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
@@ -37,7 +38,7 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		$known_plaintext_token = '123456789:AAH_a-known-synthetic-token-value';
 		$bot                   = $bots->create( 'My Bot', $known_plaintext_token );
 
-		$page = new BotManagementPage( $bots, $destinations, $updates, $messages );
+		$page = new BotManagementPage( $bots, $destinations, $updates, $messages, new TelegramFormFields() );
 
 		ob_start();
 		$page->render_tab_content();
@@ -57,7 +58,8 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 			new BotProfileRepository( $schema_health, $vault ),
 			new DestinationRepository( $schema_health ),
 			new UpdateRepository( $schema_health ),
-			new OutboundMessageRepository( $schema_health, $vault )
+			new OutboundMessageRepository( $schema_health, $vault ),
+			new TelegramFormFields()
 		);
 
 		ob_start();
@@ -99,7 +101,8 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 			new BotProfileRepository( $schema_health, $vault ),
 			new DestinationRepository( $schema_health ),
 			new UpdateRepository( $schema_health ),
-			new OutboundMessageRepository( $schema_health, $vault )
+			new OutboundMessageRepository( $schema_health, $vault ),
+			new TelegramFormFields()
 		);
 
 		$this->expectException( \WPDieException::class );
