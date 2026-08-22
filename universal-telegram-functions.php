@@ -13,6 +13,27 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+if ( ! function_exists( 'universal_telegram_chat_is_enabled' ) ) {
+	/**
+	 * Whether chat is enabled for this site (admin toggle only).
+	 *
+	 * Answers the site-level question for third-party UI such as the Contact
+	 * page rail. Does not encode visitor eligibility, login state, bot/destination
+	 * readiness, or future anonymous-chat settings.
+	 *
+	 * @return bool
+	 */
+	function universal_telegram_chat_is_enabled(): bool {
+		$settings = get_option( \UniversalTelegram\Core\Configuration\Settings::OPTION_NAME, array() );
+
+		if ( ! is_array( $settings ) ) {
+			return false;
+		}
+
+		return ! empty( $settings['chat_widget_enabled'] );
+	}
+}
+
 if ( ! function_exists( 'universal_telegram_emit_event' ) ) {
 	/**
 	 * Records one normalized event occurrence. The sole public entry point
