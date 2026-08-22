@@ -39,6 +39,7 @@ final class Conversation {
 	 * @param string|null $resolved_at            Timestamp of the last `* -> resolved` transition.
 	 * @param string|null $expires_at             Reserved retention timestamp.
 	 * @param string|null $start_idempotency_key  Client-supplied idempotency key from the start request that created this row, or null (M06 plan §0, ADR-0021 amendment).
+	 * @param string|null $topic_claim_expires_at When the currently held topic-creation claim/lease expires, or null if unclaimed (M06.2 corrective plan v2, ADR-0023 amendment).
 	 */
 	public function __construct(
 		private readonly int $id,
@@ -58,7 +59,8 @@ final class Conversation {
 		private readonly string $updated_at,
 		private readonly ?string $resolved_at,
 		private readonly ?string $expires_at,
-		private readonly ?string $start_idempotency_key = null
+		private readonly ?string $start_idempotency_key = null,
+		private readonly ?string $topic_claim_expires_at = null
 	) {}
 
 	/**
@@ -224,5 +226,16 @@ final class Conversation {
 	 */
 	public function start_idempotency_key(): ?string {
 		return $this->start_idempotency_key;
+	}
+
+	/**
+	 * When the currently held topic-creation claim/lease expires, or null
+	 * if unclaimed. Only meaningful while topic_creation_state() is
+	 * 'pending' (M06.2 corrective plan v2, ADR-0023 amendment).
+	 *
+	 * @return string|null
+	 */
+	public function topic_claim_expires_at(): ?string {
+		return $this->topic_claim_expires_at;
 	}
 }

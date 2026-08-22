@@ -61,7 +61,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 13;
+		return 14;
 	}
 
 	/**
@@ -143,6 +143,7 @@ class Migrator {
 			11 => array( array( $this, 'step_11_create_conversations_table' ), array( $this, 'verify_step_11' ) ),
 			12 => array( array( $this, 'step_12_create_conversation_messages_table' ), array( $this, 'verify_step_12' ) ),
 			13 => array( array( $this, 'step_13_add_conversation_idempotency_columns' ), array( $this, 'verify_step_13' ) ),
+			14 => array( array( $this, 'step_14_add_claim_lease_columns' ), array( $this, 'verify_step_14' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -902,5 +903,56 @@ class Migrator {
 		);
 
 		return array() === array_diff( $expected, $columns );
+	}
+
+	/**
+	 * Adds the two nullable lease columns the claim-protected delivery
+	 * protocol requires (M06.2 corrective plan v2, ADR-0023 amendment):
+	 * `claim_expires_at` on the outbound messages table and
+	 * `topic_claim_expires_at` on the conversations table. Both are
+	 * additive and nullable, so no backfill is required on upgrade.
+	 *
+	 * Like step 13, a bare `ALTER TABLE ... ADD COLUMN` is not itself
+	 * safely re-runnable, so this step checks each table's own information
+	 * schema first and skips a table already carrying its column.
+	 */
+	private function step_14_add_claim_lease_columns(): void {
+		global $wpdb;
+
+		$outbound_table      = $wpdb->prefix . self::OUTBOUND_MESSAGES_TABLE;
+		$conversations_table = $wpdb->prefix . self::CONVERSATIONS_TABLE;
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( ! $this->table_has_columns( $outbound_table, array( 'claim_expires_at' ) ) ) {
+			$wpdb->query(
+				"ALTER TABLE {$outbound_table}
+					ADD COLUMN claim_expires_at DATETIME NULL"
+			);
+		}
+
+		if ( ! $this->table_has_columns( $conversations_table, array( 'topic_claim_expires_at' ) ) ) {
+			$wpdb->query(
+				"ALTER TABLE {$conversations_table}
+					ADD COLUMN topic_claim_expires_at DATETIME NULL"
+			);
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_14(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::OUTBOUND_MESSAGES_TABLE,
+			array( 'claim_expires_at' )
+		) && $this->table_has_columns(
+			$wpdb->prefix . self::CONVERSATIONS_TABLE,
+			array( 'topic_claim_expires_at' )
+		);
 	}
 }

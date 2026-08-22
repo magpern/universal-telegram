@@ -158,6 +158,80 @@ final class OutboundMessageRepository {
 	}
 
 	/**
+	 * Atomically claims a message for sending under a persisted, time-bound
+	 * lease: the sole caller whose own `UPDATE` actually matches a row may
+	 * proceed to call `TelegramApiClient::send_message()` for it. Matches
+	 * rows in `pending`/`retry_scheduled` (any caller may claim a fresh or
+	 * previously-deferred attempt) or `sending` with an already-expired
+	 * lease (a prior claimant crashed without releasing it). Never matches
+	 * a terminal status (`sent`/`dead_letter`/`purged`) — once reached, no
+	 * claim can ever be re-acquired, which is the actual double-send
+	 * prevention (M06.2 corrective plan v2 §3.1, ADR-0023 amendment).
+	 *
+	 * Uses a literal raw-SQL `UPDATE ... WHERE ... OR (...)` rather than
+	 * `$wpdb->update()`'s compound-WHERE helper, because that helper can
+	 * only AND its WHERE columns together — the reclaim-on-expiry branch
+	 * genuinely requires an OR.
+	 *
+	 * @param int $id            The message's primary key.
+	 * @param int $lease_seconds How long this caller's claim remains valid.
+	 *
+	 * @return bool True only if this call won the claim.
+	 */
+	public function try_claim_for_sending( int $id, int $lease_seconds = 15 ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table        = $wpdb->prefix . Migrator::OUTBOUND_MESSAGES_TABLE;
+		$now          = current_time( 'mysql', true );
+		$lease_expiry = gmdate( 'Y-m-d H:i:s', strtotime( $now ) + $lease_seconds );
+
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"UPDATE {$table}
+					SET status = %s, claim_expires_at = %s, attempt_count = attempt_count + 1, updated_at = %s
+					WHERE id = %d
+					  AND ( status IN ( %s, %s )
+					        OR ( status = %s AND claim_expires_at IS NOT NULL AND claim_expires_at < %s ) )",
+				OutboundMessageStatus::SENDING->value,
+				$lease_expiry,
+				$now,
+				$id,
+				OutboundMessageStatus::PENDING->value,
+				OutboundMessageStatus::RETRY_SCHEDULED->value,
+				OutboundMessageStatus::SENDING->value,
+				$now
+			)
+		);
+
+		return false !== $updated && $updated > 0;
+	}
+
+	/**
+	 * Gracefully releases a held claim without waiting out its lease,
+	 * reverting the row to a re-claimable status so the next attempt (an
+	 * in-process fallback or the durable queue) may reclaim immediately
+	 * (M06.2 corrective plan v2 §3.1).
+	 *
+	 * @param int $id The message's primary key.
+	 *
+	 * @return bool
+	 */
+	public function release_claim_for_retry( int $id ): bool {
+		return $this->update(
+			$id,
+			array(
+				'status'           => OutboundMessageStatus::RETRY_SCHEDULED->value,
+				'claim_expires_at' => null,
+			)
+		);
+	}
+
+	/**
 	 * Marks a message sent.
 	 *
 	 * @param int      $id                   The message's primary key.
@@ -184,7 +258,13 @@ final class OutboundMessageRepository {
 	 * @return bool
 	 */
 	public function mark_retry_scheduled( int $id ): bool {
-		return $this->update( $id, array( 'status' => OutboundMessageStatus::RETRY_SCHEDULED->value ) );
+		return $this->update(
+			$id,
+			array(
+				'status'           => OutboundMessageStatus::RETRY_SCHEDULED->value,
+				'claim_expires_at' => null,
+			)
+		);
 	}
 
 	/**
@@ -432,7 +512,8 @@ final class OutboundMessageRepository {
 			null === $row['telegram_message_id'] ? null : (int) $row['telegram_message_id'],
 			(string) $row['created_at'],
 			(string) $row['updated_at'],
-			null === $row['sent_at'] ? null : (string) $row['sent_at']
+			null === $row['sent_at'] ? null : (string) $row['sent_at'],
+			null === $row['claim_expires_at'] ? null : (string) $row['claim_expires_at']
 		);
 	}
 }

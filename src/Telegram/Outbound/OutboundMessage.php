@@ -35,6 +35,7 @@ final class OutboundMessage {
 	 * @param string                $created_at                     Creation timestamp.
 	 * @param string                $updated_at                     Last-modified timestamp.
 	 * @param string|null           $sent_at                        When this message was confirmed sent.
+	 * @param string|null           $claim_expires_at                When the currently held sending claim/lease expires, or null if unclaimed (M06.2 corrective plan v2, ADR-0023 amendment).
 	 */
 	public function __construct(
 		private readonly int $id,
@@ -51,7 +52,8 @@ final class OutboundMessage {
 		private readonly ?int $telegram_message_id,
 		private readonly string $created_at,
 		private readonly string $updated_at,
-		private readonly ?string $sent_at
+		private readonly ?string $sent_at,
+		private readonly ?string $claim_expires_at = null
 	) {}
 
 	/**
@@ -188,5 +190,16 @@ final class OutboundMessage {
 	 */
 	public function sent_at(): ?string {
 		return $this->sent_at;
+	}
+
+	/**
+	 * When the currently held sending claim/lease expires, or null if
+	 * unclaimed. Only meaningful while status() is SENDING (M06.2
+	 * corrective plan v2, ADR-0023 amendment).
+	 *
+	 * @return string|null
+	 */
+	public function claim_expires_at(): ?string {
+		return $this->claim_expires_at;
 	}
 }

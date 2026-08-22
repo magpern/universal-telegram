@@ -47,17 +47,21 @@ final class TopicCreationDispatcher {
 	 * @return DispatchResult|null Null if this call did not win the guard (already pending/created/failed).
 	 */
 	public function maybe_create( Conversation $conversation ): ?DispatchResult {
-		if ( ! $this->conversations->try_begin_topic_creation( $conversation->id() ) ) {
+		$claimed_lease_expires_at = $this->conversations->try_begin_topic_creation( $conversation->id() );
+
+		if ( null === $claimed_lease_expires_at ) {
 			return null;
 		}
 
 		$envelope = new JobEnvelope(
 			TopicCreationHandler::JOB_TYPE,
 			array(
-				'conversation_id' => $conversation->id(),
+				'conversation_id'          => $conversation->id(),
+				'claimed_lease_expires_at' => $claimed_lease_expires_at,
 			),
 			array(
-				'conversation_id' => Classification::INTERNAL,
+				'conversation_id'          => Classification::INTERNAL,
+				'claimed_lease_expires_at' => Classification::INTERNAL,
 			)
 		);
 
