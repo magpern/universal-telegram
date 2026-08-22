@@ -63,6 +63,12 @@ final class Uninstaller {
 		Migrator::CONVERSATION_MESSAGES_TABLE,
 	);
 
+	private const M07_TABLES = array(
+		Migrator::OPERATOR_IDENTITIES_TABLE,
+		Migrator::CONVERSATION_NOTES_TABLE,
+		Migrator::OPERATOR_AVAILABILITY_TABLE,
+	);
+
 	/**
 	 * Runs the uninstall routine.
 	 */
@@ -89,6 +95,7 @@ final class Uninstaller {
 		$this->drop_m01_tables();
 		$this->drop_m02_tables();
 		$this->drop_m05_tables();
+		$this->drop_m07_tables();
 		delete_option( Settings::OPTION_NAME );
 		delete_option( 'universal_telegram_db_version' );
 
@@ -173,6 +180,19 @@ final class Uninstaller {
 		global $wpdb;
 
 		foreach ( self::M05_TABLES as $table_name ) {
+			$table = $wpdb->prefix . $table_name;
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
+			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
+		}
+	}
+
+	/**
+	 * Drops the three tables M07 added (docs/adr/0026).
+	 */
+	private function drop_m07_tables(): void {
+		global $wpdb;
+
+		foreach ( self::M07_TABLES as $table_name ) {
 			$table = $wpdb->prefix . $table_name;
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
 			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
