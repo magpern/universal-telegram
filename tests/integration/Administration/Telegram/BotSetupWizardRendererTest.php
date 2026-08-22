@@ -127,6 +127,27 @@ final class BotSetupWizardRendererTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'Manage other bots', $html_two_bots );
 	}
 
+	public function test_progress_nav_uses_a_real_ordered_list_and_labelled_nav_landmark(): void {
+		$html = $this->render( 1 );
+
+		$this->assertStringContainsString( '<nav aria-label="Setup progress"><ol>', $html );
+	}
+
+	public function test_step_heading_has_a_focus_target_and_the_skip_link_points_to_it(): void {
+		$html = $this->render( 2 );
+
+		$this->assertStringContainsString( 'id="wizard-current-step" tabindex="-1"', $html );
+		$this->assertStringContainsString( 'aria-labelledby="wizard-current-step"', $html );
+		$this->assertStringContainsString( '<a href="#wizard-current-step">Skip to current step</a>', $html );
+	}
+
+	public function test_aria_current_never_appears_more_than_once_per_render(): void {
+		foreach ( range( 1, 5 ) as $step ) {
+			$html = $this->render( $step );
+			$this->assertSame( 1, substr_count( $html, 'aria-current="step"' ) );
+		}
+	}
+
 	public function test_no_token_or_ciphertext_ever_appears_in_output(): void {
 		$known_plaintext_token = '123456789:AAH_a-known-synthetic-token-value';
 		$bot                   = $this->bots->create( 'My Bot', $known_plaintext_token );
