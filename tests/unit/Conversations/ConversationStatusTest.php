@@ -31,6 +31,7 @@ final class ConversationStatusTest extends TestCase {
 			'waiting_for_visitor to resolved'   => array( ConversationStatus::WAITING_FOR_VISITOR, ConversationStatus::RESOLVED ),
 			'waiting_for_operator to resolved'  => array( ConversationStatus::WAITING_FOR_OPERATOR, ConversationStatus::RESOLVED ),
 			'resolved to archived'              => array( ConversationStatus::RESOLVED, ConversationStatus::ARCHIVED ),
+			'resolved reopens to open'          => array( ConversationStatus::RESOLVED, ConversationStatus::OPEN ),
 		);
 	}
 
@@ -50,7 +51,7 @@ final class ConversationStatusTest extends TestCase {
 			'new cannot go directly to archived'     => array( ConversationStatus::NEW, ConversationStatus::ARCHIVED ),
 			'open cannot go directly to archived'    => array( ConversationStatus::OPEN, ConversationStatus::ARCHIVED ),
 			'archived cannot transition anywhere'    => array( ConversationStatus::ARCHIVED, ConversationStatus::OPEN ),
-			'resolved cannot go back to open'        => array( ConversationStatus::RESOLVED, ConversationStatus::OPEN ),
+			'archived cannot reopen to resolved'     => array( ConversationStatus::ARCHIVED, ConversationStatus::RESOLVED ),
 			'unknown status has no valid transition' => array( 'nonexistent', ConversationStatus::OPEN ),
 		);
 	}

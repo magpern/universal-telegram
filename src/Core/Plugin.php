@@ -42,6 +42,7 @@ use UniversalTelegram\ChatWidget\ChatWidgetAvailability;
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationOutboundDispatcher;
 use UniversalTelegram\Conversations\ConversationOutboundHandler;
+use UniversalTelegram\Conversations\ConversationPurgeService;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\ImmediateDeliveryAttempt;
 use UniversalTelegram\Conversations\MessageRepository;
@@ -359,6 +360,15 @@ final class Plugin {
 	private ?ConversationRetentionCleanupHandler $conversation_retention_cleanup_handler = null;
 
 	/**
+	 * The shared conversation purge service, constructed by init(). Used by
+	 * both the scheduled retention handler above and M07's manual
+	 * "delete archived conversation" admin action (docs/adr/0026).
+	 *
+	 * @var ConversationPurgeService|null
+	 */
+	private ?ConversationPurgeService $conversation_purge_service = null;
+
+	/**
 	 * The webhook registration/rotation coordinator, constructed by init().
 	 *
 	 * @var WebhookRegistrationCoordinator|null
@@ -655,10 +665,16 @@ final class Plugin {
 			}
 		);
 
-		$this->conversation_retention_cleanup_handler = new ConversationRetentionCleanupHandler(
+		$this->conversation_purge_service = new ConversationPurgeService(
 			$this->conversation_repository,
 			$this->message_repository,
 			$this->destination_repository
+		);
+
+		$this->conversation_retention_cleanup_handler = new ConversationRetentionCleanupHandler(
+			$this->conversation_repository,
+			$this->message_repository,
+			$this->conversation_purge_service
 		);
 		add_action( ConversationRetentionCleanupHandler::HOOK, array( $this->conversation_retention_cleanup_handler, 'run' ) );
 
@@ -1262,6 +1278,13 @@ final class Plugin {
 	 */
 	public function conversation_retention_cleanup_handler(): ?ConversationRetentionCleanupHandler {
 		return $this->conversation_retention_cleanup_handler;
+	}
+
+	/**
+	 * The shared conversation purge service. Available only after init() has run.
+	 */
+	public function conversation_purge_service(): ?ConversationPurgeService {
+		return $this->conversation_purge_service;
 	}
 
 	/**
