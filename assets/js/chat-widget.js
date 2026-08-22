@@ -684,6 +684,18 @@
 		header.appendChild( heading );
 		header.appendChild( closeButton );
 
+		// Personalized greeting (M06.3.1 follow-up): a short line under the
+		// header, not a textarea placeholder — visible for the whole
+		// authenticated session, not just while the composer is empty.
+		// Only rendered when both loggedIn and firstName are present in the
+		// config; a genuinely anonymous visitor never sees it.
+		var greeting = doc.createElement( 'p' );
+		greeting.className = 'ut-chat-widget__greeting';
+		greeting.hidden = true;
+		if ( config.loggedIn && config.firstName ) {
+			greeting.textContent = 'What’s on your mind, ' + config.firstName + '?';
+		}
+
 		// Logged-out state (M06.3.1, ADR-0025): sign-in (+ create-account,
 		// only when the site currently allows registration) links only —
 		// no name field, history, composer, or any conversation control.
@@ -741,6 +753,7 @@
 		form.appendChild( sendButton );
 
 		panel.appendChild( header );
+		panel.appendChild( greeting );
 		panel.appendChild( signin );
 		panel.appendChild( log );
 		panel.appendChild( newMessagesButton );
@@ -800,6 +813,7 @@
 		}
 
 		function showSignedOut() {
+			setVisible( greeting, false );
 			setVisible( signin, true );
 			setVisible( log, false );
 			setVisible( newMessagesButton, false );
@@ -808,6 +822,7 @@
 		}
 
 		function showChat() {
+			setVisible( greeting, '' !== greeting.textContent );
 			setVisible( signin, false );
 			setVisible( log, true );
 			setVisible( statusRegion, true );
@@ -889,15 +904,8 @@
 				showSignedOut();
 			}
 
-			// 'idle' (no conversation yet) and 'active' (an existing,
-			// resumed conversation) both leave the composer enabled with
-			// nothing more specific to say, so both get the placeholder.
-			// A genuinely anonymous visitor (no firstName in the config)
-			// keeps the generic wording.
-			if ( ( 'idle' === described.status || 'active' === described.status ) && config.loggedIn && config.firstName ) {
-				input.placeholder = 'What’s on your mind, ' + config.firstName + '?';
-			} else if ( 'idle' === described.status || 'active' === described.status ) {
-				input.placeholder = 'What’s on your mind?';
+			if ( 'idle' === described.status || 'active' === described.status ) {
+				input.placeholder = 'Type a message…';
 			}
 
 			if ( 'ended' === described.status && ! statusRegion.querySelector( '.ut-chat-widget__restart' ) ) {

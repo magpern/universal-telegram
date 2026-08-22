@@ -93,6 +93,14 @@
 	padding: 0.25rem 0.5rem;
 }
 
+.ut-chat-widget__greeting {
+	margin: 0;
+	padding: 0.5rem 1rem;
+	font-size: 0.8125rem;
+	color: var( --ut-chat-fg );
+	border-bottom: 1px solid var( --ut-chat-border );
+}
+
 .ut-chat-widget__close:focus-visible,
 .ut-chat-widget__send:focus-visible,
 .ut-chat-widget__restart:focus-visible,
