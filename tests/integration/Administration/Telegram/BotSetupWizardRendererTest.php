@@ -38,9 +38,9 @@ final class BotSetupWizardRendererTest extends WP_UnitTestCase {
 		$this->renderer = new BotSetupWizardRenderer( $state, new TelegramFormFields(), $this->bots );
 	}
 
-	private function render( int $step ): string {
+	private function render( int $step, ?string $bot_mode = null ): string {
 		ob_start();
-		$this->renderer->render( $step );
+		$this->renderer->render( $step, $bot_mode );
 
 		return ob_get_clean();
 	}
@@ -146,6 +146,41 @@ final class BotSetupWizardRendererTest extends WP_UnitTestCase {
 			$html = $this->render( $step );
 			$this->assertSame( 1, substr_count( $html, 'aria-current="step"' ) );
 		}
+	}
+
+	public function test_no_bot_shows_the_landing_choice_at_step_one(): void {
+		$html = $this->render( 1 );
+
+		$this->assertStringContainsString( 'How would you like to start?', $html );
+		$this->assertStringContainsString( 'Set up an existing bot', $html );
+		$this->assertStringContainsString( 'Create and set up a new bot', $html );
+		$this->assertStringNotContainsString( 'name="name"', $html );
+	}
+
+	public function test_bot_mode_new_shows_the_botfather_walkthrough_and_the_form(): void {
+		$html = $this->render( 1, 'new' );
+
+		$this->assertStringContainsString( 'Open BotFather in Telegram, run /newbot', $html );
+		$this->assertStringContainsString( 'Choose a different way to start', $html );
+		$this->assertSame( 1, substr_count( $html, 'name="name"' ) );
+	}
+
+	public function test_bot_mode_existing_shows_abbreviated_copy_and_the_form(): void {
+		$html = $this->render( 1, 'existing' );
+
+		$this->assertStringContainsString( 'Enter your existing bot', $html );
+		$this->assertStringNotContainsString( 'Open BotFather in Telegram, run /newbot', $html );
+		$this->assertStringContainsString( 'Choose a different way to start', $html );
+		$this->assertSame( 1, substr_count( $html, 'name="name"' ) );
+	}
+
+	public function test_landing_choice_is_skipped_once_a_bot_already_exists(): void {
+		$this->bots->create( 'My Bot', '123:token' );
+
+		$html = $this->render( 1 );
+
+		$this->assertStringNotContainsString( 'How would you like to start?', $html );
+		$this->assertSame( 1, substr_count( $html, 'name="name"' ) );
 	}
 
 	public function test_no_token_or_ciphertext_ever_appears_in_output(): void {

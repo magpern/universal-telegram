@@ -66,7 +66,7 @@ final class BotManagementPage {
 			// deliberately not appended here. Showing both at once duplicated
 			// the sensitive token-entry form and made multi-bot management
 			// unclear (M06.1 wizard-manual-view hotfix).
-			$this->wizard_renderer->render( $this->resolve_step() );
+			$this->wizard_renderer->render( $this->resolve_step(), $this->resolve_bot_mode() );
 		} else {
 			$this->render_bot_list();
 			printf(
@@ -114,6 +114,20 @@ final class BotManagementPage {
 		}
 
 		return $this->wizard_state->current_step();
+	}
+
+	/**
+	 * Resolves step 1's landing-choice mode: `?bot_mode=` only when it is
+	 * exactly 'new' or 'existing'; any other value — or its absence — is
+	 * treated as no choice made yet (the landing choice itself is shown).
+	 * Never an error.
+	 *
+	 * @return string|null
+	 */
+	private function resolve_bot_mode(): ?string {
+		$raw = isset( $_GET['bot_mode'] ) ? sanitize_key( wp_unslash( (string) $_GET['bot_mode'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+		return in_array( $raw, array( 'new', 'existing' ), true ) ? $raw : null;
 	}
 
 	/**

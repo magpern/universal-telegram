@@ -41,9 +41,12 @@ final class BotSetupWizardRenderer {
 	/**
 	 * Renders the wizard for one already-validated step (1-5).
 	 *
-	 * @param int $step The step to display, already validated to the 1-5 range by the caller.
+	 * @param int         $step     The step to display, already validated to the 1-5 range by the caller.
+	 * @param string|null $bot_mode Step 1's landing choice — 'new'|'existing', or null for the landing
+	 *                              choice itself. Ignored once a bot already exists (M06.1 corrective
+	 *                              addendum: new-user guided setup).
 	 */
-	public function render( int $step ): void {
+	public function render( int $step, ?string $bot_mode = null ): void {
 		$bot = $this->state->default_bot();
 
 		echo '<div class="card" style="max-width:none;">';
@@ -68,7 +71,7 @@ final class BotSetupWizardRenderer {
 		echo '<p><a href="#wizard-current-step">' . esc_html__( 'Skip to current step', 'universal-telegram' ) . '</a></p>';
 
 		$this->render_progress_nav( $step );
-		$this->render_step( $step, $bot );
+		$this->render_step( $step, $bot, $bot_mode );
 
 		echo '</div>';
 	}
@@ -154,18 +157,30 @@ final class BotSetupWizardRenderer {
 	}
 
 	/**
+	 * Step 1's URL for a specific landing-choice mode ('new'|'existing').
+	 *
+	 * @param string $mode 'new' or 'existing'.
+	 *
+	 * @return string
+	 */
+	private function step_one_url_with_mode( string $mode ): string {
+		return $this->step_url( 1 ) . '&bot_mode=' . $mode;
+	}
+
+	/**
 	 * Renders the active step's own content.
 	 *
-	 * @param int             $step The step to render.
-	 * @param BotProfile|null $bot  The default bot, if one is configured.
+	 * @param int             $step     The step to render.
+	 * @param BotProfile|null $bot      The default bot, if one is configured.
+	 * @param string|null     $bot_mode Step 1's landing-choice mode, if any.
 	 */
-	private function render_step( int $step, ?BotProfile $bot ): void {
+	private function render_step( int $step, ?BotProfile $bot, ?string $bot_mode ): void {
 		echo '<section aria-labelledby="wizard-current-step">';
 		echo '<h3 id="wizard-current-step" tabindex="-1">' . esc_html( $this->step_title( $step ) ) . '</h3>';
 
 		switch ( $step ) {
 			case 1:
-				$this->render_step_1();
+				$this->render_step_1( $bot, $bot_mode );
 				break;
 			case 2:
 				$this->render_step_2();
@@ -187,15 +202,95 @@ final class BotSetupWizardRenderer {
 	}
 
 	/**
-	 * Renders step 1: create bot.
+	 * Renders step 1: create bot. Once a bot already exists, the landing
+	 * choice no longer applies — the step simply shows the same create-bot
+	 * form it always has (M06.1 corrective addendum: new-user guided setup
+	 * only concerns the very first bot, before one exists at all).
+	 *
+	 * @param BotProfile|null $bot      The default bot, if one is configured.
+	 * @param string|null     $bot_mode The landing-choice mode ('new'|'existing'), or null.
 	 */
-	private function render_step_1(): void {
+	private function render_step_1( ?BotProfile $bot, ?string $bot_mode ): void {
+		if ( null !== $bot ) {
+			$this->render_step_1_bot_form();
+			return;
+		}
+
+		if ( null === $bot_mode ) {
+			$this->render_step_1_landing_choice();
+			return;
+		}
+
+		echo '<p><a href="' . esc_url( $this->step_url( 1 ) ) . '">' .
+			esc_html__( '← Choose a different way to start', 'universal-telegram' ) .
+			'</a></p>';
+
+		if ( 'existing' === $bot_mode ) {
+			$this->render_step_1_existing_bot_flow();
+		} else {
+			$this->render_step_1_new_bot_flow();
+		}
+	}
+
+	/**
+	 * The landing choice shown only for a brand-new setup (no bot at all).
+	 */
+	private function render_step_1_landing_choice(): void {
+		echo '<p>' . esc_html__( 'How would you like to start?', 'universal-telegram' ) . '</p>';
+
+		echo '<p>';
+		printf(
+			'<a class="button button-primary" href="%1$s">%2$s</a>',
+			esc_url( $this->step_one_url_with_mode( 'existing' ) ),
+			esc_html__( 'Set up an existing bot', 'universal-telegram' )
+		);
+		echo '</p>';
+		echo '<p>' . esc_html__( 'I already created a bot with BotFather and have its token.', 'universal-telegram' ) . '</p>';
+
+		echo '<p>';
+		printf(
+			'<a class="button" href="%1$s">%2$s</a>',
+			esc_url( $this->step_one_url_with_mode( 'new' ) ),
+			esc_html__( 'Create and set up a new bot', 'universal-telegram' )
+		);
+		echo '</p>';
+		echo '<p>' . esc_html__( "I don't have a bot yet — walk me through creating one.", 'universal-telegram' ) . '</p>';
+	}
+
+	/**
+	 * The "create and set up a new bot" flow: the full BotFather walkthrough
+	 * before token entry.
+	 */
+	private function render_step_1_new_bot_flow(): void {
 		echo '<p>' . esc_html__( 'Open BotFather in Telegram, run /newbot, and copy the token it provides.', 'universal-telegram' ) . '</p>';
 		printf(
 			'<p><a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s</a></p>',
 			esc_url( 'https://core.telegram.org/bots#6-botfather' ),
 			esc_html__( 'How to get a bot token', 'universal-telegram' )
 		);
+		$this->render_step_1_bot_form();
+	}
+
+	/**
+	 * The "set up an existing bot" flow: token entry first, with the
+	 * BotFather walkthrough available but de-emphasized for anyone who
+	 * turns out not to have a bot yet after all.
+	 */
+	private function render_step_1_existing_bot_flow(): void {
+		echo '<p>' . esc_html__( 'Enter your existing bot\'s token below.', 'universal-telegram' ) . '</p>';
+		printf(
+			'<p><a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s</a></p>',
+			esc_url( 'https://core.telegram.org/bots#6-botfather' ),
+			esc_html__( "Don't have a bot yet? Use BotFather's /newbot command.", 'universal-telegram' )
+		);
+		$this->render_step_1_bot_form();
+	}
+
+	/**
+	 * The security warning and the shared create-bot form, common to both
+	 * the new-bot and existing-bot flows, and to step 1 once a bot exists.
+	 */
+	private function render_step_1_bot_form(): void {
 		echo '<div class="notice notice-warning inline"><p>' .
 			esc_html__( 'Keep your bot token private. Anyone with it can control the bot.', 'universal-telegram' ) .
 			'</p></div>';

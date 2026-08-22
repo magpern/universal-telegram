@@ -107,15 +107,94 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( '4. Connect group', $html );
 		$this->assertStringContainsString( '5. Activate chat widget', $html );
 
-		$this->assertStringContainsString( 'href="https://core.telegram.org/bots#6-botfather"', $html );
-		$this->assertStringContainsString( 'target="_blank" rel="noopener noreferrer"', $html );
-		$this->assertStringContainsString( 'Keep your bot token private. Anyone with it can control the bot.', $html );
+		// No bot at all yet: step 1 shows the new-user landing choice, not
+		// either flow's content or form directly.
+		$this->assertStringContainsString( 'How would you like to start?', $html );
+		$this->assertStringContainsString( 'Set up an existing bot', $html );
+		$this->assertStringContainsString( 'Create and set up a new bot', $html );
+		$this->assertStringNotContainsString( 'name="name"', $html );
+		$this->assertStringNotContainsString( 'name="token"', $html );
 
-		// Exactly one create-bot form (the wizard's own, in step 1) — the
-		// manual "Add a bot" heading/form must not be appended beneath it.
+		// The manual "Add a bot" heading/form must not be appended beneath it.
 		$this->assertStringNotContainsString( '<h2>Add a bot</h2>', $html );
+	}
+
+	public function test_new_bot_flow_shows_botfather_walkthrough_then_exactly_one_create_bot_form(): void {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+
+		$page = $this->make_page(
+			new BotProfileRepository( $schema_health, $vault ),
+			new DestinationRepository( $schema_health )
+		);
+
+		$_GET['view']     = 'wizard';
+		$_GET['step']     = '1';
+		$_GET['bot_mode'] = 'new';
+		ob_start();
+		$page->render_tab_content();
+		$html = ob_get_clean();
+		unset( $_GET['view'], $_GET['step'], $_GET['bot_mode'] );
+
+		$this->assertStringContainsString( 'Open BotFather in Telegram, run /newbot', $html );
+		$this->assertStringContainsString( 'href="https://core.telegram.org/bots#6-botfather"', $html );
+		$this->assertStringContainsString( 'Keep your bot token private. Anyone with it can control the bot.', $html );
+		$this->assertStringContainsString( 'Choose a different way to start', $html );
 		$this->assertSame( 1, substr_count( $html, 'name="name"' ) );
 		$this->assertSame( 1, substr_count( $html, 'name="token"' ) );
+		$this->assertStringNotContainsString( '<h2>Add a bot</h2>', $html );
+	}
+
+	public function test_existing_bot_flow_shows_abbreviated_copy_then_exactly_one_create_bot_form(): void {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+
+		$page = $this->make_page(
+			new BotProfileRepository( $schema_health, $vault ),
+			new DestinationRepository( $schema_health )
+		);
+
+		$_GET['view']     = 'wizard';
+		$_GET['step']     = '1';
+		$_GET['bot_mode'] = 'existing';
+		ob_start();
+		$page->render_tab_content();
+		$html = ob_get_clean();
+		unset( $_GET['view'], $_GET['step'], $_GET['bot_mode'] );
+
+		$this->assertStringContainsString( 'Enter your existing bot', $html );
+		// The full step-by-step walkthrough sentence is not repeated here —
+		// only a de-emphasized fallback link for anyone without a bot yet.
+		$this->assertStringNotContainsString( 'Open BotFather in Telegram, run /newbot', $html );
+		$this->assertStringContainsString( 'Keep your bot token private. Anyone with it can control the bot.', $html );
+		$this->assertStringContainsString( 'Choose a different way to start', $html );
+		$this->assertSame( 1, substr_count( $html, 'name="name"' ) );
+		$this->assertSame( 1, substr_count( $html, 'name="token"' ) );
+	}
+
+	public function test_bot_mode_landing_choice_is_skipped_once_a_bot_already_exists(): void {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+		$bots          = new BotProfileRepository( $schema_health, $vault );
+		$destinations  = new DestinationRepository( $schema_health );
+
+		$bots->create( 'My Bot', '123:token' );
+
+		$page = $this->make_page( $bots, $destinations );
+
+		$_GET['view'] = 'wizard';
+		$_GET['step'] = '1';
+		ob_start();
+		$page->render_tab_content();
+		$html = ob_get_clean();
+		unset( $_GET['view'], $_GET['step'] );
+
+		// A bot already exists (even though step 1 itself isn't yet
+		// "Complete" — its token was never validated in this fixture), so
+		// the landing choice must not reappear; the existing selected-bot
+		// checklist behaviour is unchanged.
+		$this->assertStringNotContainsString( 'How would you like to start?', $html );
+		$this->assertSame( 1, substr_count( $html, 'name="name"' ) );
 	}
 
 	public function test_complete_setup_defaults_to_the_manual_view_with_a_setup_wizard_link(): void {
