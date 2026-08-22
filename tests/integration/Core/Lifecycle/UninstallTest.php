@@ -12,6 +12,7 @@ use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Lifecycle\Deactivator;
 use UniversalTelegram\Core\Lifecycle\Uninstaller;
 use UniversalTelegram\Core\Security\CredentialVault;
+use UniversalTelegram\Persistence\MigrationLock;
 use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Classification;
@@ -51,6 +52,12 @@ final class UninstallTest extends WP_UnitTestCase {
 	private const M05_TABLES = array(
 		Migrator::CONVERSATIONS_TABLE,
 		Migrator::CONVERSATION_MESSAGES_TABLE,
+	);
+
+	private const M07_TABLES = array(
+		Migrator::OPERATOR_IDENTITIES_TABLE,
+		Migrator::CONVERSATION_NOTES_TABLE,
+		Migrator::OPERATOR_AVAILABILITY_TABLE,
 	);
 
 	protected function setUp(): void {
@@ -108,7 +115,7 @@ final class UninstallTest extends WP_UnitTestCase {
 		// Retention-gated: the tables, settings, and schema version remain.
 		$table = $wpdb->prefix . Migrator::AUDIT_LOG_TABLE;
 		$this->assertTrue( $this->table_exists( $table ) );
-		foreach ( array_merge( self::M01_TABLES, self::M02_TABLES, self::M05_TABLES ) as $table_name ) {
+		foreach ( array_merge( self::M01_TABLES, self::M02_TABLES, self::M05_TABLES, self::M07_TABLES ) as $table_name ) {
 			$this->assertTrue( $this->table_exists( $wpdb->prefix . $table_name ), "Expected {$table_name} to still exist." );
 		}
 		$this->assertNotFalse( get_option( 'universal_telegram_db_version' ) );
@@ -174,7 +181,7 @@ final class UninstallTest extends WP_UnitTestCase {
 			$table = $wpdb->prefix . Migrator::AUDIT_LOG_TABLE;
 			$this->assertFalse( $this->table_exists( $table ) );
 
-			foreach ( array_merge( self::M01_TABLES, self::M02_TABLES, self::M05_TABLES ) as $table_name ) {
+			foreach ( array_merge( self::M01_TABLES, self::M02_TABLES, self::M05_TABLES, self::M07_TABLES ) as $table_name ) {
 				$this->assertFalse( $this->table_exists( $wpdb->prefix . $table_name ), "Expected {$table_name} to have been dropped." );
 			}
 
@@ -198,262 +205,22 @@ final class UninstallTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Recreates every plugin table directly, mirroring Migrator's own DDL
-	 * exactly, since a full maybe_migrate() call here would straddle the
-	 * transaction boundary the real CREATE TABLE calls above already
-	 * committed (see the docblock in the test above).
+	 * Recreates every plugin table by running the real Migrator, at every
+	 * db_version it knows about, rather than hand-duplicating its DDL (the
+	 * previous approach here silently went stale at db_version 12 across
+	 * every schema addition from M06 onward, since nothing kept a second,
+	 * hand-copied DDL surface in sync with Migrator's own). Safe to call
+	 * here specifically because the `_create_temporary_tables()`/
+	 * `_drop_temporary_tables()` query filters are still removed at this
+	 * point in the test (removed above, restored only after this method
+	 * returns, by `self::commit_transaction(); $this->start_transaction();`
+	 * below) — so every CREATE TABLE this produces is a genuine permanent
+	 * table, exactly like the real uninstalled tables were, and every
+	 * later test in the suite sees an accurate, current schema and
+	 * db_version again.
 	 */
 	private function recreate_all_tables(): void {
-		global $wpdb;
-
-		$charset_collate = $wpdb->get_charset_collate();
-
-		$audit_table = $wpdb->prefix . Migrator::AUDIT_LOG_TABLE;
-		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- fixed table names, never user input.
-		$wpdb->query(
-			"CREATE TABLE IF NOT EXISTS {$audit_table} (
-				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-				occurred_at DATETIME NOT NULL,
-				actor_type VARCHAR(32) NOT NULL,
-				actor_id BIGINT UNSIGNED NULL,
-				action VARCHAR(191) NOT NULL,
-				context LONGTEXT NULL,
-				privacy_classification VARCHAR(16) NOT NULL,
-				PRIMARY KEY (id),
-				KEY occurred_at (occurred_at),
-				KEY action (action)
-			) {$charset_collate}"
-		);
-
-		$bots_table = $wpdb->prefix . Migrator::BOTS_TABLE;
-		$wpdb->query(
-			"CREATE TABLE IF NOT EXISTS {$bots_table} (
-				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-				bot_uuid CHAR(36) NOT NULL,
-				name VARCHAR(191) NOT NULL,
-				token_ciphertext LONGTEXT NOT NULL,
-				webhook_secret_ciphertext LONGTEXT NOT NULL,
-				webhook_secret_pending_ciphertext LONGTEXT NULL,
-				webhook_secret_pending_since DATETIME NULL,
-				webhook_registration_state VARCHAR(16) NOT NULL DEFAULT 'unregistered',
-				webhook_last_attempt_at DATETIME NULL,
-				telegram_bot_id BIGINT NULL,
-				telegram_username VARCHAR(191) NULL,
-				status VARCHAR(16) NOT NULL DEFAULT 'unconfigured',
-				webhook_registered_at DATETIME NULL,
-				created_at DATETIME NOT NULL,
-				updated_at DATETIME NOT NULL,
-				PRIMARY KEY (id),
-				UNIQUE KEY bot_uuid (bot_uuid),
-				KEY status (status)
-			) {$charset_collate}"
-		);
-
-		$destinations_table = $wpdb->prefix . Migrator::DESTINATIONS_TABLE;
-		$wpdb->query(
-			"CREATE TABLE IF NOT EXISTS {$destinations_table} (
-				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-				bot_id BIGINT UNSIGNED NOT NULL,
-				kind VARCHAR(16) NOT NULL,
-				chat_id VARCHAR(64) NOT NULL,
-				message_thread_id BIGINT NULL,
-				label VARCHAR(191) NOT NULL,
-				enabled TINYINT(1) NOT NULL DEFAULT 1,
-				created_at DATETIME NOT NULL,
-				PRIMARY KEY (id),
-				KEY bot_id (bot_id),
-				UNIQUE KEY bot_chat_thread (bot_id, chat_id, message_thread_id)
-			) {$charset_collate}"
-		);
-
-		$outbound_table = $wpdb->prefix . Migrator::OUTBOUND_MESSAGES_TABLE;
-		$wpdb->query(
-			"CREATE TABLE IF NOT EXISTS {$outbound_table} (
-				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-				message_uuid CHAR(36) NOT NULL,
-				bot_id BIGINT UNSIGNED NOT NULL,
-				destination_id BIGINT UNSIGNED NOT NULL,
-				body_ciphertext LONGTEXT NULL,
-				parse_mode VARCHAR(16) NULL,
-				status VARCHAR(16) NOT NULL DEFAULT 'pending',
-				attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
-				last_failure_code VARCHAR(64) NULL,
-				possible_duplicate_delivery TINYINT(1) NOT NULL DEFAULT 0,
-				dead_lettered_at DATETIME NULL,
-				telegram_message_id BIGINT NULL,
-				created_at DATETIME NOT NULL,
-				updated_at DATETIME NOT NULL,
-				sent_at DATETIME NULL,
-				PRIMARY KEY (id),
-				UNIQUE KEY message_uuid (message_uuid),
-				KEY status (status),
-				KEY bot_destination (bot_id, destination_id),
-				KEY created_at (created_at)
-			) {$charset_collate}"
-		);
-
-		$inbound_table = $wpdb->prefix . Migrator::INBOUND_UPDATES_TABLE;
-		$wpdb->query(
-			"CREATE TABLE IF NOT EXISTS {$inbound_table} (
-				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-				bot_id BIGINT UNSIGNED NOT NULL,
-				update_id BIGINT NOT NULL,
-				update_type VARCHAR(32) NOT NULL,
-				chat_id VARCHAR(64) NULL,
-				message_thread_id BIGINT NULL,
-				received_at DATETIME NOT NULL,
-				PRIMARY KEY (id),
-				UNIQUE KEY bot_update (bot_id, update_id),
-				KEY received_at (received_at)
-			) {$charset_collate}"
-		);
-
-		$circuit_table = $wpdb->prefix . Migrator::CIRCUIT_BREAKER_TABLE;
-		$wpdb->query(
-			"CREATE TABLE IF NOT EXISTS {$circuit_table} (
-				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-				scope_type VARCHAR(16) NOT NULL,
-				scope_id BIGINT UNSIGNED NOT NULL,
-				state VARCHAR(16) NOT NULL DEFAULT 'closed',
-				consecutive_failures INT UNSIGNED NOT NULL DEFAULT 0,
-				opened_at DATETIME NULL,
-				next_probe_at DATETIME NULL,
-				updated_at DATETIME NOT NULL,
-				PRIMARY KEY (id),
-				UNIQUE KEY scope (scope_type, scope_id)
-			) {$charset_collate}"
-		);
-
-		$rate_limit_table = $wpdb->prefix . Migrator::RATE_LIMIT_TABLE;
-		$wpdb->query(
-			"CREATE TABLE IF NOT EXISTS {$rate_limit_table} (
-				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-				scope_type VARCHAR(16) NOT NULL,
-				scope_id BIGINT UNSIGNED NOT NULL,
-				tokens_available DECIMAL(6,2) NOT NULL,
-				last_refill_at DATETIME NOT NULL,
-				PRIMARY KEY (id),
-				UNIQUE KEY scope (scope_type, scope_id)
-			) {$charset_collate}"
-		);
-		$event_history_table = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
-		$wpdb->query(
-			"CREATE TABLE IF NOT EXISTS {$event_history_table} (
-				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-				event_id CHAR(64) NOT NULL,
-				event_type VARCHAR(190) NOT NULL,
-				schema_version SMALLINT UNSIGNED NOT NULL,
-				occurred_at DATETIME NOT NULL,
-				source VARCHAR(32) NOT NULL,
-				projected_fields_json TEXT NOT NULL,
-				created_at DATETIME NOT NULL,
-				PRIMARY KEY (id),
-				UNIQUE KEY event_id (event_id),
-				KEY event_type_occurred_at (event_type, occurred_at)
-			) {$charset_collate}"
-		);
-
-		$fatal_markers_table = $wpdb->prefix . Migrator::FATAL_ERROR_MARKERS_TABLE;
-		$wpdb->query(
-			"CREATE TABLE IF NOT EXISTS {$fatal_markers_table} (
-				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-				error_type VARCHAR(32) NOT NULL,
-				location_hash CHAR(64) NOT NULL,
-				status VARCHAR(16) NOT NULL DEFAULT 'pending',
-				occurred_at DATETIME NOT NULL,
-				promoted_at DATETIME NULL,
-				created_at DATETIME NOT NULL,
-				PRIMARY KEY (id),
-				UNIQUE KEY error_type_location (error_type, location_hash)
-			) {$charset_collate}"
-		);
-
-		$rules_table = $wpdb->prefix . Migrator::NOTIFICATION_RULES_TABLE;
-		$wpdb->query(
-			"CREATE TABLE IF NOT EXISTS {$rules_table} (
-				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-				name VARCHAR(190) NOT NULL,
-				event_type VARCHAR(190) NOT NULL,
-				schema_version_min SMALLINT UNSIGNED NOT NULL,
-				conditions_json TEXT NOT NULL,
-				bot_id BIGINT UNSIGNED NOT NULL,
-				destination_id BIGINT UNSIGNED NOT NULL,
-				template TEXT NOT NULL,
-				enabled TINYINT(1) NOT NULL DEFAULT 1,
-				priority INT NOT NULL DEFAULT 100,
-				cooldown_seconds INT UNSIGNED NOT NULL DEFAULT 0,
-				created_at DATETIME NOT NULL,
-				updated_at DATETIME NOT NULL,
-				PRIMARY KEY (id),
-				KEY event_type_enabled_priority (event_type, enabled, priority, id)
-			) {$charset_collate}"
-		);
-
-		$dispatch_log_table = $wpdb->prefix . Migrator::DISPATCH_LOG_TABLE;
-		$wpdb->query(
-			"CREATE TABLE IF NOT EXISTS {$dispatch_log_table} (
-				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-				rule_id BIGINT UNSIGNED NOT NULL,
-				event_id CHAR(64) NOT NULL,
-				outbound_message_uuid CHAR(36) NULL,
-				result VARCHAR(32) NOT NULL,
-				reason_code VARCHAR(64) NULL,
-				dispatched_at DATETIME NOT NULL,
-				updated_at DATETIME NOT NULL,
-				PRIMARY KEY (id),
-				UNIQUE KEY rule_event (rule_id, event_id)
-			) {$charset_collate}"
-		);
-		$conversations_table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
-		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
-		$wpdb->query(
-			"CREATE TABLE IF NOT EXISTS {$conversations_table} (
-				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-				conversation_uuid CHAR(36) NOT NULL,
-				secret_hash VARCHAR(255) NULL,
-				bot_id BIGINT UNSIGNED NOT NULL,
-				destination_id BIGINT UNSIGNED NULL,
-				chat_profile VARCHAR(64) NULL,
-				status VARCHAR(20) NOT NULL DEFAULT 'new',
-				assigned_operator_id BIGINT UNSIGNED NULL,
-				topic_creation_state VARCHAR(16) NOT NULL DEFAULT 'none',
-				telegram_topic_id BIGINT NULL,
-				ai_participation_state VARCHAR(16) NOT NULL DEFAULT 'none',
-				consent_state VARCHAR(16) NOT NULL DEFAULT 'unknown',
-				session_ref VARCHAR(191) NULL,
-				created_at DATETIME NOT NULL,
-				updated_at DATETIME NOT NULL,
-				resolved_at DATETIME NULL,
-				expires_at DATETIME NULL,
-				PRIMARY KEY (id),
-				UNIQUE KEY conversation_uuid (conversation_uuid),
-				KEY status (status),
-				KEY telegram_topic_id (telegram_topic_id),
-				KEY topic_creation_state (topic_creation_state),
-				KEY created_at (created_at)
-			) {$charset_collate}"
-		);
-
-		$conversation_messages_table = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
-		$wpdb->query(
-			"CREATE TABLE IF NOT EXISTS {$conversation_messages_table} (
-				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-				conversation_id BIGINT UNSIGNED NOT NULL,
-				message_uuid CHAR(36) NOT NULL,
-				direction VARCHAR(8) NOT NULL,
-				body_ciphertext LONGTEXT NULL,
-				outbound_message_uuid CHAR(36) NULL,
-				telegram_message_id BIGINT NULL,
-				delivery_state VARCHAR(16) NOT NULL DEFAULT 'stored',
-				created_at DATETIME NOT NULL,
-				PRIMARY KEY (id),
-				UNIQUE KEY message_uuid (message_uuid),
-				KEY conversation_created (conversation_id, created_at),
-				KEY outbound_message_uuid (outbound_message_uuid)
-			) {$charset_collate}"
-		);
-		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
-
-		update_option( 'universal_telegram_db_version', 12 );
+		delete_option( 'universal_telegram_db_version' );
+		( new Migrator( new MigrationLock() ) )->maybe_migrate();
 	}
 }
