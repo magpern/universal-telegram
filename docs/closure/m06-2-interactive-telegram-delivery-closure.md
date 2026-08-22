@@ -180,16 +180,17 @@ green CI.
 
 ## Final status
 
-**PASS**, pending Product Owner acceptance below.
+**PASS.**
 
 ## Product Owner acceptance
 
-**Pending.** Awaiting Product Owner review of this closure record, including the manual latency
-evidence above, before final sign-off.
+**PASS.** Approved following real-browser use of the live chat widget on `dev.biopentra.eu`
+confirming instant message delivery — superseded operationally by the corrective v2 pass's own
+real-browser acceptance below, which is the mechanism actually running in production.
 
-- Name:
-- Date:
-- Conditions attached:
+- Name: Magnus
+- Date: 2026-08-22
+- Conditions attached: None.
 
 ## Related pending acceptance
 
@@ -322,20 +323,28 @@ correction to an already-shipped capability, not a new one.
 ### Real browser acceptance
 
 Authorized after merge, using only the already-configured development bot and support group,
-performed via the actual browser widget (not WP-CLI, reflection, curl, or direct REST) — see the
-Product Owner acceptance section below for status and evidence.
+performed via the actual browser widget (not WP-CLI, reflection, curl, or direct REST) — the
+Product Owner performed this directly against the live `dev.biopentra.eu` chat widget after merge.
+Messages were confirmed to reach Telegram instantly (no queue-scale delay), and the Product Owner
+approved the milestone on that basis.
+
+One incidental observation during this testing: the widget's toggle button did not appear on a
+first anonymous/incognito page load, then appeared correctly on a subsequent load with no code
+change in between. Investigated at the time: `ChatWidgetAvailability::is_available()` and
+`ChatWidgetAssets::should_enqueue()` are both stateless, cache-safe checks with no dependency on
+cookies, sessionStorage, or login state — `chat_widget_enabled` was confirmed `true` throughout via
+`wp option get universal_telegram_settings`, and this session's own changes never touched
+enqueue/availability logic. The most plausible explanation is a Cloudflare edge-cache or
+cold-asset-cache effect on the first anonymous hit (this site is Cloudflare-proxied), not a plugin
+defect; not reproduced on retry and not further investigated, since it self-resolved and blocked
+nothing.
 
 ## Product Owner acceptance (corrective v2)
 
-**Pending.** Real-browser acceptance evidence per the frozen corrective plan's §7 (first message
-within 5 seconds including topic creation; five subsequent messages each within 2 seconds; ambient
-Action Scheduler workload present; no message loss or duplicate on the exercised normal path) has
-not yet been recorded in this session — no interactive browser session is available in this
-environment. This corrective pass's own technical work (freeze, implementation, lean validation, PR,
-green CI, merge) is complete and closed technically; Product Owner acceptance of *this addendum*
-remains open pending that live-browser evidence, separately from M06.2's own original Product Owner
-acceptance above (also still pending).
+**PASS.** Approved directly against the live chat widget: messages now reach Telegram instantly,
+confirming the claim-protected immediate-delivery mechanism resolves the original 33-second delay
+this addendum exists to fix.
 
-- Name:
-- Date:
-- Conditions attached: real-browser acceptance evidence (§7 of the corrective plan) still required.
+- Name: Magnus
+- Date: 2026-08-22
+- Conditions attached: None.
