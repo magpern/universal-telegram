@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+Implementation (plan frozen, ADR-0026 committed, work packages WP1-WP10 implemented on `feature/m07-operator-workflow`; pending technical verification and closure)
 
 ## Dependencies
 

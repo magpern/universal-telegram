@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.8.0
+Stable tag: 0.9.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -41,6 +41,20 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.9.0 =
+* Operator workflow (M07, ADR-0026): a manual WordPress-user <-> Telegram numeric-id identity
+  mapping is now the plugin's own inbound Telegram operator-authorization gate — a Telegram reply
+  from an unmapped account never reaches the visitor side. Adds operator presence (available/busy/
+  offline), a genuine per-operator unread model, an operator inbox and conversation detail view in
+  the Hub, encrypted internal notes, concurrency-safe (compare-and-set) assignment and unassignment,
+  a `resolved -> open` reopen transition, archived-only manual conversation deletion via a shared
+  purge service also used by scheduled retention, and bounded conversation search. The Telegram
+  sender id and username are both treated as SENSITIVE personal data throughout — never rendered,
+  URL-exposed, or search-filtered. Deleting a mapped operator's WordPress account now also clears
+  their Telegram-sender message attribution, anonymizes their note authorship, and unassigns their
+  conversations, in addition to the existing visitor-owner cleanup. New `MANAGE_CONVERSATIONS`
+  capability for operator self-service actions; administrator overrides continue to use `MANAGE`.
 
 = 0.8.0 =
 * Authenticated chat access and UX redesign (M06.3.1, ADR-0025): corrects M06.3's rejected
