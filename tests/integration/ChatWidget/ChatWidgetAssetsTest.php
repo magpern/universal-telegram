@@ -285,6 +285,51 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( '"nonce":null', $output );
 	}
 
+	public function test_config_island_includes_the_first_name_for_a_logged_in_visitor(): void {
+		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
+		$this->make_eligible_destination();
+		wp_set_current_user( self::factory()->user->create( array( 'first_name' => 'Alice' ) ) );
+
+		$this->go_to( home_url( '/' ) );
+		$assets = $this->assets();
+
+		ob_start();
+		$assets->print_config();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( '"firstName":"Alice"', $output );
+	}
+
+	public function test_config_island_falls_back_to_the_first_word_of_the_display_name(): void {
+		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
+		$this->make_eligible_destination();
+		wp_set_current_user( self::factory()->user->create( array( 'display_name' => 'Bob Jones' ) ) );
+
+		$this->go_to( home_url( '/' ) );
+		$assets = $this->assets();
+
+		ob_start();
+		$assets->print_config();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( '"firstName":"Bob"', $output );
+	}
+
+	public function test_config_island_first_name_is_null_when_logged_out(): void {
+		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
+		$this->make_eligible_destination();
+		wp_set_current_user( 0 );
+
+		$this->go_to( home_url( '/' ) );
+		$assets = $this->assets();
+
+		ob_start();
+		$assets->print_config();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( '"firstName":null', $output );
+	}
+
 	public function test_config_island_omits_registration_link_when_registration_is_disabled(): void {
 		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
 		update_option( 'users_can_register', 0 );

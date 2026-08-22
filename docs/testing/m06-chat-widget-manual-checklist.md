@@ -127,3 +127,15 @@ Supersedes the M06.3 required-name checklist above (that flow no longer exists).
       chat" is ON (no behavioural difference from it being OFF).
 - [ ] Turning "Allow anonymous chat" OFF while an anonymous conversation is mid-session causes that
       conversation's next message/poll to end gracefully (the existing "ended" state), not an error.
+
+## Post-merge fix — signed-out/chat mutual exclusivity and personalized greeting
+
+- [ ] With the widget mid-session as an authenticated visitor (a message already sent), reload the
+      page and reopen the widget: only the chat view (log + composer) is visible — never the
+      sign-in prompt shown alongside existing history/composer.
+- [ ] An authenticated visitor with no conversation yet sees "What's on your mind, <first name>?"
+      as the composer's placeholder text, not a blank field.
+- [ ] A visitor with no first name set on their account sees the generic
+      "What's on your mind?" placeholder instead (no blank/broken fallback).
+- [ ] Verify against the active theme specifically: no theme-level CSS rule causes a hidden widget
+      section (sign-in prompt, message log, composer) to remain visible.

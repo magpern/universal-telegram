@@ -69,13 +69,15 @@ final class ChatWidgetAssets {
 			return;
 		}
 
-		$version = defined( 'UNIVERSAL_TELEGRAM_VERSION' ) ? UNIVERSAL_TELEGRAM_VERSION : 'unknown';
+		$plugin_dir  = plugin_dir_path( UNIVERSAL_TELEGRAM_PLUGIN_FILE );
+		$script_path = $plugin_dir . 'assets/js/chat-widget.js';
+		$style_path  = $plugin_dir . 'assets/css/chat-widget-' . $this->preset() . '.css';
 
 		wp_enqueue_script(
 			self::SCRIPT_HANDLE,
 			plugins_url( 'assets/js/chat-widget.js', UNIVERSAL_TELEGRAM_PLUGIN_FILE ),
 			array(),
-			$version,
+			$this->asset_version( $script_path ),
 			true
 		);
 
@@ -83,8 +85,31 @@ final class ChatWidgetAssets {
 			self::STYLE_HANDLE,
 			plugins_url( 'assets/css/chat-widget-' . $this->preset() . '.css', UNIVERSAL_TELEGRAM_PLUGIN_FILE ),
 			array(),
-			$version
+			$this->asset_version( $style_path )
 		);
+	}
+
+	/**
+	 * Per-file cache-busting version: the file's own mtime when readable,
+	 * so a code change to chat-widget.js or a preset stylesheet is always
+	 * fetched fresh by browsers on the very next enqueue, regardless of
+	 * whether the plugin version constant was bumped. Falls back to the
+	 * plugin version when the file cannot be stat'd (e.g. a stripped
+	 * release build without filesystem access).
+	 *
+	 * @param string $path Absolute path to the enqueued file.
+	 * @return string
+	 */
+	private function asset_version( string $path ): string {
+		if ( is_readable( $path ) ) {
+			$mtime = filemtime( $path );
+
+			if ( false !== $mtime ) {
+				return (string) $mtime;
+			}
+		}
+
+		return defined( 'UNIVERSAL_TELEGRAM_VERSION' ) ? UNIVERSAL_TELEGRAM_VERSION : 'unknown';
 	}
 
 	/**
@@ -137,6 +162,10 @@ final class ChatWidgetAssets {
 			'nonce'                => $logged_in ? wp_create_nonce( 'wp_rest' ) : null,
 			'loginUrl'             => $this->account_urls->login_url( $return_url ),
 			'registerUrl'          => $this->account_urls->register_url( $return_url ),
+			// First name only, never a full name/username/email — a purely
+			// cosmetic greeting, personalized only for an actually-
+			// authenticated request exactly like loggedIn/nonce above.
+			'firstName'            => $logged_in ? $this->resolve_first_name() : null,
 			// Identical for every anonymous visitor of a given page — a
 			// pure function of stored settings like geometry/preset above,
 			// so it stays cache-safe (M06.3.1 addendum).
@@ -148,6 +177,32 @@ final class ChatWidgetAssets {
 			esc_attr( self::CONFIG_ID ),
 			wp_json_encode( $config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT )
 		);
+	}
+
+	/**
+	 * A short, purely cosmetic first name for the widget's greeting —
+	 * never the full display name, username, or email. Falls back to the
+	 * first word of the WordPress display name when no first name is set
+	 * on the account, and to null (no personalized greeting) when neither
+	 * yields anything usable.
+	 *
+	 * @return string|null
+	 */
+	private function resolve_first_name(): ?string {
+		$user       = wp_get_current_user();
+		$first_name = trim( (string) $user->first_name );
+
+		if ( '' === $first_name ) {
+			$display_name = trim( (string) $user->display_name );
+			$first_word   = strtok( $display_name, " \t\n" );
+			$first_name   = false === $first_word ? '' : trim( $first_word );
+		}
+
+		if ( '' === $first_name ) {
+			return null;
+		}
+
+		return mb_substr( $first_name, 0, 40, 'UTF-8' );
 	}
 
 	/**

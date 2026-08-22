@@ -684,6 +684,18 @@
 		header.appendChild( heading );
 		header.appendChild( closeButton );
 
+		// Personalized greeting (M06.3.1 follow-up): a short line under the
+		// header, not a textarea placeholder — visible for the whole
+		// authenticated session, not just while the composer is empty.
+		// Only rendered when both loggedIn and firstName are present in the
+		// config; a genuinely anonymous visitor never sees it.
+		var greeting = doc.createElement( 'p' );
+		greeting.className = 'ut-chat-widget__greeting';
+		greeting.hidden = true;
+		if ( config.loggedIn && config.firstName ) {
+			greeting.textContent = 'What’s on your mind, ' + config.firstName + '?';
+		}
+
 		// Logged-out state (M06.3.1, ADR-0025): sign-in (+ create-account,
 		// only when the site currently allows registration) links only —
 		// no name field, history, composer, or any conversation control.
@@ -741,6 +753,7 @@
 		form.appendChild( sendButton );
 
 		panel.appendChild( header );
+		panel.appendChild( greeting );
 		panel.appendChild( signin );
 		panel.appendChild( log );
 		panel.appendChild( newMessagesButton );
@@ -787,19 +800,33 @@
 			log.appendChild( separator );
 		}
 
+		// Sets both the native `hidden` attribute and an explicit inline
+		// `display` style. The inline style is defense-in-depth against a
+		// host theme's own global CSS (observed in the field: a rule with
+		// enough specificity to defeat the bare `[hidden]` selector) —
+		// otherwise a stale/half-hidden section can render alongside the
+		// intended one, showing e.g. the sign-in prompt next to an already-
+		// populated composer and message log.
+		function setVisible( element, visible ) {
+			element.hidden = ! visible;
+			element.style.display = visible ? '' : 'none';
+		}
+
 		function showSignedOut() {
-			signin.hidden = false;
-			log.hidden = true;
-			newMessagesButton.hidden = true;
-			statusRegion.hidden = true;
-			form.hidden = true;
+			setVisible( greeting, false );
+			setVisible( signin, true );
+			setVisible( log, false );
+			setVisible( newMessagesButton, false );
+			setVisible( statusRegion, false );
+			setVisible( form, false );
 		}
 
 		function showChat() {
-			signin.hidden = true;
-			log.hidden = false;
-			statusRegion.hidden = false;
-			form.hidden = false;
+			setVisible( greeting, '' !== greeting.textContent );
+			setVisible( signin, false );
+			setVisible( log, true );
+			setVisible( statusRegion, true );
+			setVisible( form, true );
 		}
 
 		// M06.3.1 addendum: an anonymous-allowed logged-out visitor also gets
@@ -816,7 +843,7 @@
 
 		newMessagesButton.addEventListener( 'click', function () {
 			log.scrollTop = log.scrollHeight;
-			newMessagesButton.hidden = true;
+			setVisible( newMessagesButton, false );
 		} );
 
 		function appendMessage( message, forceScroll ) {
@@ -860,9 +887,9 @@
 
 			if ( wasAtBottom ) {
 				log.scrollTop = log.scrollHeight;
-				newMessagesButton.hidden = true;
+				setVisible( newMessagesButton, false );
 			} else {
-				newMessagesButton.hidden = false;
+				setVisible( newMessagesButton, true );
 			}
 		}
 
@@ -877,6 +904,10 @@
 				showSignedOut();
 			}
 
+			if ( 'idle' === described.status || 'active' === described.status ) {
+				input.placeholder = 'Type a message…';
+			}
+
 			if ( 'ended' === described.status && ! statusRegion.querySelector( '.ut-chat-widget__restart' ) ) {
 				var restart = doc.createElement( 'button' );
 				restart.type = 'button';
@@ -887,7 +918,7 @@
 					pendingVisitorTexts = [];
 					lastRenderedDateKey = null;
 					log.textContent = '';
-					newMessagesButton.hidden = true;
+					setVisible( newMessagesButton, false );
 					statusRegion.textContent = '';
 					statusRegion.className = 'ut-chat-widget__status';
 					input.disabled = false;
