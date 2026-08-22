@@ -2,8 +2,7 @@
 
 ## Status
 
-**PASS** (technical). Product Owner acceptance is **PENDING** — the manual browser acceptance
-checklist has not been performed or fabricated, per explicit authorization.
+**PASS.** Product Owner acceptance is **CONFIRMED** (2026-08-23).
 
 ## Baseline, freeze, PR, merge, and closure SHAs
 
@@ -123,9 +122,10 @@ integration-wc-present-current, js-behavioural, package-acceptance (6.9/8.1, 7.1
 
 ## Product Owner acceptance
 
-**PENDING.** The manual browser acceptance checklist (`docs/testing/m06-chat-widget-manual-checklist.md`,
-M06.3.1 and M06.3.1-addendum sections) has not been performed. No live browser session, real
-Telegram bot, or manual verification was run or fabricated.
+**CONFIRMED (2026-08-23).** Accepted following live verification on dev.biopentra.eu, including a
+post-merge round trip on a live-reported defect (the sign-in prompt rendering alongside an already-
+authenticated conversation, and the personalized greeting) fixed via PR #20 (merge commit `0a5eae8`)
+on top of this milestone's `58950b3` merge.
 
 ## Confirmations
 
