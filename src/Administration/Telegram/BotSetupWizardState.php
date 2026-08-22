@@ -12,6 +12,9 @@ namespace UniversalTelegram\Administration\Telegram;
 use UniversalTelegram\ChatWidget\ChatWidgetAvailability;
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Telegram\Configuration\BotProfile;
+use UniversalTelegram\Telegram\Configuration\Destination;
+use UniversalTelegram\Telegram\Configuration\DestinationKind;
+use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 
 /**
  * Read-only derivation of the setup wizard's five-step progress from
@@ -32,10 +35,12 @@ final class BotSetupWizardState {
 	 *
 	 * @param ChatProfileResolver     $chat_profiles            Resolves the default bot and its eligible destination.
 	 * @param ChatWidgetAvailability $chat_widget_availability The plugin's own single "is the widget usable" predicate.
+	 * @param DestinationRepository  $destinations             Used only to look up the connected destination's own row (id) once ChatProfileResolver has already confirmed one is eligible.
 	 */
 	public function __construct(
 		private readonly ChatProfileResolver $chat_profiles,
-		private readonly ChatWidgetAvailability $chat_widget_availability
+		private readonly ChatWidgetAvailability $chat_widget_availability,
+		private readonly DestinationRepository $destinations
 	) {}
 
 	/**
@@ -125,5 +130,39 @@ final class BotSetupWizardState {
 	 */
 	public function is_complete(): bool {
 		return $this->step_one_complete() && $this->step_four_complete() && $this->step_five_complete();
+	}
+
+	/**
+	 * The destination row backing step 4's connected group, once eligible
+	 * (ChatProfileResolver::conversation_chat_id() has already confirmed
+	 * one exists) — used only so the wizard's "Send test message" action
+	 * can target its destination_id. The eligibility rule itself stays
+	 * owned by ChatProfileResolver; this only correlates its result back to
+	 * the destination row.
+	 *
+	 * @return Destination|null
+	 */
+	public function connected_destination(): ?Destination {
+		$bot = $this->default_bot();
+
+		if ( null === $bot ) {
+			return null;
+		}
+
+		$chat_id = $this->chat_profiles->conversation_chat_id( $bot->id() );
+
+		if ( null === $chat_id ) {
+			return null;
+		}
+
+		foreach ( $this->destinations->for_bot( $bot->id() ) as $destination ) {
+			if ( $destination->chat_id() === $chat_id
+				&& DestinationKind::SUPERGROUP === $destination->kind()
+				&& null === $destination->message_thread_id() ) {
+				return $destination;
+			}
+		}
+
+		return null;
 	}
 }

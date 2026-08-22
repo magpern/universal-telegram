@@ -34,7 +34,7 @@ final class BotSetupWizardStateTest extends WP_UnitTestCase {
 
 		$chat_profiles      = new ChatProfileResolver( $this->bots, $this->destinations );
 		$chat_widget_avail  = new ChatWidgetAvailability( $this->settings, $chat_profiles );
-		$this->state        = new BotSetupWizardState( $chat_profiles, $chat_widget_avail );
+		$this->state        = new BotSetupWizardState( $chat_profiles, $chat_widget_avail, $this->destinations );
 	}
 
 	public function test_no_bot_configured_is_entirely_incomplete(): void {
@@ -130,6 +130,27 @@ final class BotSetupWizardStateTest extends WP_UnitTestCase {
 		// evaluated against the first (default) bot, so step 1 stays incomplete.
 		$this->assertSame( $first->id(), $this->state->default_bot()->id() );
 		$this->assertFalse( $this->state->step_one_complete() );
+	}
+
+	public function test_connected_destination_resolves_the_eligible_destination_row(): void {
+		$bot = $this->bots->create( 'My Bot', '123456789:validated-token' );
+		$this->bots->update_telegram_identity( $bot->id(), 111, 'my_bot' );
+		$destination = $this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-1001234567890', null, 'Website Support' );
+
+		$connected = $this->state->connected_destination();
+
+		$this->assertNotNull( $connected );
+		$this->assertSame( $destination->id(), $connected->id() );
+	}
+
+	public function test_connected_destination_is_null_when_no_bot_or_no_eligible_destination(): void {
+		$this->assertNull( $this->state->connected_destination() );
+
+		$bot = $this->bots->create( 'My Bot', '123456789:validated-token' );
+		$this->bots->update_telegram_identity( $bot->id(), 111, 'my_bot' );
+		$this->destinations->create( $bot->id(), DestinationKind::PRIVATE, '12345', null, 'Website Support' );
+
+		$this->assertNull( $this->state->connected_destination() );
 	}
 
 	public function test_derivation_never_writes_any_state(): void {

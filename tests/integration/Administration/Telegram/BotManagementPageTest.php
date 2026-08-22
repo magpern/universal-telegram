@@ -6,8 +6,13 @@
 namespace UniversalTelegram\Tests\Integration\Administration\Telegram;
 
 use UniversalTelegram\Administration\Telegram\BotManagementPage;
+use UniversalTelegram\Administration\Telegram\BotSetupWizardRenderer;
+use UniversalTelegram\Administration\Telegram\BotSetupWizardState;
+use UniversalTelegram\ChatWidget\ChatWidgetAvailability;
 use UniversalTelegram\Administration\Telegram\TelegramFormFields;
+use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
+use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
@@ -26,19 +31,51 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		wp_set_current_user( $admin_id );
 	}
 
+	/**
+	 * Builds a fully-wired BotManagementPage against real, freshly
+	 * constructed collaborators (this codebase's existing testing
+	 * convention — no mocking framework, real objects against the test DB).
+	 *
+	 * @param BotProfileRepository  $bots         Bot profiles.
+	 * @param DestinationRepository $destinations Destinations.
+	 *
+	 * @return BotManagementPage
+	 */
+	private function make_page( BotProfileRepository $bots, DestinationRepository $destinations ): BotManagementPage {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+		$settings      = new Settings();
+
+		$chat_profiles = new ChatProfileResolver( $bots, $destinations );
+		$wizard_state  = new BotSetupWizardState(
+			$chat_profiles,
+			new ChatWidgetAvailability( $settings, $chat_profiles ),
+			$destinations
+		);
+		$forms = new TelegramFormFields();
+
+		return new BotManagementPage(
+			$bots,
+			$destinations,
+			new UpdateRepository( $schema_health ),
+			new OutboundMessageRepository( $schema_health, $vault ),
+			$forms,
+			$wizard_state,
+			new BotSetupWizardRenderer( $wizard_state, $forms, $bots )
+		);
+	}
+
 	public function test_the_rendered_page_never_exposes_the_plaintext_token_or_any_ciphertext(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
 
 		$bots         = new BotProfileRepository( $schema_health, $vault );
 		$destinations = new DestinationRepository( $schema_health );
-		$updates      = new UpdateRepository( $schema_health );
-		$messages     = new OutboundMessageRepository( $schema_health, $vault );
 
 		$known_plaintext_token = '123456789:AAH_a-known-synthetic-token-value';
 		$bot                   = $bots->create( 'My Bot', $known_plaintext_token );
 
-		$page = new BotManagementPage( $bots, $destinations, $updates, $messages, new TelegramFormFields() );
+		$page = $this->make_page( $bots, $destinations );
 
 		ob_start();
 		$page->render_tab_content();
@@ -50,45 +87,38 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( $bot->webhook_secret_ciphertext(), $html );
 	}
 
-	public function test_the_rendered_page_includes_the_bot_setup_guidance_panel(): void {
+	public function test_the_rendered_page_includes_the_setup_wizard(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
 
-		$page = new BotManagementPage(
+		$page = $this->make_page(
 			new BotProfileRepository( $schema_health, $vault ),
-			new DestinationRepository( $schema_health ),
-			new UpdateRepository( $schema_health ),
-			new OutboundMessageRepository( $schema_health, $vault ),
-			new TelegramFormFields()
+			new DestinationRepository( $schema_health )
 		);
 
 		ob_start();
 		$page->render_tab_content();
 		$html = ob_get_clean();
 
-		$this->assertStringContainsString( 'Set up a Telegram bot', $html );
-		$this->assertStringContainsString( 'Create a bot and connect it to a Telegram forum group before adding it here.', $html );
-		$this->assertStringContainsString( 'Create a bot', $html );
-		$this->assertStringContainsString( 'Prepare the support group', $html );
-		$this->assertStringContainsString( 'Add the bot and destination', $html );
+		$this->assertStringContainsString( 'Set up your Telegram bot', $html );
+		$this->assertStringContainsString( '1. Create bot', $html );
+		$this->assertStringContainsString( '2. Create support group', $html );
+		$this->assertStringContainsString( '3. Add bot as administrator', $html );
+		$this->assertStringContainsString( '4. Connect group', $html );
+		$this->assertStringContainsString( '5. Activate chat widget', $html );
 
 		$this->assertStringContainsString( 'href="https://core.telegram.org/bots#6-botfather"', $html );
-		$this->assertStringContainsString( 'How to get a bot token', $html );
-		$this->assertStringContainsString( 'href="https://telegram.me/chatIDrobot"', $html );
-		$this->assertStringContainsString( 'How to find a chat ID', $html );
-
 		$this->assertStringContainsString( 'target="_blank" rel="noopener noreferrer"', $html );
-
 		$this->assertStringContainsString( 'Keep your bot token private. Anyone with it can control the bot.', $html );
 
-		// The guidance panel must render above the existing form, not replace it.
+		// The wizard must render above the existing "Add a bot" form, not replace it.
 		$this->assertStringContainsString( 'Add a bot', $html );
 		$this->assertStringContainsString( 'name="name"', $html );
 		$this->assertStringContainsString( 'name="token"', $html );
 
-		$guidance_position = strpos( $html, 'Set up a Telegram bot' );
-		$form_position     = strpos( $html, 'Add a bot' );
-		$this->assertLessThan( $form_position, $guidance_position );
+		$wizard_position = strpos( $html, 'Set up your Telegram bot' );
+		$form_position    = strpos( $html, 'Add a bot' );
+		$this->assertLessThan( $form_position, $wizard_position );
 	}
 
 	public function test_an_unauthorized_user_is_denied(): void {
@@ -97,12 +127,9 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
 
-		$page = new BotManagementPage(
+		$page = $this->make_page(
 			new BotProfileRepository( $schema_health, $vault ),
-			new DestinationRepository( $schema_health ),
-			new UpdateRepository( $schema_health ),
-			new OutboundMessageRepository( $schema_health, $vault ),
-			new TelegramFormFields()
+			new DestinationRepository( $schema_health )
 		);
 
 		$this->expectException( \WPDieException::class );
