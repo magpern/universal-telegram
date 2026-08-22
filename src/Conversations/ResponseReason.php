@@ -23,4 +23,5 @@ enum ResponseReason: string {
 	case CONVERSATION_EXPIRED       = 'conversation_expired';
 	case REQUEST_FAILED             = 'request_failed';
 	case TEMPORARY_DELIVERY_PENDING = 'temporary_delivery_pending';
+	case AUTH_REQUIRED              = 'auth_required';
 }
