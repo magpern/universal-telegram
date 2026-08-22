@@ -640,12 +640,15 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 			)
 		);
 
-		global $wpdb;
-		$table = $wpdb->prefix . \UniversalTelegram\Persistence\Migrator::CONVERSATIONS_TABLE;
-		$found = $this->conversations->find_by_uuid( $started['conversation_uuid'] );
-		$wpdb->update( $table, array( 'updated_at' => current_time( 'mysql', true ) ), array( 'id' => $found->id() ) );
+		// A fresh controller/rate-limiter for the second poll: the shared
+		// controller's per-conversation poll limiter (capacity 1) was
+		// already consumed by $before above, and this assertion is about
+		// display_name_required, not rate limiting (covered separately by
+		// test_poll_per_conversation_minimum_interval_trips_on_rapid_polling).
+		$schema_health     = new SchemaHealth();
+		$second_controller = $this->build_controller( $schema_health, new RateLimiter( $schema_health ), new SpyExpeditedDispatchTrigger( new AuditLogger( $schema_health, new Redactor() ) ) );
 
-		$after = $this->controller->handle_poll( $this->poll_request( $started['conversation_uuid'], $started['secret'] ) );
+		$after = $second_controller->handle_poll( $this->poll_request( $started['conversation_uuid'], $started['secret'] ) );
 		$this->assertFalse( $after->get_data()['display_name_required'] );
 	}
 

@@ -427,6 +427,8 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 
 		$bot = $bots->create( 'Bot', 'token' );
 		$this->complete_setup_for( $bots, $destinations, $bot->id(), '-100999' );
+		$settings = new Settings();
+		update_option( Settings::OPTION_NAME, $settings->sanitize( array_merge( $settings->get(), array( 'chat_widget_enabled' => true ) ) ) );
 
 		$conversation_destination = $destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100999', 77, 'Conversation abc123' );
 		$conversation             = $conversations->create( 'abc123', 'hash', $bot->id(), null );
