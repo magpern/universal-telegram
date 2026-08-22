@@ -672,6 +672,19 @@ final class Plugin {
 			}
 		);
 
+		// Account deletion (M06.3.1, ADR-0025): revokes the bearer secret and
+		// clears owner_user_id for every conversation the deleted account
+		// owned, so the numeric id is never retained. Message rows and the
+		// existing retention-age sweeps are untouched. Logout itself needs
+		// no handler — every route re-checks the live cookie session per
+		// request.
+		add_action(
+			'deleted_user',
+			function ( int $user_id ): void {
+				$this->conversation_repository->release_owner_conversations( $user_id );
+			}
+		);
+
 		// rest_url() is not called here: WordPress' rewrite state is not
 		// yet initialized during plugins_loaded (the hook init() runs on),
 		// so the URL is computed lazily, only when an operation is
