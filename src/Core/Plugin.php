@@ -107,6 +107,7 @@ use UniversalTelegram\Queue\RetryPolicy;
 use UniversalTelegram\Queue\WorkerRunner;
 use UniversalTelegram\Telegram\Client\TelegramApiClient;
 use UniversalTelegram\Telegram\Commands\BotCommandDispatcher;
+use UniversalTelegram\Telegram\Commands\ConfirmationStore;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Inbound\UpdateRepository;
@@ -673,6 +674,7 @@ final class Plugin {
 			$this->event_history_repository,
 			$this->woocommerce_support,
 			new WooCommerceCommandQueryService(),
+			new ConfirmationStore(),
 			$this->message_dispatcher,
 			$this->audit_logger
 		);

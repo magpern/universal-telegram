@@ -66,6 +66,7 @@ final class BotCommandDispatcherFamilyATest extends WP_UnitTestCase {
 			new \UniversalTelegram\Events\EventHistoryRepository( $this->schema_health, new \UniversalTelegram\Events\Registry(), new Redactor() ),
 			new \UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport(),
 			new \UniversalTelegram\Integrations\WooCommerce\WooCommerceCommandQueryService(),
+			new \UniversalTelegram\Telegram\Commands\ConfirmationStore(),
 			$message_dispatcher,
 			$audit
 		);
