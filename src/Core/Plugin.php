@@ -7,6 +7,7 @@
 
 namespace UniversalTelegram\Core;
 
+use UniversalTelegram\Administration\AI\AISettingsPage;
 use UniversalTelegram\Administration\Automations\EventCatalogPage;
 use UniversalTelegram\Administration\Automations\EventHistoryPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderPage;
@@ -33,6 +34,7 @@ use UniversalTelegram\Administration\Telegram\BotSetupWizardRenderer;
 use UniversalTelegram\Administration\Telegram\BotSetupWizardState;
 use UniversalTelegram\Administration\Telegram\TelegramFormFields;
 use UniversalTelegram\Administration\Visitor\VisitorTrackingPage;
+use UniversalTelegram\AI\Config\AIProviderRepository;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Automations\DispatchLogRepository;
@@ -244,6 +246,20 @@ final class Plugin {
 	 * @var SettingsPage|null
 	 */
 	private ?SettingsPage $settings_page = null;
+
+	/**
+	 * AI provider configuration persistence (M09), constructed by init().
+	 *
+	 * @var AIProviderRepository|null
+	 */
+	private ?AIProviderRepository $ai_provider_repository = null;
+
+	/**
+	 * The AI tab page (M09), constructed by init().
+	 *
+	 * @var AISettingsPage|null
+	 */
+	private ?AISettingsPage $ai_settings_page = null;
 
 	/**
 	 * The bounded diagnostic self-test, constructed by init().
@@ -1211,6 +1227,19 @@ final class Plugin {
 		$this->hub_tab_registry->register(
 			new Tab( ConversationInboxPage::TAB_ID, __( 'Conversations', 'universal-telegram' ), CapabilityRegistrar::MANAGE_CONVERSATIONS, array( $this->conversation_inbox_page, 'render_tab_content' ) )
 		);
+
+		// AI draft assistant (M09, docs/adr/0028): operator-assist-only
+		// provider configuration and visitor-disclosure text. Registered
+		// after Conversations, before 'diagnostics' (which stays last).
+		$this->ai_provider_repository = new AIProviderRepository( $this->schema_health, $this->credential_vault );
+		$this->ai_settings_page       = new AISettingsPage( $this->ai_provider_repository );
+		$this->hub_tab_registry->register(
+			new Tab( AISettingsPage::TAB_ID, __( 'AI', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->ai_settings_page, 'render_tab_content' ) )
+		);
+		add_action( 'admin_post_' . AISettingsPage::ACTION_SAVE_SETTINGS, array( $this->ai_settings_page, 'handle_save_settings' ) );
+		add_action( 'admin_post_' . AISettingsPage::ACTION_SET_CREDENTIAL, array( $this->ai_settings_page, 'handle_set_credential' ) );
+		add_action( 'admin_post_' . AISettingsPage::ACTION_DELETE_CREDENTIAL, array( $this->ai_settings_page, 'handle_delete_credential' ) );
+		add_action( 'admin_post_' . AISettingsPage::ACTION_BUMP_ACK, array( $this->ai_settings_page, 'handle_bump_ack' ) );
 
 		$this->hub_tab_registry->register(
 			new Tab( 'diagnostics', __( 'Diagnostics', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->diagnostics_page, 'render_tab_content' ) )
