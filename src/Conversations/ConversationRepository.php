@@ -708,6 +708,246 @@ class ConversationRepository {
 	}
 
 	/**
+	 * Concurrency-safe assignment: updates `assigned_operator_id` only when
+	 * the row's current value still matches the caller's displayed
+	 * expectation (including the null/"unassigned" case), reusing the same
+	 * `$wpdb->update()` null-in-WHERE idiom store_display_name() already
+	 * establishes in this codebase. A losing caller's request matches zero
+	 * rows and must be reported by the caller as a visible conflict, never
+	 * applied silently (M07, docs/adr/0026 decision 8). Always resets
+	 * `assignee_last_seen_message_id` to NULL on a successful change, since
+	 * a new assignee has seen nothing yet.
+	 *
+	 * @param int      $id                   The conversation's primary key.
+	 * @param int|null $expected_operator_id The caller's displayed current assignment (null for "currently unassigned").
+	 * @param int|null $new_operator_id      The new assignment (null to unassign).
+	 *
+	 * @return bool True only if a row actually matched and was updated.
+	 */
+	public function assign_with_expected( int $id, ?int $expected_operator_id, ?int $new_operator_id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'assigned_operator_id'          => $new_operator_id,
+				'assignee_last_seen_message_id' => null,
+				'updated_at'                    => current_time( 'mysql', true ),
+			),
+			array(
+				'id'                   => $id,
+				'assigned_operator_id' => $expected_operator_id,
+			),
+			array( '%d', '%s', '%s' ),
+			array( '%d', '%d' )
+		);
+
+		return false !== $updated && $updated > 0;
+	}
+
+	/**
+	 * Sets `assigned_operator_id` and `assignee_last_seen_message_id` to
+	 * NULL on every conversation currently assigned to a given operator —
+	 * part of the operator-account-deletion cleanup (ADR-0026 decision
+	 * 12c). Conversation content and status are untouched; only the
+	 * assignment/unread bookkeeping is cleared.
+	 *
+	 * @param int $operator_user_id The operator (WordPress user id) whose assignments are being cleared.
+	 *
+	 * @return bool
+	 */
+	public function clear_assignment_for_operator( int $operator_user_id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'assigned_operator_id'          => null,
+				'assignee_last_seen_message_id' => null,
+				'updated_at'                    => current_time( 'mysql', true ),
+			),
+			array( 'assigned_operator_id' => $operator_user_id ),
+			array( '%s', '%s', '%s' ),
+			array( '%d' )
+		);
+
+		return false !== $updated;
+	}
+
+	/**
+	 * Records that the currently assigned operator has viewed up to a given
+	 * message id — the sole write path for `assignee_last_seen_message_id`
+	 * outside of assignment/reassignment itself (M07, docs/adr/0026
+	 * decision 5). Called when that operator opens the conversation detail
+	 * view.
+	 *
+	 * @param int $id         The conversation's primary key.
+	 * @param int $message_id The highest message id the operator has now seen.
+	 *
+	 * @return bool
+	 */
+	public function mark_seen( int $id, int $message_id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array( 'assignee_last_seen_message_id' => $message_id ),
+			array( 'id' => $id ),
+			array( '%d' ),
+			array( '%d' )
+		);
+
+		return false !== $updated;
+	}
+
+	/**
+	 * Every conversation currently assigned to a given operator with at
+	 * least one visitor message newer than that operator's own
+	 * assignee_last_seen_message_id (or any, if it is still NULL) — the
+	 * sole derivation of "unread" this plugin ever computes; never a
+	 * separately stored flag (M07, docs/adr/0026 decision 5).
+	 *
+	 * @param int $operator_user_id The assigned operator.
+	 *
+	 * @return array<int, Conversation>
+	 */
+	public function unread_assigned_conversations( int $operator_user_id ): array {
+		if ( ! $this->schema_health->is_available() ) {
+			return array();
+		}
+
+		global $wpdb;
+
+		$conversations_table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$messages_table      = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table names, never user input.
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT c.* FROM {$conversations_table} c
+					WHERE c.assigned_operator_id = %d
+					AND EXISTS (
+						SELECT 1 FROM {$messages_table} m
+						WHERE m.conversation_id = c.id
+						AND m.direction = 'visitor'
+						AND ( c.assignee_last_seen_message_id IS NULL OR m.id > c.assignee_last_seen_message_id )
+					)",
+				$operator_user_id
+			),
+			ARRAY_A
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		return array_map( array( $this, 'hydrate' ), null === $rows ? array() : $rows );
+	}
+
+	/**
+	 * A page of conversations for the operator inbox (M07, docs/adr/0026),
+	 * newest-activity first, optionally restricted to one status. Bounded,
+	 * indexable metadata only — never a decrypted-body or decrypted-name
+	 * scan. WP9 extends the same set of columns with a bounded search: a
+	 * conversation_uuid prefix, bot_id, assigned_operator_id, and a
+	 * created_at date range — every one of them already-indexed or
+	 * cheaply-scanned metadata, never a decrypted-body or decrypted-name
+	 * scan, and never a Telegram sender id or username (both SENSITIVE,
+	 * excluded from this filter set entirely, ADR-0026).
+	 *
+	 * @param string|null $status              One of ConversationStatus's constants, or null for every status.
+	 * @param int         $limit               Page size.
+	 * @param int         $offset              Page offset.
+	 * @param string|null $uuid_prefix         Matches the start of conversation_uuid, or null.
+	 * @param int|null    $bot_id              Matches bot_id exactly, or null.
+	 * @param int|null    $assigned_operator_id Matches assigned_operator_id exactly, or null.
+	 * @param string|null $created_from        Matches created_at >= this value (Y-m-d), or null.
+	 * @param string|null $created_to          Matches created_at <= this value (Y-m-d 23:59:59), or null.
+	 *
+	 * @return array<int, Conversation>
+	 */
+	public function for_inbox(
+		?string $status,
+		int $limit = 50,
+		int $offset = 0,
+		?string $uuid_prefix = null,
+		?int $bot_id = null,
+		?int $assigned_operator_id = null,
+		?string $created_from = null,
+		?string $created_to = null
+	): array {
+		if ( ! $this->schema_health->is_available() ) {
+			return array();
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$where  = array();
+		$params = array();
+
+		if ( null !== $status ) {
+			$where[]  = 'status = %s';
+			$params[] = $status;
+		}
+
+		if ( null !== $uuid_prefix && '' !== $uuid_prefix ) {
+			$where[]  = 'conversation_uuid LIKE %s';
+			$params[] = $wpdb->esc_like( $uuid_prefix ) . '%';
+		}
+
+		if ( null !== $bot_id ) {
+			$where[]  = 'bot_id = %d';
+			$params[] = $bot_id;
+		}
+
+		if ( null !== $assigned_operator_id ) {
+			$where[]  = 'assigned_operator_id = %d';
+			$params[] = $assigned_operator_id;
+		}
+
+		if ( null !== $created_from && '' !== $created_from ) {
+			$where[]  = 'created_at >= %s';
+			$params[] = $created_from . ' 00:00:00';
+		}
+
+		if ( null !== $created_to && '' !== $created_to ) {
+			$where[]  = 'created_at <= %s';
+			$params[] = $created_to . ' 23:59:59';
+		}
+
+		$sql = "SELECT * FROM {$table}";
+
+		if ( array() !== $where ) {
+			$sql .= ' WHERE ' . implode( ' AND ', $where );
+		}
+
+		$sql     .= ' ORDER BY updated_at DESC LIMIT %d OFFSET %d';
+		$params[] = $limit;
+		$params[] = $offset;
+
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+
+		return array_map( array( $this, 'hydrate' ), null === $rows ? array() : $rows );
+	}
+
+	/**
 	 * Every conversation currently `resolved` — retention cleanup's own
 	 * source list for the `resolved -> archived` transition, the sole
 	 * code path in this plugin ever permitted to perform it (M05 plan §7).
@@ -811,7 +1051,8 @@ class ConversationRepository {
 			null === $row['start_idempotency_key'] ? null : (string) $row['start_idempotency_key'],
 			null === $row['topic_claim_expires_at'] ? null : (string) $row['topic_claim_expires_at'],
 			null === $row['display_name_ciphertext'] ? null : (string) $row['display_name_ciphertext'],
-			isset( $row['owner_user_id'] ) ? (int) $row['owner_user_id'] : null
+			isset( $row['owner_user_id'] ) ? (int) $row['owner_user_id'] : null,
+			isset( $row['assignee_last_seen_message_id'] ) ? (int) $row['assignee_last_seen_message_id'] : null
 		);
 	}
 

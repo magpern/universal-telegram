@@ -9,8 +9,6 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Conversations;
 
-use UniversalTelegram\Telegram\Configuration\DestinationRepository;
-
 /**
  * A recurring Action Scheduler action, independent of the queue's own
  * job-handler contract, mirroring Telegram\Outbound\RetentionCleanupHandler's
@@ -28,7 +26,10 @@ use UniversalTelegram\Telegram\Configuration\DestinationRepository;
  * conversations archived at least $message_retention_days ago; (3)
  * permanently deletes the conversation, all its message rows, and its
  * own destination row for conversations archived at least
- * $conversation_retention_days ago. Each step queries currently-matching
+ * $conversation_retention_days ago, via the shared ConversationPurgeService
+ * (docs/adr/0026) so this step's exact sequence can never drift from M07's
+ * manual "delete archived conversation" admin action, which calls the same
+ * service. Each step queries currently-matching
  * rows and acts on them, so a rerun against already-cleaned data is a
  * safe no-op. Step 0's own eligibility query only ever selects the three
  * open/waiting statuses, so an already-resolved, archived, or deleted
@@ -41,17 +42,17 @@ final class RetentionCleanupHandler {
 	/**
 	 * Constructor.
 	 *
-	 * @param ConversationRepository $conversations              Conversation persistence.
-	 * @param MessageRepository      $messages                    Conversation message persistence.
-	 * @param DestinationRepository  $destinations                Deletes a conversation's own destination row.
-	 * @param int                    $message_retention_days      Days since archival before message bodies are nulled.
-	 * @param int                    $conversation_retention_days Days since archival before the conversation is permanently deleted.
-	 * @param int                    $inactivity_days             Days of no visitor/operator message before an open/waiting conversation auto-resolves (M06.3, ADR-0024).
+	 * @param ConversationRepository   $conversations              Conversation persistence.
+	 * @param MessageRepository        $messages                    Conversation message persistence.
+	 * @param ConversationPurgeService $purge_service              Shared permanent-deletion sequence (docs/adr/0026).
+	 * @param int                      $message_retention_days      Days since archival before message bodies are nulled.
+	 * @param int                      $conversation_retention_days Days since archival before the conversation is permanently deleted.
+	 * @param int                      $inactivity_days             Days of no visitor/operator message before an open/waiting conversation auto-resolves (M06.3, ADR-0024).
 	 */
 	public function __construct(
 		private readonly ConversationRepository $conversations,
 		private readonly MessageRepository $messages,
-		private readonly DestinationRepository $destinations,
+		private readonly ConversationPurgeService $purge_service,
 		private readonly int $message_retention_days = 30,
 		private readonly int $conversation_retention_days = 90,
 		private readonly int $inactivity_days = 30
@@ -87,13 +88,7 @@ final class RetentionCleanupHandler {
 		}
 
 		foreach ( $this->conversations->archived_older_than( $this->conversation_retention_days ) as $conversation ) {
-			$this->messages->delete_for_conversation( $conversation->id() );
-
-			if ( null !== $conversation->destination_id() ) {
-				$this->destinations->delete( $conversation->destination_id() );
-			}
-
-			$this->conversations->delete( $conversation->id() );
+			$this->purge_service->purge( $conversation->id(), $conversation->destination_id() );
 		}
 	}
 }

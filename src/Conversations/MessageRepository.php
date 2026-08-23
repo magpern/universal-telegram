@@ -60,6 +60,7 @@ class MessageRepository {
 	 * @param string      $delivery_state  stored|sent|failed.
 	 * @param int|null    $telegram_message_id The Telegram message id, if already known.
 	 * @param string|null $idempotency_key     Client-supplied per-message idempotency key, if any (M06 plan §0).
+	 * @param int|null    $telegram_sender_user_id The raw Telegram numeric sender id for an accepted mapped-operator reply, or null (M07, docs/adr/0026). SENSITIVE — a protected join key only.
 	 *
 	 * @return ConversationMessage|null Null if the schema is unavailable, the
 	 *                                  key is unavailable, or the write failed
@@ -72,7 +73,8 @@ class MessageRepository {
 		string $plaintext_body,
 		string $delivery_state = 'stored',
 		?int $telegram_message_id = null,
-		?string $idempotency_key = null
+		?string $idempotency_key = null,
+		?int $telegram_sender_user_id = null
 	): ?ConversationMessage {
 		if ( ! $this->schema_health->is_available() ) {
 			return null;
@@ -93,16 +95,17 @@ class MessageRepository {
 		$inserted = $wpdb->insert(
 			$table,
 			array(
-				'conversation_id'     => $conversation_id,
-				'message_uuid'        => $message_uuid,
-				'direction'           => $direction,
-				'body_ciphertext'     => $ciphertext,
-				'telegram_message_id' => $telegram_message_id,
-				'delivery_state'      => $delivery_state,
-				'idempotency_key'     => $idempotency_key,
-				'created_at'          => current_time( 'mysql', true ),
+				'conversation_id'         => $conversation_id,
+				'message_uuid'            => $message_uuid,
+				'direction'               => $direction,
+				'body_ciphertext'         => $ciphertext,
+				'telegram_message_id'     => $telegram_message_id,
+				'delivery_state'          => $delivery_state,
+				'idempotency_key'         => $idempotency_key,
+				'telegram_sender_user_id' => $telegram_sender_user_id,
+				'created_at'              => current_time( 'mysql', true ),
 			),
-			array( '%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s' )
+			array( '%d', '%s', '%s', '%s', '%d', '%s', '%s', '%d', '%s' )
 		);
 
 		if ( false === $inserted ) {
@@ -372,7 +375,43 @@ class MessageRepository {
 			null === $row['telegram_message_id'] ? null : (int) $row['telegram_message_id'],
 			(string) $row['delivery_state'],
 			(string) $row['created_at'],
-			null === $row['idempotency_key'] ? null : (string) $row['idempotency_key']
+			null === $row['idempotency_key'] ? null : (string) $row['idempotency_key'],
+			null === $row['telegram_sender_user_id'] ? null : (int) $row['telegram_sender_user_id']
 		);
+	}
+
+	/**
+	 * Nulls `telegram_sender_user_id` on every message row currently
+	 * attributed to a given Telegram numeric sender id — part of the
+	 * operator-account-deletion cleanup (ADR-0026 decision 12b): the
+	 * message row and its body are never deleted or otherwise altered by
+	 * this step, only the now-orphaned personal-identifier join key is
+	 * cleared, so it can never later be matched against a different
+	 * account that happens to reuse the same numeric Telegram id. Must be
+	 * called with the deleted operator's Telegram id resolved before their
+	 * identity-mapping row itself is deleted.
+	 *
+	 * @param int $telegram_user_id The raw Telegram numeric sender id to clear.
+	 *
+	 * @return bool
+	 */
+	public function clear_sender_attribution( int $telegram_user_id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array( 'telegram_sender_user_id' => null ),
+			array( 'telegram_sender_user_id' => $telegram_user_id ),
+			array( '%s' ),
+			array( '%d' )
+		);
+
+		return false !== $updated;
 	}
 }

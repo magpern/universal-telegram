@@ -5,6 +5,7 @@
 
 namespace UniversalTelegram\Tests\Integration\Conversations;
 
+use UniversalTelegram\Conversations\ConversationPurgeService;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Conversations\ConversationStatus;
@@ -22,6 +23,7 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 	private ConversationRepository $conversations;
 	private MessageRepository $messages;
 	private DestinationRepository $destinations;
+	private ConversationPurgeService $purge_service;
 	private RetentionCleanupHandler $handler;
 
 	protected function setUp(): void {
@@ -31,8 +33,9 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 		$this->conversations = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
 		$this->messages      = new MessageRepository( $this->schema_health, new CredentialVault() );
 		$this->destinations  = new DestinationRepository( $this->schema_health );
+		$this->purge_service = new ConversationPurgeService( $this->conversations, $this->messages, $this->destinations );
 
-		$this->handler = new RetentionCleanupHandler( $this->conversations, $this->messages, $this->destinations );
+		$this->handler = new RetentionCleanupHandler( $this->conversations, $this->messages, $this->purge_service );
 	}
 
 	private function set_conversation_updated_at( int $conversation_id, int $days_ago ): void {
@@ -202,7 +205,7 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 	}
 
 	public function test_custom_inactivity_days_is_honored(): void {
-		$handler = new RetentionCleanupHandler( $this->conversations, $this->messages, $this->destinations, 30, 90, 10 );
+		$handler = new RetentionCleanupHandler( $this->conversations, $this->messages, $this->purge_service, 30, 90, 10 );
 
 		$conversation = $this->conversations->create( 'uuid-custom-inactivity', 'hash', 1, null );
 		$this->conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );

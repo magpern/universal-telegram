@@ -12,6 +12,11 @@ use UniversalTelegram\Administration\Automations\EventHistoryPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderRequestHandler;
 use UniversalTelegram\Administration\Automations\RuleSimulatorPage;
+use UniversalTelegram\Administration\Conversations\ConversationActionHandler;
+use UniversalTelegram\Administration\Conversations\ConversationDetailPage;
+use UniversalTelegram\Administration\Conversations\ConversationInboxPage;
+use UniversalTelegram\Administration\Conversations\OperatorIdentityPage;
+use UniversalTelegram\Administration\Conversations\OperatorIdentityRequestHandler;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
 use UniversalTelegram\Administration\Diagnostics\SelfTest;
@@ -40,11 +45,15 @@ use UniversalTelegram\ChatWidget\AccountUrlResolver;
 use UniversalTelegram\ChatWidget\ChatWidgetAssets;
 use UniversalTelegram\ChatWidget\ChatWidgetAvailability;
 use UniversalTelegram\Conversations\ChatProfileResolver;
+use UniversalTelegram\Conversations\ConversationNoteRepository;
 use UniversalTelegram\Conversations\ConversationOutboundDispatcher;
 use UniversalTelegram\Conversations\ConversationOutboundHandler;
+use UniversalTelegram\Conversations\ConversationPurgeService;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\ImmediateDeliveryAttempt;
 use UniversalTelegram\Conversations\MessageRepository;
+use UniversalTelegram\Conversations\OperatorAvailabilityRepository;
+use UniversalTelegram\Conversations\OperatorIdentityRepository;
 use UniversalTelegram\Conversations\PromptDeliveryFallback;
 use UniversalTelegram\Conversations\Rest\ConversationsController;
 use UniversalTelegram\Conversations\RetentionCleanupHandler as ConversationRetentionCleanupHandler;
@@ -87,6 +96,7 @@ use UniversalTelegram\Persistence\MigrationFailedException;
 use UniversalTelegram\Persistence\MigrationLock;
 use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
+use UniversalTelegram\Privacy\Classification;
 use UniversalTelegram\Privacy\Redactor;
 use UniversalTelegram\Queue\Dispatcher;
 use UniversalTelegram\Queue\ExpeditedDispatchTrigger;
@@ -317,6 +327,62 @@ final class Plugin {
 	private ?MessageRepository $message_repository = null;
 
 	/**
+	 * Operator identity mapping persistence, constructed by init() (M07, docs/adr/0026).
+	 *
+	 * @var OperatorIdentityRepository|null
+	 */
+	private ?OperatorIdentityRepository $operator_identity_repository = null;
+
+	/**
+	 * Operator availability persistence, constructed by init() (M07, docs/adr/0026).
+	 *
+	 * @var OperatorAvailabilityRepository|null
+	 */
+	private ?OperatorAvailabilityRepository $operator_availability_repository = null;
+
+	/**
+	 * Conversation internal note persistence, constructed by init() (M07, docs/adr/0026).
+	 *
+	 * @var ConversationNoteRepository|null
+	 */
+	private ?ConversationNoteRepository $conversation_note_repository = null;
+
+	/**
+	 * The operator identity mapping admin page, constructed by init() (M07, docs/adr/0026).
+	 *
+	 * @var OperatorIdentityPage|null
+	 */
+	private ?OperatorIdentityPage $operator_identity_page = null;
+
+	/**
+	 * The operator identity mapping request handler, constructed by init() (M07, docs/adr/0026).
+	 *
+	 * @var OperatorIdentityRequestHandler|null
+	 */
+	private ?OperatorIdentityRequestHandler $operator_identity_request_handler = null;
+
+	/**
+	 * The operator conversation-workflow action handler, constructed by init() (M07, docs/adr/0026).
+	 *
+	 * @var ConversationActionHandler|null
+	 */
+	private ?ConversationActionHandler $conversation_action_handler = null;
+
+	/**
+	 * The operator conversation detail page, constructed by init() (M07, docs/adr/0026).
+	 *
+	 * @var ConversationDetailPage|null
+	 */
+	private ?ConversationDetailPage $conversation_detail_page = null;
+
+	/**
+	 * The operator conversation inbox page, constructed by init() (M07, docs/adr/0026).
+	 *
+	 * @var ConversationInboxPage|null
+	 */
+	private ?ConversationInboxPage $conversation_inbox_page = null;
+
+	/**
 	 * The public visitor conversation REST controller, constructed by init().
 	 *
 	 * @var ConversationsController|null
@@ -357,6 +423,15 @@ final class Plugin {
 	 * @var ConversationRetentionCleanupHandler|null
 	 */
 	private ?ConversationRetentionCleanupHandler $conversation_retention_cleanup_handler = null;
+
+	/**
+	 * The shared conversation purge service, constructed by init(). Used by
+	 * both the scheduled retention handler above and M07's manual
+	 * "delete archived conversation" admin action (docs/adr/0026).
+	 *
+	 * @var ConversationPurgeService|null
+	 */
+	private ?ConversationPurgeService $conversation_purge_service = null;
 
 	/**
 	 * The webhook registration/rotation coordinator, constructed by init().
@@ -564,6 +639,10 @@ final class Plugin {
 		$this->conversation_repository = new ConversationRepository( $this->schema_health, $this->credential_vault, new VisitorTokenGenerator() );
 		$this->message_repository      = new MessageRepository( $this->schema_health, $this->credential_vault );
 
+		$this->operator_identity_repository     = new OperatorIdentityRepository( $this->schema_health );
+		$this->operator_availability_repository = new OperatorAvailabilityRepository( $this->schema_health );
+		$this->conversation_note_repository     = new ConversationNoteRepository( $this->schema_health, $this->credential_vault );
+
 		$this->update_repository       = new UpdateRepository( $this->schema_health );
 		$this->webhook_secret_verifier = new WebhookSecretVerifier( $this->bot_profile_repository, $this->audit_logger );
 		$this->webhook_controller      = new WebhookController(
@@ -574,6 +653,8 @@ final class Plugin {
 			$this->conversation_repository,
 			$this->message_repository,
 			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
+			$this->operator_identity_repository,
+			$this->audit_logger,
 			(int) $settings_values['telegram_webhook_max_body_bytes']
 		);
 		add_action( 'rest_api_init', array( $this->webhook_controller, 'register_routes' ) );
@@ -655,10 +736,16 @@ final class Plugin {
 			}
 		);
 
-		$this->conversation_retention_cleanup_handler = new ConversationRetentionCleanupHandler(
+		$this->conversation_purge_service = new ConversationPurgeService(
 			$this->conversation_repository,
 			$this->message_repository,
 			$this->destination_repository
+		);
+
+		$this->conversation_retention_cleanup_handler = new ConversationRetentionCleanupHandler(
+			$this->conversation_repository,
+			$this->message_repository,
+			$this->conversation_purge_service
 		);
 		add_action( ConversationRetentionCleanupHandler::HOOK, array( $this->conversation_retention_cleanup_handler, 'run' ) );
 
@@ -683,6 +770,38 @@ final class Plugin {
 			'deleted_user',
 			function ( int $user_id ): void {
 				$this->conversation_repository->release_owner_conversations( $user_id );
+			}
+		);
+
+		// Operator-side account-deletion cleanup (M07, ADR-0026 decision 12):
+		// additive to, never a replacement of, the visitor-owner cleanup
+		// above. Runs only if the deleted user was ever mapped as an
+		// operator. Order matters: the mapped Telegram id is resolved
+		// before the mapping row that holds it is deleted, since it is the
+		// lookup key for clearing message attribution.
+		add_action(
+			'deleted_user',
+			function ( int $user_id ): void {
+				$identity = $this->operator_identity_repository->find_by_wp_user_id( $user_id );
+
+				if ( null === $identity ) {
+					return;
+				}
+
+				$this->message_repository->clear_sender_attribution( $identity->telegram_user_id() );
+				$this->conversation_note_repository->anonymize_author( $user_id );
+				$this->conversation_repository->clear_assignment_for_operator( $user_id );
+				$this->operator_availability_repository->delete_for_operator( $user_id );
+				$this->operator_identity_repository->delete_for_wp_user( $user_id );
+
+				$this->audit_logger->record(
+					'conversation.operator_identity.account_deleted_cleanup',
+					'system',
+					null,
+					array(),
+					array(),
+					Classification::INTERNAL
+				);
 			}
 		);
 
@@ -1012,6 +1131,51 @@ final class Plugin {
 		);
 		add_action( 'admin_post_' . SettingsPage::ADMIN_POST_ACTION, array( $this->settings_page, 'handle_request' ) );
 
+		// Operator identity mappings (M07, docs/adr/0026): the manual
+		// WordPress-user <-> Telegram numeric-id mapping every operator
+		// must have before their first Telegram reply is accepted.
+		// MANAGE-gated, since creating a mapping grants inbound Telegram
+		// operator-acting trust.
+		$this->operator_identity_page            = new OperatorIdentityPage( $this->operator_identity_repository );
+		$this->operator_identity_request_handler = new OperatorIdentityRequestHandler( $this->operator_identity_repository );
+		$this->hub_tab_registry->register(
+			new Tab( OperatorIdentityPage::TAB_ID, __( 'Operator Identities', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->operator_identity_page, 'render_tab_content' ) )
+		);
+		add_action( 'admin_post_' . OperatorIdentityRequestHandler::ADMIN_POST_ACTION, array( $this->operator_identity_request_handler, 'handle_request' ) );
+
+		// Operator conversation-workflow actions (M07, docs/adr/0026):
+		// availability now, assignment/lifecycle/notes/deletion added by
+		// later M07 work packages onto the same single handler. No Hub tab
+		// of its own — reached only via forms on the operator inbox tab.
+		$this->conversation_action_handler = new ConversationActionHandler(
+			$this->operator_availability_repository,
+			$this->operator_identity_repository,
+			$this->conversation_repository,
+			$this->conversation_note_repository,
+			$this->conversation_purge_service,
+			$this->audit_logger
+		);
+		add_action( 'admin_post_' . ConversationActionHandler::ADMIN_POST_ACTION, array( $this->conversation_action_handler, 'handle_request' ) );
+
+		// Operator inbox + detail view (M07, docs/adr/0026): unread badge,
+		// own-availability control, status-filtered/paginated list, and the
+		// message/note detail view with mark-seen-on-view.
+		$this->conversation_detail_page = new ConversationDetailPage(
+			$this->conversation_repository,
+			$this->message_repository,
+			$this->conversation_note_repository,
+			$this->operator_identity_repository
+		);
+		$this->conversation_inbox_page  = new ConversationInboxPage(
+			$this->conversation_repository,
+			$this->operator_identity_repository,
+			$this->operator_availability_repository,
+			$this->conversation_detail_page
+		);
+		$this->hub_tab_registry->register(
+			new Tab( ConversationInboxPage::TAB_ID, __( 'Conversations', 'universal-telegram' ), CapabilityRegistrar::MANAGE_CONVERSATIONS, array( $this->conversation_inbox_page, 'render_tab_content' ) )
+		);
+
 		$this->hub_tab_registry->register(
 			new Tab( 'diagnostics', __( 'Diagnostics', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->diagnostics_page, 'render_tab_content' ) )
 		);
@@ -1223,6 +1387,62 @@ final class Plugin {
 	}
 
 	/**
+	 * Operator identity mapping persistence. Available only after init() has run.
+	 */
+	public function operator_identity_repository(): ?OperatorIdentityRepository {
+		return $this->operator_identity_repository;
+	}
+
+	/**
+	 * Operator availability persistence. Available only after init() has run.
+	 */
+	public function operator_availability_repository(): ?OperatorAvailabilityRepository {
+		return $this->operator_availability_repository;
+	}
+
+	/**
+	 * Conversation internal note persistence. Available only after init() has run.
+	 */
+	public function conversation_note_repository(): ?ConversationNoteRepository {
+		return $this->conversation_note_repository;
+	}
+
+	/**
+	 * The operator identity mapping admin page. Available only after init() has run.
+	 */
+	public function operator_identity_page(): ?OperatorIdentityPage {
+		return $this->operator_identity_page;
+	}
+
+	/**
+	 * The operator identity mapping request handler. Available only after init() has run.
+	 */
+	public function operator_identity_request_handler(): ?OperatorIdentityRequestHandler {
+		return $this->operator_identity_request_handler;
+	}
+
+	/**
+	 * The operator conversation-workflow action handler. Available only after init() has run.
+	 */
+	public function conversation_action_handler(): ?ConversationActionHandler {
+		return $this->conversation_action_handler;
+	}
+
+	/**
+	 * The operator conversation detail page. Available only after init() has run.
+	 */
+	public function conversation_detail_page(): ?ConversationDetailPage {
+		return $this->conversation_detail_page;
+	}
+
+	/**
+	 * The operator conversation inbox page. Available only after init() has run.
+	 */
+	public function conversation_inbox_page(): ?ConversationInboxPage {
+		return $this->conversation_inbox_page;
+	}
+
+	/**
 	 * The public visitor conversation REST controller. Available only after init() has run.
 	 */
 	public function conversations_controller(): ?ConversationsController {
@@ -1262,6 +1482,13 @@ final class Plugin {
 	 */
 	public function conversation_retention_cleanup_handler(): ?ConversationRetentionCleanupHandler {
 		return $this->conversation_retention_cleanup_handler;
+	}
+
+	/**
+	 * The shared conversation purge service. Available only after init() has run.
+	 */
+	public function conversation_purge_service(): ?ConversationPurgeService {
+		return $this->conversation_purge_service;
 	}
 
 	/**

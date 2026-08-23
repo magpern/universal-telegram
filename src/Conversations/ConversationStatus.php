@@ -15,7 +15,10 @@ namespace UniversalTelegram\Conversations;
  * does not decide which actor may perform one — that is enforced by which
  * code path calls ConversationRepository::transition() in the first place.
  * `resolved` is reachable from any open/waiting state to support M07's
- * future operator UI, but no M05 code path ever calls it.
+ * operator UI. M07 (docs/adr/0026) adds a single `resolved -> open` reopen
+ * path; `archived` remains fully terminal, since an archived conversation's
+ * bearer secret has already been revoked and reopening it has no coherent
+ * visitor-side contract.
  */
 final class ConversationStatus {
 
@@ -37,7 +40,7 @@ final class ConversationStatus {
 			self::OPEN                 => array( self::WAITING_FOR_VISITOR, self::WAITING_FOR_OPERATOR, self::RESOLVED ),
 			self::WAITING_FOR_VISITOR  => array( self::OPEN, self::RESOLVED ),
 			self::WAITING_FOR_OPERATOR => array( self::OPEN, self::RESOLVED ),
-			self::RESOLVED             => array( self::ARCHIVED ),
+			self::RESOLVED             => array( self::ARCHIVED, self::OPEN ),
 			self::ARCHIVED             => array(),
 		);
 	}

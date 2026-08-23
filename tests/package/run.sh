@@ -173,13 +173,32 @@ if [ -z "$(m06_column_exists "conversations" "owner_active_slot")" ]; then
 fi
 echo "OK: universal_telegram_conversations.owner_user_id and owner_active_slot columns exist."
 
-echo "== Verifying db_version reached 16 =="
+echo "== Verifying db_version reached 18 =="
 DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "16" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=16, got ${DB_VERSION}" >&2
+if [ "18" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=18, got ${DB_VERSION}" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 16."
+echo "OK: universal_telegram_db_version is 18."
+
+echo "== Verifying M07 operator-workflow tables and columns exist =="
+for TABLE in operator_identities conversation_notes operator_availability; do
+	if [ -z "$(m02_table_exists "$TABLE")" ]; then
+		echo "FAIL: expected table universal_telegram_${TABLE} to exist" >&2
+		exit 1
+	fi
+done
+echo "OK: universal_telegram_operator_identities, universal_telegram_conversation_notes, and universal_telegram_operator_availability tables exist."
+
+if [ -z "$(m06_column_exists conversations assignee_last_seen_message_id)" ]; then
+	echo "FAIL: expected universal_telegram_conversations.assignee_last_seen_message_id column to exist" >&2
+	exit 1
+fi
+if [ -z "$(m06_column_exists conversation_messages telegram_sender_user_id)" ]; then
+	echo "FAIL: expected universal_telegram_conversation_messages.telegram_sender_user_id column to exist" >&2
+	exit 1
+fi
+echo "OK: universal_telegram_conversations.assignee_last_seen_message_id and universal_telegram_conversation_messages.telegram_sender_user_id columns exist."
 
 echo "== Verifying M02 event emission projects only PUBLIC fields into event_history =="
 wp eval '
@@ -398,9 +417,9 @@ wp eval '
 	echo "OK: the Settings action link is present and points at the Settings tab.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
-echo "== Verifying the administration hub registers exactly the nine expected tabs, in order =="
+echo "== Verifying the administration hub registers exactly the eleven expected tabs, in order =="
 wp eval '
-	$expected_tabs = array( "overview", "bots", "events", "rules", "simulator", "event-history", "visitor-tracking", "settings", "diagnostics" );
+	$expected_tabs = array( "overview", "bots", "events", "rules", "simulator", "event-history", "visitor-tracking", "settings", "operator-identities", "operator-inbox", "diagnostics" );
 
 	$plugin   = UniversalTelegram\Core\Plugin::instance();
 	$registry = $plugin->hub_tab_registry();
@@ -415,7 +434,7 @@ wp eval '
 		fwrite( STDERR, "FAIL: hub tab set/order was " . implode( ",", $ids ) . ", expected " . implode( ",", $expected_tabs ) . "\n" );
 		exit( 1 );
 	}
-	echo "OK: the administration hub registers exactly the nine expected tabs, in order.\n";
+	echo "OK: the administration hub registers exactly the eleven expected tabs, in order.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
 echo "== Verifying the hub shell renders the requested tab content and the full tab nav =="
@@ -525,7 +544,13 @@ for m05_table in conversations conversation_messages; do
 		exit 1
 	fi
 done
-echo "OK: default-retention uninstall kept the plugin's own data, including the bots table, all four M02 tables, and both M05 tables."
+for m07_table in operator_identities conversation_notes operator_availability; do
+	if [ -z "$(m02_table_exists "$m07_table")" ]; then
+		echo "FAIL: default-retention uninstall removed universal_telegram_${m07_table} despite remove_data_on_uninstall defaulting to false" >&2
+		exit 1
+	fi
+done
+echo "OK: default-retention uninstall kept the plugin's own data, including the bots table, all four M02 tables, both M05 tables, and all three M07 tables."
 
 echo "== Reinstalling to verify uninstall with retention explicitly enabled removes data =="
 wp plugin install "$ZIP_PATH" --activate --path="$WP_DIR" --allow-root
@@ -560,6 +585,12 @@ for m05_table in conversations conversation_messages; do
 		exit 1
 	fi
 done
-echo "OK: opt-in uninstall removed the plugin's own data, including all six M01 tables, all four M02 tables, and both M05 tables."
+for m07_table in operator_identities conversation_notes operator_availability; do
+	if [ -n "$(m02_table_exists "$m07_table")" ]; then
+		echo "FAIL: opt-in uninstall did not remove universal_telegram_${m07_table}" >&2
+		exit 1
+	fi
+done
+echo "OK: opt-in uninstall removed the plugin's own data, including all six M01 tables, all four M02 tables, both M05 tables, and all three M07 tables."
 
 echo "== PACKAGE TEST PASSED for WordPress ${WP_VERSION}${WC_VERSION:+, WooCommerce ${WC_VERSION}} =="

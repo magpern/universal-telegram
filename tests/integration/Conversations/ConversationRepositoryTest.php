@@ -424,4 +424,206 @@ final class ConversationRepositoryTest extends WP_UnitTestCase {
 		$refreshed = $repo->find( $other->id() );
 		$this->assertSame( 109, $refreshed->owner_user_id() );
 	}
+
+	public function test_clear_assignment_for_operator_clears_assignment_and_unread_state(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-assignment-1', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 55 );
+
+		$cleared = $repo->clear_assignment_for_operator( 55 );
+
+		$this->assertTrue( $cleared );
+		$refreshed = $repo->find( $conversation->id() );
+		$this->assertNull( $refreshed->assigned_operator_id() );
+		$this->assertNull( $refreshed->assignee_last_seen_message_id() );
+	}
+
+	public function test_clear_assignment_for_operator_never_touches_another_operators_assignment(): void {
+		$repo               = $this->repository();
+		$conversation       = $repo->create( 'uuid-assignment-2', 'hash', 1, null );
+		$other_conversation = $repo->create( 'uuid-assignment-3', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 55 );
+		$repo->assign( $other_conversation->id(), 56 );
+
+		$repo->clear_assignment_for_operator( 55 );
+
+		$refreshed = $repo->find( $other_conversation->id() );
+		$this->assertSame( 56, $refreshed->assigned_operator_id() );
+	}
+
+	public function test_mark_seen_records_the_highest_seen_message_id(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-unread-1', 'hash', 1, null );
+
+		$marked = $repo->mark_seen( $conversation->id(), 42 );
+
+		$this->assertTrue( $marked );
+		$this->assertSame( 42, $repo->find( $conversation->id() )->assignee_last_seen_message_id() );
+	}
+
+	public function test_unread_assigned_conversations_includes_a_conversation_with_no_seen_marker(): void {
+		$repo         = $this->repository();
+		$messages     = new \UniversalTelegram\Conversations\MessageRepository( new \UniversalTelegram\Persistence\SchemaHealth(), new \UniversalTelegram\Core\Security\CredentialVault() );
+		$conversation = $repo->create( 'uuid-unread-2', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 60 );
+		$messages->create( $conversation->id(), 'visitor', 'Hello' );
+
+		$unread = $repo->unread_assigned_conversations( 60 );
+
+		$this->assertCount( 1, $unread );
+		$this->assertSame( $conversation->id(), $unread[0]->id() );
+	}
+
+	public function test_unread_assigned_conversations_excludes_a_conversation_fully_seen(): void {
+		$repo         = $this->repository();
+		$messages     = new \UniversalTelegram\Conversations\MessageRepository( new \UniversalTelegram\Persistence\SchemaHealth(), new \UniversalTelegram\Core\Security\CredentialVault() );
+		$conversation = $repo->create( 'uuid-unread-3', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 61 );
+		$message = $messages->create( $conversation->id(), 'visitor', 'Hello' );
+		$repo->mark_seen( $conversation->id(), $message->id() );
+
+		$unread = $repo->unread_assigned_conversations( 61 );
+
+		$this->assertSame( array(), $unread );
+	}
+
+	public function test_unread_assigned_conversations_excludes_another_operators_conversation(): void {
+		$repo         = $this->repository();
+		$messages     = new \UniversalTelegram\Conversations\MessageRepository( new \UniversalTelegram\Persistence\SchemaHealth(), new \UniversalTelegram\Core\Security\CredentialVault() );
+		$conversation = $repo->create( 'uuid-unread-4', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 62 );
+		$messages->create( $conversation->id(), 'visitor', 'Hello' );
+
+		$unread = $repo->unread_assigned_conversations( 63 );
+
+		$this->assertSame( array(), $unread );
+	}
+
+	public function test_reassignment_resets_unread_state_by_clearing_the_seen_marker(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-unread-5', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 70 );
+		$repo->mark_seen( $conversation->id(), 5 );
+
+		// clear_assignment_for_operator is the existing, ADR-0026-specified
+		// mechanism that resets assignee_last_seen_message_id to NULL; the
+		// new assign_with_expected() (WP7) reuses the same reset on every
+		// reassignment.
+		$repo->clear_assignment_for_operator( 70 );
+
+		$this->assertNull( $repo->find( $conversation->id() )->assignee_last_seen_message_id() );
+	}
+
+	public function test_for_inbox_filters_by_status(): void {
+		$repo = $this->repository();
+		$open = $repo->create( 'uuid-inbox-open', 'hash', 1, null );
+		$repo->transition( $open->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+		$repo->create( 'uuid-inbox-new', 'hash', 1, null );
+
+		$found = $repo->for_inbox( ConversationStatus::OPEN );
+
+		$ids = array_map( static fn( $c ) => $c->id(), $found );
+		$this->assertContains( $open->id(), $ids );
+	}
+
+	public function test_assign_with_expected_succeeds_when_expectation_matches_unassigned(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-cas-1', 'hash', 1, null );
+
+		$result = $repo->assign_with_expected( $conversation->id(), null, 80 );
+
+		$this->assertTrue( $result );
+		$this->assertSame( 80, $repo->find( $conversation->id() )->assigned_operator_id() );
+	}
+
+	public function test_assign_with_expected_fails_and_makes_no_change_when_expectation_is_stale(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-cas-2', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 81 );
+
+		// A second caller still believes the conversation is unassigned.
+		$result = $repo->assign_with_expected( $conversation->id(), null, 82 );
+
+		$this->assertFalse( $result );
+		$this->assertSame( 81, $repo->find( $conversation->id() )->assigned_operator_id() );
+	}
+
+	public function test_assign_with_expected_resets_the_seen_marker_on_a_successful_reassignment(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-cas-3', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 83 );
+		$repo->mark_seen( $conversation->id(), 5 );
+
+		$repo->assign_with_expected( $conversation->id(), 83, 84 );
+
+		$this->assertNull( $repo->find( $conversation->id() )->assignee_last_seen_message_id() );
+	}
+
+	public function test_assign_with_expected_can_unassign(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-cas-4', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 85 );
+
+		$result = $repo->assign_with_expected( $conversation->id(), 85, null );
+
+		$this->assertTrue( $result );
+		$this->assertNull( $repo->find( $conversation->id() )->assigned_operator_id() );
+	}
+
+	public function test_for_inbox_with_no_status_returns_every_status(): void {
+		$repo = $this->repository();
+		$repo->create( 'uuid-inbox-all-1', 'hash', 1, null );
+
+		$found = $repo->for_inbox( null, 1000, 0 );
+
+		$this->assertNotEmpty( $found );
+	}
+
+	public function test_for_inbox_filters_by_uuid_prefix(): void {
+		$repo     = $this->repository();
+		$matching = $repo->create( 'search-target-abc', 'hash', 1, null );
+		$repo->create( 'other-conversation-xyz', 'hash', 1, null );
+
+		$found = $repo->for_inbox( null, 1000, 0, 'search-target' );
+
+		$ids = array_map( static fn( $c ) => $c->id(), $found );
+		$this->assertSame( array( $matching->id() ), $ids );
+	}
+
+	public function test_for_inbox_filters_by_bot_id(): void {
+		$repo     = $this->repository();
+		$matching = $repo->create( 'uuid-bot-filter-1', 'hash', 2, null );
+		$repo->create( 'uuid-bot-filter-2', 'hash', 3, null );
+
+		$found = $repo->for_inbox( null, 1000, 0, null, 2 );
+
+		$ids = array_map( static fn( $c ) => $c->id(), $found );
+		$this->assertContains( $matching->id(), $ids );
+		$this->assertCount( 1, $found );
+	}
+
+	public function test_for_inbox_filters_by_assigned_operator_id(): void {
+		$repo         = $this->repository();
+		$conversation = $repo->create( 'uuid-assignee-filter-1', 'hash', 1, null );
+		$repo->assign( $conversation->id(), 90 );
+		$repo->create( 'uuid-assignee-filter-2', 'hash', 1, null );
+
+		$found = $repo->for_inbox( null, 1000, 0, null, null, 90 );
+
+		$ids = array_map( static fn( $c ) => $c->id(), $found );
+		$this->assertSame( array( $conversation->id() ), $ids );
+	}
+
+	public function test_for_inbox_never_accepts_a_telegram_id_as_a_filter(): void {
+		// Regression guard: the method signature itself has no
+		// telegram_user_id/telegram_username parameter at all (ADR-0026) —
+		// this test documents that constraint via reflection so a future
+		// change accidentally adding one is caught.
+		$reflection = new \ReflectionMethod( ConversationRepository::class, 'for_inbox' );
+		$names      = array_map( static fn( $p ) => $p->getName(), $reflection->getParameters() );
+
+		foreach ( $names as $name ) {
+			$this->assertStringNotContainsStringIgnoringCase( 'telegram', $name );
+		}
+	}
 }

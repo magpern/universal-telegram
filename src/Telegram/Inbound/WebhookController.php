@@ -9,11 +9,14 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Telegram\Inbound;
 
+use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\ConversationStatus;
 use UniversalTelegram\Conversations\MessageRepository;
+use UniversalTelegram\Conversations\OperatorIdentityRepository;
 use UniversalTelegram\Persistence\SchemaHealth;
+use UniversalTelegram\Privacy\Classification;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -48,14 +51,16 @@ final class WebhookController {
 	/**
 	 * Constructor.
 	 *
-	 * @param SchemaHealth           $schema_health Checked before any bot lookup or insert.
-	 * @param BotProfileRepository   $bots          Resolves bot_uuid to a bot profile.
-	 * @param WebhookSecretVerifier  $verifier      Proves the request is authentic.
-	 * @param UpdateRepository       $updates       Metadata-only, deduplicated receipt.
-	 * @param ConversationRepository $conversations Resolves the known-topic-mapping gate (docs/adr/0021).
-	 * @param MessageRepository      $messages      Encrypts and persists a captured operator reply.
-	 * @param ChatProfileResolver    $chat_profiles Resolves a bot's conversation-support chat id.
-	 * @param int                    $max_body_bytes Request body size cap, enforced before JSON decoding.
+	 * @param SchemaHealth               $schema_health Checked before any bot lookup or insert.
+	 * @param BotProfileRepository       $bots          Resolves bot_uuid to a bot profile.
+	 * @param WebhookSecretVerifier      $verifier      Proves the request is authentic.
+	 * @param UpdateRepository           $updates       Metadata-only, deduplicated receipt.
+	 * @param ConversationRepository     $conversations Resolves the known-topic-mapping gate (docs/adr/0021).
+	 * @param MessageRepository          $messages      Encrypts and persists a captured operator reply.
+	 * @param ChatProfileResolver        $chat_profiles Resolves a bot's conversation-support chat id.
+	 * @param OperatorIdentityRepository $operator_identities Resolves the inbound sender's mapped WordPress operator (M07, docs/adr/0026) — the inbound Telegram operator-authorization gate.
+	 * @param AuditLogger                $audit         Records a rejected-unmapped-sender attempt.
+	 * @param int                        $max_body_bytes Request body size cap, enforced before JSON decoding.
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
@@ -65,6 +70,8 @@ final class WebhookController {
 		private readonly ConversationRepository $conversations,
 		private readonly MessageRepository $messages,
 		private readonly ChatProfileResolver $chat_profiles,
+		private readonly OperatorIdentityRepository $operator_identities,
+		private readonly AuditLogger $audit,
 		private readonly int $max_body_bytes = 1048576
 	) {}
 
@@ -177,13 +184,46 @@ final class WebhookController {
 			return;
 		}
 
+		$sender_telegram_user_id = $this->extract_sender_id( $decoded );
+
+		if ( null === $sender_telegram_user_id ) {
+			return;
+		}
+
+		$mapped_identity = $this->operator_identities->find_by_telegram_user_id( $sender_telegram_user_id );
+
+		if ( null === $mapped_identity ) {
+			// Rejected before any decrypt, store, transition, or forward —
+			// the identical fail-closed shape as every other gate in this
+			// method. Only a fixed rejection code plus bot/conversation
+			// identifiers are ever recorded; the raw Telegram sender id is
+			// SENSITIVE and is never written into the audit context, not
+			// even as a hash (M07, docs/adr/0026 decision 2).
+			$this->audit->record(
+				'conversation.operator_reply.rejected_unmapped_sender',
+				'system',
+				null,
+				array(
+					'bot_id'          => $bot_id,
+					'conversation_id' => $conversation->id(),
+				),
+				array(
+					'bot_id'          => Classification::INTERNAL,
+					'conversation_id' => Classification::INTERNAL,
+				),
+				Classification::INTERNAL
+			);
+
+			return;
+		}
+
 		$text = $this->extract_text( $decoded );
 
 		if ( null === $text || '' === $text ) {
 			return;
 		}
 
-		$message = $this->messages->create( $conversation->id(), 'operator', $text );
+		$message = $this->messages->create( $conversation->id(), 'operator', $text, 'stored', null, null, $sender_telegram_user_id );
 
 		if ( null === $message ) {
 			return;
@@ -210,6 +250,26 @@ final class WebhookController {
 		}
 
 		return $decoded['message']['text'];
+	}
+
+	/**
+	 * Reads the inbound sender's own numeric Telegram user id
+	 * (`message.from.id`) out of a decoded 'message' update — Telegram's
+	 * own account id, present on every message update and untrustworthy
+	 * only until webhook authenticity (already verified before this method
+	 * is ever reached) is established. Never a Telegram username, which is
+	 * self-chosen and unauthenticated (M07, docs/adr/0026 decision 2).
+	 *
+	 * @param array<string, mixed> $decoded The full decoded update body.
+	 *
+	 * @return int|null
+	 */
+	private function extract_sender_id( array $decoded ): ?int {
+		if ( ! isset( $decoded['message']['from']['id'] ) || ! is_int( $decoded['message']['from']['id'] ) ) {
+			return null;
+		}
+
+		return $decoded['message']['from']['id'];
 	}
 
 	/**
