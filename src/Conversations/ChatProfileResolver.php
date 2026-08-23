@@ -85,4 +85,27 @@ final class ChatProfileResolver {
 
 		return null;
 	}
+
+	/**
+	 * The same destination row conversation_chat_id() resolves, but its
+	 * primary key rather than its chat_id — used by M08's administrative
+	 * bot commands (ADR-0027) to send a General-topic acknowledgement
+	 * through the existing outbound MessageDispatcher, which addresses a
+	 * destination by id, not by chat_id.
+	 *
+	 * @param int $bot_id The bot's primary key.
+	 *
+	 * @return int|null Null if no such destination is configured.
+	 */
+	public function conversation_destination_id( int $bot_id ): ?int {
+		foreach ( $this->destinations->for_bot( $bot_id ) as $destination ) {
+			if ( DestinationKind::SUPERGROUP === $destination->kind()
+				&& null === $destination->message_thread_id()
+				&& $destination->enabled() ) {
+				return $destination->id();
+			}
+		}
+
+		return null;
+	}
 }

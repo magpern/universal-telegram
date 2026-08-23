@@ -105,6 +105,7 @@ use UniversalTelegram\Queue\QueueHealth;
 use UniversalTelegram\Queue\RetryPolicy;
 use UniversalTelegram\Queue\WorkerRunner;
 use UniversalTelegram\Telegram\Client\TelegramApiClient;
+use UniversalTelegram\Telegram\Commands\BotCommandDispatcher;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Inbound\UpdateRepository;
@@ -304,6 +305,14 @@ final class Plugin {
 	 * @var WebhookController|null
 	 */
 	private ?WebhookController $webhook_controller = null;
+
+	/**
+	 * Administrative-bot command authorization/context/dispatch (M08,
+	 * docs/adr/0027), constructed by init().
+	 *
+	 * @var BotCommandDispatcher|null
+	 */
+	private ?BotCommandDispatcher $bot_command_dispatcher = null;
 
 	/**
 	 * The per-bot/per-destination rate limiter, constructed by init().
@@ -645,7 +654,16 @@ final class Plugin {
 
 		$this->update_repository       = new UpdateRepository( $this->schema_health );
 		$this->webhook_secret_verifier = new WebhookSecretVerifier( $this->bot_profile_repository, $this->audit_logger );
-		$this->webhook_controller      = new WebhookController(
+
+		$this->bot_command_dispatcher = new BotCommandDispatcher(
+			$this->operator_identity_repository,
+			$this->conversation_repository,
+			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
+			$this->message_dispatcher,
+			$this->audit_logger
+		);
+
+		$this->webhook_controller = new WebhookController(
 			$this->schema_health,
 			$this->bot_profile_repository,
 			$this->webhook_secret_verifier,
@@ -655,6 +673,7 @@ final class Plugin {
 			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
 			$this->operator_identity_repository,
 			$this->audit_logger,
+			$this->bot_command_dispatcher,
 			(int) $settings_values['telegram_webhook_max_body_bytes']
 		);
 		add_action( 'rest_api_init', array( $this->webhook_controller, 'register_routes' ) );
@@ -1363,6 +1382,13 @@ final class Plugin {
 	 */
 	public function webhook_controller(): ?WebhookController {
 		return $this->webhook_controller;
+	}
+
+	/**
+	 * Administrative-bot command dispatcher. Available only after init() has run.
+	 */
+	public function bot_command_dispatcher(): ?BotCommandDispatcher {
+		return $this->bot_command_dispatcher;
 	}
 
 	/**
