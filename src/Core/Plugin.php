@@ -883,6 +883,9 @@ final class Plugin {
 				$this->conversation_repository->clear_assignment_for_operator( $user_id );
 				$this->operator_availability_repository->delete_for_operator( $user_id );
 				$this->operator_identity_repository->delete_for_wp_user( $user_id );
+				// M09, docs/adr/0028 §4: AI draft content is untouched — only
+				// the requester/reviewer identity is anonymized.
+				$this->ai_draft_repository->anonymize_operator( $user_id );
 
 				$this->audit_logger->record(
 					'conversation.operator_identity.account_deleted_cleanup',

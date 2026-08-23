@@ -31,7 +31,7 @@ final class AiDraft {
 	 * @param string|null $context_fingerprint         SHA-256 of the submitted context.
 	 * @param string|null $body_ciphertext             CredentialVault-encrypted draft text, null until generated.
 	 * @param string|null $failure_class               Fixed taxonomy code, set only when status is failed.
-	 * @param int         $requested_by_user_id        The requesting operator.
+	 * @param int|null    $requested_by_user_id        The requesting operator, or null once anonymized on account deletion.
 	 * @param int|null    $reviewed_by_user_id         The reviewing operator, once set.
 	 * @param string|null $job_reference               The current Action Scheduler action id.
 	 * @param string|null $lease_token                 The current generation-claim token.
@@ -55,7 +55,7 @@ final class AiDraft {
 		private readonly ?string $context_fingerprint,
 		private readonly ?string $body_ciphertext,
 		private readonly ?string $failure_class,
-		private readonly int $requested_by_user_id,
+		private readonly ?int $requested_by_user_id,
 		private readonly ?int $reviewed_by_user_id,
 		private readonly ?string $job_reference,
 		private readonly ?string $lease_token,
@@ -112,7 +112,7 @@ final class AiDraft {
 		return $this->failure_class;
 	}
 
-	public function requested_by_user_id(): int {
+	public function requested_by_user_id(): ?int {
 		return $this->requested_by_user_id;
 	}
 

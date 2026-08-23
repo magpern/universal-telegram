@@ -66,7 +66,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 21;
+		return 22;
 	}
 
 	/**
@@ -156,6 +156,7 @@ class Migrator {
 			19 => array( array( $this, 'step_19_create_ai_config_table' ), array( $this, 'verify_step_19' ) ),
 			20 => array( array( $this, 'step_20_create_ai_drafts_table' ), array( $this, 'verify_step_20' ) ),
 			21 => array( array( $this, 'step_21_add_conversation_ai_ack_column' ), array( $this, 'verify_step_21' ) ),
+			22 => array( array( $this, 'step_22_make_ai_draft_requester_nullable' ), array( $this, 'verify_step_22' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -1411,5 +1412,59 @@ class Migrator {
 			$wpdb->prefix . self::CONVERSATIONS_TABLE,
 			array( 'ai_ack_policy_version' )
 		);
+	}
+
+	/**
+	 * Makes `requested_by_user_id` nullable, so it can be anonymized on
+	 * operator account deletion (docs/adr/0028 §4 retention table) without
+	 * deleting the draft row itself — mirroring
+	 * ConversationNote.operator_user_id's identical, already-nullable
+	 * anonymization precedent (ADR-0026 decision 12b). Column was created
+	 * NOT NULL in step 20; this widens it, a safe operation with no
+	 * existing NULL values to migrate.
+	 */
+	private function step_22_make_ai_draft_requester_nullable(): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::AI_DRAFTS_TABLE;
+
+		if ( 'YES' !== $this->column_is_nullable( $table, 'requested_by_user_id' ) ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->query( "ALTER TABLE {$table} MODIFY COLUMN requested_by_user_id BIGINT UNSIGNED NULL" );
+		}
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_22(): bool {
+		global $wpdb;
+
+		return 'YES' === $this->column_is_nullable( $wpdb->prefix . self::AI_DRAFTS_TABLE, 'requested_by_user_id' );
+	}
+
+	/**
+	 * Whether a column currently permits NULL.
+	 *
+	 * @param string $table  The fully-prefixed table name.
+	 * @param string $column The column name.
+	 *
+	 * @return string 'YES' or 'NO' (INFORMATION_SCHEMA's own literal values), or '' if not found.
+	 */
+	private function column_is_nullable( string $table, string $column ): string {
+		global $wpdb;
+
+		$value = $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+				$wpdb->dbname,
+				$table,
+				$column
+			)
+		);
+
+		return null === $value ? '' : (string) $value;
 	}
 }

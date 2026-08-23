@@ -29,7 +29,7 @@ final class MigratorConversationsSchemaTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 21, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
 
 		foreach ( $tables as $table_name ) {
 			$table = $wpdb->prefix . $table_name;
@@ -38,7 +38,7 @@ final class MigratorConversationsSchemaTest extends WP_UnitTestCase {
 
 		// Re-running an already up-to-date schema is a safe no-op.
 		$migrator->maybe_migrate();
-		$this->assertSame( 21, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 
 	public function test_conversations_table_has_the_documented_unique_uuid_key(): void {

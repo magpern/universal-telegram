@@ -236,6 +236,27 @@ final class AiDraftRepository {
 	}
 
 	/**
+	 * Anonymizes an operator's identity on every draft they requested or
+	 * reviewed — draft content is untouched (docs/adr/0028 §4 retention
+	 * table, mirroring ConversationNote's identical note-anonymization
+	 * precedent, ADR-0026 decision 12b).
+	 *
+	 * @param int $operator_user_id The deleted operator's former WordPress user id.
+	 */
+	public function anonymize_operator( int $operator_user_id ): void {
+		if ( ! $this->schema_health->is_available() ) {
+			return;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::AI_DRAFTS_TABLE;
+
+		$wpdb->update( $table, array( 'requested_by_user_id' => null ), array( 'requested_by_user_id' => $operator_user_id ), array( '%s' ), array( '%d' ) );
+		$wpdb->update( $table, array( 'reviewed_by_user_id' => null ), array( 'reviewed_by_user_id' => $operator_user_id ), array( '%s' ), array( '%d' ) );
+	}
+
+	/**
 	 * Decrypts a draft's body, for the operator review UI only.
 	 *
 	 * @param AiDraft $draft The draft to decrypt.
@@ -875,7 +896,7 @@ final class AiDraftRepository {
 			null !== $row['context_fingerprint'] ? (string) $row['context_fingerprint'] : null,
 			null !== $row['body_ciphertext'] ? (string) $row['body_ciphertext'] : null,
 			null !== $row['failure_class'] ? (string) $row['failure_class'] : null,
-			(int) $row['requested_by_user_id'],
+			null !== $row['requested_by_user_id'] ? (int) $row['requested_by_user_id'] : null,
 			null !== $row['reviewed_by_user_id'] ? (int) $row['reviewed_by_user_id'] : null,
 			null !== $row['job_reference'] ? (string) $row['job_reference'] : null,
 			null !== $row['lease_token'] ? (string) $row['lease_token'] : null,
