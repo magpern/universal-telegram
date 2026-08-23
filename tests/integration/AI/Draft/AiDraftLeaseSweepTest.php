@@ -12,20 +12,44 @@ use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
+use UniversalTelegram\Queue\WorkerRunner;
+use ActionScheduler;
 use WP_UnitTestCase;
 
 /**
- * docs/adr/0028 decision 5, §3.5 of the frozen plan: the durable recovery
+ * Docs/adr/0028 decision 5, §3.5 of the frozen plan: the durable recovery
  * trigger for a crashed worker's expired lease — re-enqueue below the
  * shared attempt budget, dead-letter at/above it, idempotent under
  * overlapping runs, and a bounded upper bound on total staleness.
  */
 final class AiDraftLeaseSweepTest extends WP_UnitTestCase {
 
-	protected function tear_down(): void {
+	/**
+	 * Explicit reset, not an assumption: the ai_drafts table and Action
+	 * Scheduler's own tables are not reliably rolled back by
+	 * WP_UnitTestCase's per-test transaction wrapping once a DDL
+	 * statement elsewhere in the same run has forced an implicit commit —
+	 * the same reason Queue\QueueHealthTest resets Action Scheduler's
+	 * group in setUp() rather than relying on tearDown alone.
+	 */
+	protected function setUp(): void {
+		parent::setUp();
+		$this->reset_ai_state();
+	}
+
+	protected function tearDown(): void {
+		$this->reset_ai_state();
+		parent::tearDown();
+	}
+
+	private function reset_ai_state(): void {
 		global $wpdb;
 		$wpdb->query( "DELETE FROM {$wpdb->prefix}universal_telegram_ai_drafts" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		parent::tear_down();
+
+		$ids = ActionScheduler::store()->query_actions( array( 'group' => WorkerRunner::GROUP ) );
+		foreach ( (array) $ids as $id ) {
+			ActionScheduler::store()->delete_action( (int) $id );
+		}
 	}
 
 	private function drafts(): AiDraftRepository {
@@ -46,7 +70,7 @@ final class AiDraftLeaseSweepTest extends WP_UnitTestCase {
 		global $wpdb;
 		$wpdb->query(
 			$wpdb->prepare(
-				"UPDATE {$wpdb->prefix}" . Migrator::AI_DRAFTS_TABLE . ' SET generation_lease_expires_at = %s WHERE id = %d', // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"UPDATE {$wpdb->prefix}" . Migrator::AI_DRAFTS_TABLE . ' SET generation_lease_expires_at = %s WHERE id = %d', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 				gmdate( 'Y-m-d H:i:s', time() - 3600 ),
 				$draft_id
 			)

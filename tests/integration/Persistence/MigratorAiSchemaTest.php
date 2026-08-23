@@ -32,7 +32,7 @@ final class MigratorAiSchemaTest extends WP_UnitTestCase {
 
 		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
 
-		$config_table = $wpdb->prefix . Migrator::AI_CONFIG_TABLE;
+		$config_table   = $wpdb->prefix . Migrator::AI_CONFIG_TABLE;
 		$config_columns = $wpdb->get_col(
 			$wpdb->prepare(
 				'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s',

@@ -181,9 +181,9 @@ final class ChatWidgetAssets {
 		// visitor of a given page, so this stays as cache-safe as every
 		// other field above; a text/version edit simply invalidates the
 		// cached fragment like any other config change.
-		$ai_config             = $this->ai_provider->get();
-		$config['aiEnabled']   = null !== $ai_config && $ai_config->is_ready();
-		$config['aiAckText']   = null !== $ai_config ? $ai_config->ack_text() : '';
+		$ai_config           = $this->ai_provider->get();
+		$config['aiEnabled'] = null !== $ai_config && $ai_config->is_ready();
+		$config['aiAckText'] = null !== $ai_config ? $ai_config->ack_text() : '';
 
 		printf(
 			'<script type="application/json" id="%1$s">%2$s</script>',

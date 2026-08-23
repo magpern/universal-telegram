@@ -68,98 +68,218 @@ final class AiDraft {
 		private readonly string $updated_at
 	) {}
 
+	/**
+	 * Primary key.
+	 *
+	 * @return int
+	 */
 	public function id(): int {
 		return $this->id;
 	}
 
+	/**
+	 * Opaque queue/reference identifier.
+	 *
+	 * @return string
+	 */
 	public function draft_uuid(): string {
 		return $this->draft_uuid;
 	}
 
+	/**
+	 * The owning conversation.
+	 *
+	 * @return int
+	 */
 	public function conversation_id(): int {
 		return $this->conversation_id;
 	}
 
+	/**
+	 * One of the fixed lifecycle states.
+	 *
+	 * @return string
+	 */
 	public function status(): string {
 		return $this->status;
 	}
 
+	/**
+	 * Traceability copy at request time.
+	 *
+	 * @return string
+	 */
 	public function provider(): string {
 		return $this->provider;
 	}
 
+	/**
+	 * Traceability copy at request time.
+	 *
+	 * @return string
+	 */
 	public function model(): string {
 		return $this->model;
 	}
 
+	/**
+	 * The prompt policy version used.
+	 *
+	 * @return string
+	 */
 	public function prompt_policy_version(): string {
 		return $this->prompt_policy_version;
 	}
 
+	/**
+	 * JSON array of approved source ids/revisions.
+	 *
+	 * @return ?string
+	 */
 	public function source_ids_json(): ?string {
 		return $this->source_ids_json;
 	}
 
+	/**
+	 * SHA-256 of the submitted context.
+	 *
+	 * @return ?string
+	 */
 	public function context_fingerprint(): ?string {
 		return $this->context_fingerprint;
 	}
 
+	/**
+	 * CredentialVault-encrypted draft text, null until generated.
+	 *
+	 * @return ?string
+	 */
 	public function body_ciphertext(): ?string {
 		return $this->body_ciphertext;
 	}
 
+	/**
+	 * Fixed taxonomy code, set only when status is failed.
+	 *
+	 * @return ?string
+	 */
 	public function failure_class(): ?string {
 		return $this->failure_class;
 	}
 
+	/**
+	 * The requesting operator, or null once anonymized on account deletion.
+	 *
+	 * @return ?int
+	 */
 	public function requested_by_user_id(): ?int {
 		return $this->requested_by_user_id;
 	}
 
+	/**
+	 * The reviewing operator, once set.
+	 *
+	 * @return ?int
+	 */
 	public function reviewed_by_user_id(): ?int {
 		return $this->reviewed_by_user_id;
 	}
 
+	/**
+	 * The current Action Scheduler action id.
+	 *
+	 * @return ?string
+	 */
 	public function job_reference(): ?string {
 		return $this->job_reference;
 	}
 
+	/**
+	 * The current generation-claim token.
+	 *
+	 * @return ?string
+	 */
 	public function lease_token(): ?string {
 		return $this->lease_token;
 	}
 
+	/**
+	 * When the current claim expires.
+	 *
+	 * @return ?string
+	 */
 	public function generation_lease_expires_at(): ?string {
 		return $this->generation_lease_expires_at;
 	}
 
+	/**
+	 * When the current claim was taken.
+	 *
+	 * @return ?string
+	 */
 	public function claimed_at(): ?string {
 		return $this->claimed_at;
 	}
 
+	/**
+	 * Total generation attempts across all recovery paths.
+	 *
+	 * @return int
+	 */
 	public function attempt_count(): int {
 		return $this->attempt_count;
 	}
 
+	/**
+	 * Creation timestamp.
+	 *
+	 * @return string
+	 */
 	public function created_at(): string {
 		return $this->created_at;
 	}
 
+	/**
+	 * When the draft body was produced.
+	 *
+	 * @return ?string
+	 */
 	public function generated_at(): ?string {
 		return $this->generated_at;
 	}
 
+	/**
+	 * When the operator marked it reviewed/approved/discarded.
+	 *
+	 * @return ?string
+	 */
 	public function reviewed_at(): ?string {
 		return $this->reviewed_at;
 	}
 
+	/**
+	 * Last status-transition timestamp.
+	 *
+	 * @return string
+	 */
 	public function updated_at(): string {
 		return $this->updated_at;
 	}
 
+	/**
+	 * Whether this draft is currently active (`queued` or `generating`).
+	 *
+	 * @return bool
+	 */
 	public function is_active(): bool {
 		return in_array( $this->status, array( 'queued', 'generating' ), true );
 	}
 
+	/**
+	 * Whether this draft is retained (`generated`, `reviewed`, or `approved`).
+	 *
+	 * @return bool
+	 */
 	public function is_retained(): bool {
 		return in_array( $this->status, array( 'generated', 'reviewed', 'approved' ), true );
 	}

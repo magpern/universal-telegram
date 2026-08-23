@@ -32,14 +32,29 @@ final class BuiltPrompt {
 		private readonly string $context_fingerprint
 	) {}
 
+	/**
+	 * The bounded, fully-assembled provider request.
+	 *
+	 * @return AiRequest
+	 */
 	public function request(): AiRequest {
 		return $this->request;
 	}
 
+	/**
+	 * JSON array of {post_id, revision_id} for every source used.
+	 *
+	 * @return string
+	 */
 	public function source_ids_json(): string {
 		return $this->source_ids_json;
 	}
 
+	/**
+	 * SHA-256 of the exact submitted system+user content.
+	 *
+	 * @return string
+	 */
 	public function context_fingerprint(): string {
 		return $this->context_fingerprint;
 	}

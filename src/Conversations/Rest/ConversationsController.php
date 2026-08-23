@@ -128,6 +128,7 @@ final class ConversationsController {
 	 * @param ImmediateDeliveryAttempt       $immediate_attempt  The bounded, claim-protected primary delivery mechanism (M06.2 corrective plan v2 §3.2, ADR-0023 amendment).
 	 * @param PromptDeliveryFallback         $prompt_fallback     The host-independent bounded second-layer fallback (§3.3); owns its own ExpeditedDispatchTrigger reference for the final, demoted best-effort nudge (§3.4).
 	 * @param Settings                       $settings            Reads chat_widget_allow_anonymous (M06.3.1 addendum).
+	 * @param AIProviderRepository           $ai_provider_repository Resolves the visitor acknowledgement gate (M09, docs/adr/0028 decision 1).
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,

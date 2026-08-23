@@ -14,7 +14,7 @@ use UniversalTelegram\Persistence\SchemaHealth;
 use WP_UnitTestCase;
 
 /**
- * docs/adr/0028 decision 2: source-only, unconditional grounding — only
+ * Docs/adr/0028 decision 2: source-only, unconditional grounding — only
  * published, non-password-protected, explicitly-approved content is
  * eligible, revalidated against a captured revision marker; top_matches()
  * derives its query only from the conversation's own last visitor
@@ -80,6 +80,7 @@ final class ApprovedContentRepositoryTest extends WP_UnitTestCase {
 				'post_content' => 'Edited content after approval.',
 			)
 		);
+		$this->force_post_modified_gmt_forward( $post_id );
 
 		$this->assertFalse( $repository->is_currently_approved( $post_id ), 'Editing a post must invalidate its prior approval.' );
 
@@ -142,6 +143,7 @@ final class ApprovedContentRepositoryTest extends WP_UnitTestCase {
 				'post_content' => 'Shipping takes five to seven business days for standard delivery, updated.',
 			)
 		);
+		$this->force_post_modified_gmt_forward( $post_id );
 
 		$conversation_id = $this->conversation_id();
 		$this->message_repository()->create( $conversation_id, 'visitor', 'How long does shipping take?' );
@@ -149,5 +151,35 @@ final class ApprovedContentRepositoryTest extends WP_UnitTestCase {
 		$matches = $repository->top_matches( $conversation_id );
 
 		$this->assertSame( array(), $matches, 'A source edited since approval must be excluded until re-approved.' );
+	}
+
+	/**
+	 * Forces a post's post_modified/post_modified_gmt distinctly forward
+	 * of whatever value it currently holds, then clears the post cache.
+	 * WordPress's own wp_insert_post()/wp_update_post() always recomputes
+	 * post_modified as current_time('mysql') on every update — any
+	 * explicitly-passed post_modified/post_modified_gmt in the $postarr
+	 * is silently discarded — so a fast test run can otherwise land an
+	 * approval and a subsequent edit in the identical wall-clock second,
+	 * making the two revision markers coincidentally equal rather than
+	 * genuinely testing the staleness comparison. Writing directly to
+	 * wp_posts bypasses that recomputation.
+	 *
+	 * @param int $post_id The post to bump.
+	 */
+	private function force_post_modified_gmt_forward( int $post_id ): void {
+		global $wpdb;
+
+		$forced = gmdate( 'Y-m-d H:i:s', time() + 5 );
+		$wpdb->update(
+			$wpdb->posts,
+			array(
+				'post_modified'     => $forced,
+				'post_modified_gmt' => $forced,
+			),
+			array( 'ID' => $post_id )
+		);
+
+		clean_post_cache( $post_id );
 	}
 }

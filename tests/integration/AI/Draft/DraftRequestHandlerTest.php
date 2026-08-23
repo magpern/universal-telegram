@@ -14,21 +14,46 @@ use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Queue\Dispatcher;
+use UniversalTelegram\Queue\WorkerRunner;
+use ActionScheduler;
 use WP_UnitTestCase;
 
 /**
- * docs/adr/0028 decisions 1 and 5: full eligibility gating (AI
+ * Docs/adr/0028 decisions 1 and 5: full eligibility gating (AI
  * disabled/unacknowledged/not found), conversation-row-locked one-active-
  * draft idempotency under a simulated concurrent duplicate request, the
  * one-rule cooldown, and the reject-while-retained rule.
  */
 final class DraftRequestHandlerTest extends WP_UnitTestCase {
 
-	protected function tear_down(): void {
+	/**
+	 * Explicit reset, not an assumption: the singleton ai_config row, the
+	 * ai_drafts table, and Action Scheduler's own tables are not reliably
+	 * rolled back by WP_UnitTestCase's per-test transaction wrapping once
+	 * a DDL statement elsewhere in the same run has forced an implicit
+	 * commit — the same root cause already documented elsewhere in this
+	 * suite for plain option writes, and the same reason
+	 * Queue\QueueHealthTest resets Action Scheduler's group in setUp().
+	 */
+	protected function setUp(): void {
+		parent::setUp();
+		$this->reset_ai_state();
+	}
+
+	protected function tearDown(): void {
+		$this->reset_ai_state();
+		parent::tearDown();
+	}
+
+	private function reset_ai_state(): void {
 		global $wpdb;
 		$wpdb->query( "DELETE FROM {$wpdb->prefix}universal_telegram_ai_drafts" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$wpdb->query( "UPDATE {$wpdb->prefix}universal_telegram_ai_config SET enabled = 0, model = '', api_key_ciphertext = NULL WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		parent::tear_down();
+
+		$ids = ActionScheduler::store()->query_actions( array( 'group' => WorkerRunner::GROUP ) );
+		foreach ( (array) $ids as $id ) {
+			ActionScheduler::store()->delete_action( (int) $id );
+		}
 	}
 
 	private function drafts(): AiDraftRepository {
@@ -137,7 +162,7 @@ final class DraftRequestHandlerTest extends WP_UnitTestCase {
 		global $wpdb;
 		$count = (int) $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT COUNT(*) FROM {$wpdb->prefix}" . Migrator::AI_DRAFTS_TABLE . ' WHERE conversation_id = %d', // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT COUNT(*) FROM {$wpdb->prefix}" . Migrator::AI_DRAFTS_TABLE . ' WHERE conversation_id = %d', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 				$conversation_id
 			)
 		);

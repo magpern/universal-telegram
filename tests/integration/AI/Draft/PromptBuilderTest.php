@@ -15,7 +15,7 @@ use UniversalTelegram\Persistence\SchemaHealth;
 use WP_UnitTestCase;
 
 /**
- * docs/adr/0028 decisions 2 and 7: source-only grounding, fixed
+ * Docs/adr/0028 decisions 2 and 7: source-only grounding, fixed
  * system/user split, angle-bracket delimiter-injection defense, bounded
  * context, and the no_matching_source refusal path.
  */

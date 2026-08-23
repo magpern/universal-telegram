@@ -101,7 +101,7 @@ class ApprovedContentPage {
 				checked( $candidate['approved'], true, false ),
 				esc_html( get_the_title( $post ) ),
 				esc_html( $post->post_type ),
-				$status
+				esc_html( $status )
 			);
 		}
 

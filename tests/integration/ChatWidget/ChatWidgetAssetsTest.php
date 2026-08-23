@@ -26,11 +26,24 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 		global $wp_scripts, $wp_styles;
 		$wp_scripts = null; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
 		$wp_styles  = null; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+
+		// Explicit reset, not an assumption (M09, docs/adr/0028): the
+		// singleton ai_config row is not reliably rolled back by
+		// WP_UnitTestCase's per-test transaction wrapping once a DDL
+		// statement elsewhere in the same run has forced an implicit
+		// commit — a prior test's "enabled" state would otherwise leak
+		// into this file's own "disabled by default" assertions.
+		global $wpdb;
+		$wpdb->query( "UPDATE {$wpdb->prefix}universal_telegram_ai_config SET enabled = 0, model = '', api_key_ciphertext = NULL WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	}
 
 	protected function tearDown(): void {
 		wp_deregister_script( 'universal-telegram-chat-widget' );
 		wp_deregister_style( 'universal-telegram-chat-widget' );
+
+		global $wpdb;
+		$wpdb->query( "UPDATE {$wpdb->prefix}universal_telegram_ai_config SET enabled = 0, model = '', api_key_ciphertext = NULL WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
 		parent::tearDown();
 	}
 
@@ -108,7 +121,7 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * docs/adr/0028 decision 1: aiEnabled defaults false and the config
+	 * Docs/adr/0028 decision 1: aiEnabled defaults false and the config
 	 * island never leaks the credential or model identifier — only the
 	 * fixed, public enablement flag and disclosure text.
 	 */

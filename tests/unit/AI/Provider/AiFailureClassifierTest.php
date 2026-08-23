@@ -11,7 +11,7 @@ use UniversalTelegram\AI\Provider\AiResult;
 use PHPUnit\Framework\TestCase;
 
 /**
- * docs/adr/0028 decision 5: mirrors TelegramFailureClassifierTest's exact
+ * Docs/adr/0028 decision 5: mirrors TelegramFailureClassifierTest's exact
  * structure. No WordPress bootstrap needed — pure classification logic.
  */
 final class AiFailureClassifierTest extends TestCase {

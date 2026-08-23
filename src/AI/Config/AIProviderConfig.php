@@ -41,22 +41,47 @@ final class AIProviderConfig {
 		private readonly string $updated_at
 	) {}
 
+	/**
+	 * Fixed 'openai' in M09.
+	 *
+	 * @return string
+	 */
 	public function provider(): string {
 		return $this->provider;
 	}
 
+	/**
+	 * Administrator-entered, bounded model identifier.
+	 *
+	 * @return string
+	 */
 	public function model(): string {
 		return $this->model;
 	}
 
+	/**
+	 * CredentialVault-encrypted API key, null until first configured.
+	 *
+	 * @return ?string
+	 */
 	public function api_key_ciphertext(): ?string {
 		return $this->api_key_ciphertext;
 	}
 
+	/**
+	 * Whether a non-empty credential is currently stored.
+	 *
+	 * @return bool
+	 */
 	public function has_credential(): bool {
 		return null !== $this->api_key_ciphertext && '' !== $this->api_key_ciphertext;
 	}
 
+	/**
+	 * Whether AI draft generation is enabled site-wide.
+	 *
+	 * @return bool
+	 */
 	public function is_enabled(): bool {
 		return $this->enabled;
 	}
@@ -70,18 +95,38 @@ final class AIProviderConfig {
 		return $this->enabled && $this->has_credential() && '' !== $this->model;
 	}
 
+	/**
+	 * Current disclosure-text version tag.
+	 *
+	 * @return string
+	 */
 	public function ack_policy_version(): string {
 		return $this->ack_policy_version;
 	}
 
+	/**
+	 * Current disclosure copy shown in the chat widget.
+	 *
+	 * @return string
+	 */
 	public function ack_text(): string {
 		return $this->ack_text;
 	}
 
+	/**
+	 * Creation timestamp.
+	 *
+	 * @return string
+	 */
 	public function created_at(): string {
 		return $this->created_at;
 	}
 
+	/**
+	 * Last-modified timestamp.
+	 *
+	 * @return string
+	 */
 	public function updated_at(): string {
 		return $this->updated_at;
 	}

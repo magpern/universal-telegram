@@ -302,11 +302,20 @@ final class Conversation {
 	 * backfill or re-prompt ever changes that for an existing row.
 	 *
 	 * @param string $current_ack_policy_version The AI config's current ack_policy_version.
+	 *
+	 * @return bool
 	 */
 	public function is_ai_draft_eligible( string $current_ack_policy_version ): bool {
 		return null !== $this->ai_ack_policy_version && $this->ai_ack_policy_version === $current_ack_policy_version;
 	}
 
+	/**
+	 * Set only if the visitor explicitly acknowledged AI processing while
+	 * it was enabled; null means permanently AI-draft-ineligible (M09,
+	 * docs/adr/0028 decision 1).
+	 *
+	 * @return string|null
+	 */
 	public function ai_ack_policy_version(): ?string {
 		return $this->ai_ack_policy_version;
 	}

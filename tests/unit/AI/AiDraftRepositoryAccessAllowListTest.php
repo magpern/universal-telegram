@@ -8,7 +8,7 @@ namespace UniversalTelegram\Tests\AI;
 use PHPUnit\Framework\TestCase;
 
 /**
- * docs/adr/0028 decision 6: AiDraftRepository is referenced only by a
+ * Docs/adr/0028 decision 6: AiDraftRepository is referenced only by a
  * fixed six-class allow-list. Statically scans every PHP file under src/
  * for a reference to AiDraftRepository (a `use` import, a constructor
  * type-hint, or a `new AiDraftRepository(` construction) and asserts the
@@ -64,7 +64,7 @@ final class AiDraftRepositoryAccessAllowListTest extends TestCase {
 				continue;
 			}
 
-			$contents = file_get_contents( $file->getPathname() );
+			$contents = file_get_contents( $file->getPathname() ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local repository source file, never a remote URL.
 
 			if ( false === $contents ) {
 				continue;
@@ -92,7 +92,7 @@ final class AiDraftRepositoryAccessAllowListTest extends TestCase {
 	}
 
 	public function test_no_visitor_facing_or_telegram_outbound_class_references_it(): void {
-		$src_root      = dirname( __DIR__, 3 ) . '/src';
+		$src_root        = dirname( __DIR__, 3 ) . '/src';
 		$prohibited_dirs = array(
 			$src_root . '/Conversations/Rest',
 			$src_root . '/ChatWidget',
@@ -112,7 +112,7 @@ final class AiDraftRepositoryAccessAllowListTest extends TestCase {
 					continue;
 				}
 
-				$contents = file_get_contents( $file->getPathname() );
+				$contents = file_get_contents( $file->getPathname() ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local repository source file, never a remote URL.
 
 				$this->assertStringNotContainsString(
 					'AiDraftRepository',

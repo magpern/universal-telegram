@@ -40,10 +40,10 @@ class DraftRequestHandler {
 	/**
 	 * Constructor.
 	 *
-	 * @param AiDraftRepository     $drafts          Transactional request/idempotency/cooldown enforcement.
-	 * @param AIProviderRepository  $provider_config Reads enablement/model/provider.
+	 * @param AiDraftRepository      $drafts          Transactional request/idempotency/cooldown enforcement.
+	 * @param AIProviderRepository   $provider_config Reads enablement/model/provider.
 	 * @param ConversationRepository $conversations  Reads the conversation's own acknowledgement state.
-	 * @param Dispatcher            $dispatcher      Enqueues the opaque generation job.
+	 * @param Dispatcher             $dispatcher      Enqueues the opaque generation job.
 	 */
 	public function __construct(
 		private readonly AiDraftRepository $drafts,

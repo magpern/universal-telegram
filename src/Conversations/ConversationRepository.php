@@ -66,6 +66,7 @@ class ConversationRepository {
 	 * @param string|null $start_idempotency_key The client-supplied start idempotency key, if any (M06 plan §0).
 	 * @param int|null    $owner_user_id         The authenticated WordPress user this conversation belongs to (M06.3.1, ADR-0025).
 	 * @param string|null $display_name_plaintext The server-derived display name to store atomically with this row, if any (M06.3.1, ADR-0025).
+	 * @param string|null $ai_ack_policy_version   Set only if the visitor explicitly acknowledged AI processing while it was enabled (M09, docs/adr/0028 decision 1).
 	 *
 	 * @return Conversation|null Null if the schema is unavailable or the write failed
 	 *                           (including a unique-constraint collision on start_idempotency_key
@@ -141,6 +142,7 @@ class ConversationRepository {
 	 * @param string      $start_idempotency_key  The client-supplied start idempotency key.
 	 * @param int         $owner_user_id          The authenticated WordPress user.
 	 * @param string      $display_name_plaintext The server-derived display name.
+	 * @param string|null $ai_ack_policy_version  Set only if the visitor explicitly acknowledged AI processing while it was enabled (M09, docs/adr/0028 decision 1).
 	 *
 	 * @return array{conversation: Conversation, secret: string|null, resumed: bool}|null
 	 */
@@ -1054,7 +1056,7 @@ class ConversationRepository {
 			null === $row['display_name_ciphertext'] ? null : (string) $row['display_name_ciphertext'],
 			isset( $row['owner_user_id'] ) ? (int) $row['owner_user_id'] : null,
 			isset( $row['assignee_last_seen_message_id'] ) ? (int) $row['assignee_last_seen_message_id'] : null,
-			isset( $row['ai_ack_policy_version'] ) && null !== $row['ai_ack_policy_version'] ? (string) $row['ai_ack_policy_version'] : null
+			isset( $row['ai_ack_policy_version'] ) ? (string) $row['ai_ack_policy_version'] : null
 		);
 	}
 

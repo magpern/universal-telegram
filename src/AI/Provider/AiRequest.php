@@ -34,18 +34,38 @@ final class AiRequest {
 		private readonly int $max_output_chars
 	) {}
 
+	/**
+	 * The administrator-configured model identifier.
+	 *
+	 * @return string
+	 */
 	public function model(): string {
 		return $this->model;
 	}
 
+	/**
+	 * The fixed, non-overridable policy/system message.
+	 *
+	 * @return string
+	 */
 	public function system_prompt(): string {
 		return $this->system_prompt;
 	}
 
+	/**
+	 * The delimited source excerpts and conversation context.
+	 *
+	 * @return string
+	 */
 	public function user_content(): string {
 		return $this->user_content;
 	}
 
+	/**
+	 * The hard output-length bound.
+	 *
+	 * @return int
+	 */
 	public function max_output_chars(): int {
 		return $this->max_output_chars;
 	}

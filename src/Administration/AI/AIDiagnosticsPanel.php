@@ -51,7 +51,11 @@ final class AIDiagnosticsPanel {
 	}
 
 	/**
+	 * The human-readable label for a circuit-breaker state.
+	 *
 	 * @param CircuitBreakerState $state The breaker's current state.
+	 *
+	 * @return string
 	 */
 	private function state_label( CircuitBreakerState $state ): string {
 		return match ( $state ) {

@@ -13,7 +13,7 @@ use UniversalTelegram\Persistence\SchemaHealth;
 use WP_UnitTestCase;
 
 /**
- * docs/adr/0028 decisions 3 and 5: the singleton config row is seeded by
+ * Docs/adr/0028 decisions 3 and 5: the singleton config row is seeded by
  * migration (never inserted here), AI cannot become enabled without a
  * non-empty credential and model, and disabling/deleting the credential
  * cancels any in-flight draft.
@@ -24,13 +24,29 @@ final class AIProviderRepositoryTest extends WP_UnitTestCase {
 		return new AIProviderRepository( new SchemaHealth(), new CredentialVault() );
 	}
 
-	protected function tear_down(): void {
+	/**
+	 * Explicit reset, not an assumption: the singleton ai_config row and
+	 * the ai_drafts table are not reliably rolled back by
+	 * WP_UnitTestCase's per-test transaction wrapping once a DDL
+	 * statement elsewhere in the same run (e.g. a Migrator test) has
+	 * forced an implicit commit — the exact same root cause already
+	 * documented for plain option writes elsewhere in this suite.
+	 */
+	protected function setUp(): void {
+		parent::setUp();
+		$this->reset_ai_state();
+	}
+
+	protected function tearDown(): void {
+		$this->reset_ai_state();
+		parent::tearDown();
+	}
+
+	private function reset_ai_state(): void {
 		global $wpdb;
 
 		$wpdb->query( "UPDATE {$wpdb->prefix}universal_telegram_ai_config SET model = '', enabled = 0, api_key_ciphertext = NULL WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$wpdb->query( "DELETE FROM {$wpdb->prefix}universal_telegram_ai_drafts" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-
-		parent::tear_down();
 	}
 
 	public function test_get_returns_the_migration_seeded_singleton_row(): void {
@@ -156,7 +172,7 @@ final class AIProviderRepositoryTest extends WP_UnitTestCase {
 
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
-				"SELECT status, failure_class, lease_token FROM {$wpdb->prefix}" . Migrator::AI_DRAFTS_TABLE . ' WHERE draft_uuid = %s', // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT status, failure_class, lease_token FROM {$wpdb->prefix}" . Migrator::AI_DRAFTS_TABLE . ' WHERE draft_uuid = %s', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 				$draft_uuid
 			),
 			ARRAY_A

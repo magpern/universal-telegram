@@ -46,7 +46,7 @@ final class ConversationPurgeServiceTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * docs/adr/0028 §4 retention table: an AI draft, whatever its status,
+	 * Docs/adr/0028 §4 retention table: an AI draft, whatever its status,
 	 * is never left orphaned against a deleted conversation.
 	 */
 	public function test_purge_deletes_ai_draft_rows_for_the_conversation(): void {
@@ -58,15 +58,15 @@ final class ConversationPurgeServiceTest extends WP_UnitTestCase {
 		$wpdb->insert(
 			$table,
 			array(
-				'draft_uuid'             => wp_generate_uuid4(),
-				'conversation_id'        => $conversation->id(),
-				'status'                 => 'generated',
-				'provider'               => 'openai',
-				'model'                  => 'gpt-4o-mini',
-				'prompt_policy_version'  => 'v1',
-				'requested_by_user_id'   => 1,
-				'created_at'             => current_time( 'mysql', true ),
-				'updated_at'             => current_time( 'mysql', true ),
+				'draft_uuid'            => wp_generate_uuid4(),
+				'conversation_id'       => $conversation->id(),
+				'status'                => 'generated',
+				'provider'              => 'openai',
+				'model'                 => 'gpt-4o-mini',
+				'prompt_policy_version' => 'v1',
+				'requested_by_user_id'  => 1,
+				'created_at'            => current_time( 'mysql', true ),
+				'updated_at'            => current_time( 'mysql', true ),
 			)
 		);
 

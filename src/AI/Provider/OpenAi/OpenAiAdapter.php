@@ -40,11 +40,13 @@ class OpenAiAdapter implements AiProviderInterface {
 
 	/**
 	 * {@inheritDoc}
+	 *
+	 * @param AiRequest $request The bounded, fully-assembled request.
 	 */
 	public function complete( AiRequest $request ): AiResult {
 		$body = array(
-			'model'    => $request->model(),
-			'messages' => array(
+			'model'      => $request->model(),
+			'messages'   => array(
 				array(
 					'role'    => 'system',
 					'content' => $request->system_prompt(),

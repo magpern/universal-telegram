@@ -16,16 +16,31 @@ use UniversalTelegram\Telegram\Reliability\CircuitBreaker;
 use WP_UnitTestCase;
 
 /**
- * docs/adr/0028 decision 6: read-only aggregate counts and circuit state
+ * Docs/adr/0028 decision 6: read-only aggregate counts and circuit state
  * only — never draft content, a credential, or a model identifier.
  */
 final class AIDiagnosticsPanelTest extends WP_UnitTestCase {
 
-	protected function tear_down(): void {
+	/**
+	 * Explicit reset, not an assumption: the ai_drafts table and the
+	 * 'ai_provider' circuit-breaker scope are not reliably rolled back by
+	 * WP_UnitTestCase's per-test transaction wrapping once a DDL
+	 * statement elsewhere in the same run has forced an implicit commit.
+	 */
+	protected function setUp(): void {
+		parent::setUp();
+		$this->reset_ai_state();
+	}
+
+	protected function tearDown(): void {
+		$this->reset_ai_state();
+		parent::tearDown();
+	}
+
+	private function reset_ai_state(): void {
 		global $wpdb;
 		$wpdb->query( "DELETE FROM {$wpdb->prefix}universal_telegram_ai_drafts" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$wpdb->query( "DELETE FROM {$wpdb->prefix}universal_telegram_circuit_breaker_state WHERE scope_type = 'ai_provider'" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		parent::tear_down();
 	}
 
 	private function drafts(): AiDraftRepository {

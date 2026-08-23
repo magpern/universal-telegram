@@ -31,10 +31,10 @@ final class ConversationDetailPage {
 	/**
 	 * Constructor.
 	 *
-	 * @param ConversationRepository     $conversations Conversation persistence.
-	 * @param MessageRepository          $messages      Conversation message persistence.
-	 * @param ConversationNoteRepository $notes         Internal note persistence.
-	 * @param OperatorIdentityRepository $identities    Operator identity mappings, for reply attribution.
+	 * @param ConversationRepository      $conversations Conversation persistence.
+	 * @param MessageRepository           $messages      Conversation message persistence.
+	 * @param ConversationNoteRepository  $notes         Internal note persistence.
+	 * @param OperatorIdentityRepository  $identities    Operator identity mappings, for reply attribution.
 	 * @param ConversationDraftPanel|null $draft_panel  AI draft request/review controls (M09, docs/adr/0028); null in contexts (e.g. some tests) that do not need it.
 	 */
 	public function __construct(

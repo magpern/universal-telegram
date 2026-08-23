@@ -18,11 +18,13 @@ use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Queue\RetryPolicy;
 use UniversalTelegram\Telegram\Reliability\CircuitBreaker;
+use UniversalTelegram\Queue\WorkerRunner;
+use ActionScheduler;
 use RuntimeException;
 use WP_UnitTestCase;
 
 /**
- * docs/adr/0028 decisions 4 and 5: the full AI-specific reliability
+ * Docs/adr/0028 decisions 4 and 5: the full AI-specific reliability
  * decision tree — circuit-open, concurrency-cap deferral, no-matching-
  * source, success, token-invalid, terminal, and retryable
  * (below/at the shared attempt budget) — mirroring
@@ -35,18 +37,41 @@ final class AIDraftGenerationHandlerTest extends WP_UnitTestCase {
 	 */
 	private array $filters_to_remove = array();
 
-	protected function tear_down(): void {
+	/**
+	 * Explicit reset, not an assumption: the singleton ai_config row, the
+	 * ai_drafts table, the 'ai_provider' circuit-breaker scope, and Action
+	 * Scheduler's own tables are not reliably rolled back by
+	 * WP_UnitTestCase's per-test transaction wrapping once a DDL statement
+	 * elsewhere in the same run has forced an implicit commit — the same
+	 * reason Queue\QueueHealthTest resets Action Scheduler's group in
+	 * setUp() rather than relying on tearDown alone.
+	 */
+	protected function setUp(): void {
+		parent::setUp();
+		$this->reset_ai_state();
+	}
+
+	protected function tearDown(): void {
 		foreach ( $this->filters_to_remove as $callback ) {
 			remove_filter( 'pre_http_request', $callback );
 		}
 		$this->filters_to_remove = array();
 
+		$this->reset_ai_state();
+
+		parent::tearDown();
+	}
+
+	private function reset_ai_state(): void {
 		global $wpdb;
 		$wpdb->query( "DELETE FROM {$wpdb->prefix}universal_telegram_ai_drafts" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$wpdb->query( "UPDATE {$wpdb->prefix}universal_telegram_ai_config SET enabled = 0, model = '', api_key_ciphertext = NULL WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$wpdb->query( "DELETE FROM {$wpdb->prefix}universal_telegram_circuit_breaker_state WHERE scope_type = 'ai_provider'" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
-		parent::tear_down();
+		$ids = ActionScheduler::store()->query_actions( array( 'group' => WorkerRunner::GROUP ) );
+		foreach ( (array) $ids as $id ) {
+			ActionScheduler::store()->delete_action( (int) $id );
+		}
 	}
 
 	private function fake_response( int $status, array $body ): void {
@@ -91,8 +116,8 @@ final class AIDraftGenerationHandlerTest extends WP_UnitTestCase {
 		);
 		( new ApprovedContentRepository( new MessageRepository( new SchemaHealth(), new CredentialVault() ) ) )->approve( $post_id );
 
-		$conversations    = new ConversationRepository( new SchemaHealth(), new CredentialVault(), new VisitorTokenGenerator() );
-		$conversation_id  = $conversations->create( wp_generate_uuid4(), 'hashed-secret', 1, null )->id();
+		$conversations   = new ConversationRepository( new SchemaHealth(), new CredentialVault(), new VisitorTokenGenerator() );
+		$conversation_id = $conversations->create( wp_generate_uuid4(), 'hashed-secret', 1, null )->id();
 		( new MessageRepository( new SchemaHealth(), new CredentialVault() ) )->create( $conversation_id, 'visitor', 'How long does shipping take?' );
 
 		return $conversation_id;
@@ -241,7 +266,7 @@ final class AIDraftGenerationHandlerTest extends WP_UnitTestCase {
 	public function test_concurrency_cap_defers_without_incrementing_attempt_count_or_throwing(): void {
 		$this->enable_provider();
 
-		$drafts          = $this->drafts();
+		$drafts            = $this->drafts();
 		$conversation_id_a = $this->conversation_with_approved_source_and_question();
 		$conversation_id_b = $this->conversation_with_approved_source_and_question();
 		$conversation_id_c = $this->conversation_with_approved_source_and_question();

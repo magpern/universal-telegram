@@ -31,18 +31,38 @@ final class ApprovedSource {
 		private readonly string $excerpt
 	) {}
 
+	/**
+	 * The approved post/page id.
+	 *
+	 * @return int
+	 */
 	public function post_id(): int {
 		return $this->post_id;
 	}
 
+	/**
+	 * The post_modified_gmt this excerpt was drawn from.
+	 *
+	 * @return string
+	 */
 	public function revision_id(): string {
 		return $this->revision_id;
 	}
 
+	/**
+	 * The post/page title.
+	 *
+	 * @return string
+	 */
 	public function title(): string {
 		return $this->title;
 	}
 
+	/**
+	 * A bounded (<=800 char) lead excerpt.
+	 *
+	 * @return string
+	 */
 	public function excerpt(): string {
 		return $this->excerpt;
 	}

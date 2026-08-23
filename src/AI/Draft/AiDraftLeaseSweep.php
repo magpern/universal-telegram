@@ -27,8 +27,8 @@ use UniversalTelegram\Queue\WorkerRunner;
  */
 final class AiDraftLeaseSweep {
 
-	public const JOB_TYPE       = 'ai_draft_lease_sweep';
-	public const INTERVAL_SECONDS = 60;
+	public const JOB_TYPE                      = 'ai_draft_lease_sweep';
+	public const INTERVAL_SECONDS              = 60;
 	public const MAX_ATTEMPTS_BEFORE_EXHAUSTED = 5;
 
 	/**
@@ -96,6 +96,12 @@ final class AiDraftLeaseSweep {
 
 		$action_id = as_schedule_single_action( time(), WorkerRunner::HOOK, $args, WorkerRunner::GROUP );
 
+		// Action Scheduler's own stub types this as always int, but its
+		// documented behaviour returns 0 on several internal failure paths;
+		// is_int() is kept for defensive robustness against a future
+		// return-type change, matching Dispatcher's identical guard.
+		// phpcs:ignore Squiz.Commenting.InlineComment.InvalidEndChar
+		// @phpstan-ignore function.alreadyNarrowedType
 		if ( is_int( $action_id ) && $action_id > 0 ) {
 			$this->drafts->set_job_reference( $draft->id(), (string) $action_id );
 		}

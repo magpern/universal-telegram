@@ -23,7 +23,7 @@ use UniversalTelegram\Conversations\MessageRepository;
  * message slot — that separation is fixed by AiRequest's own two-field
  * shape, not by convention here.
  *
- * build() returns null exactly when zero approved sources match — the
+ * Build() returns null exactly when zero approved sources match — the
  * only pre-call refusal case (`no_matching_source`); no provider call is
  * ever attempted for that outcome.
  */
@@ -76,8 +76,8 @@ PROMPT;
 			return null;
 		}
 
-		$source_block  = '';
-		$source_ids    = array();
+		$source_block = '';
+		$source_ids   = array();
 		foreach ( $sources as $source ) {
 			$source_block .= sprintf(
 				"<source id=\"%d\" title=\"%s\">\n%s\n</source>\n\n",
@@ -85,7 +85,7 @@ PROMPT;
 				$this->escape_for_delimiter( $source->title() ),
 				$this->escape_for_delimiter( $source->excerpt() )
 			);
-			$source_ids[] = array(
+			$source_ids[]  = array(
 				'post_id'     => $source->post_id(),
 				'revision_id' => $source->revision_id(),
 			);
@@ -112,7 +112,7 @@ PROMPT;
 	 * @param int $conversation_id The conversation to read.
 	 */
 	private function bounded_context_block( int $conversation_id ): string {
-		$all = $this->messages->messages_since( $conversation_id, 0 );
+		$all    = $this->messages->messages_since( $conversation_id, 0 );
 		$recent = array_slice( $all, -self::MAX_CONTEXT_MESSAGES );
 
 		$lines = array();
@@ -150,7 +150,11 @@ PROMPT;
 	}
 
 	/**
+	 * The combined character length of every context line.
+	 *
 	 * @param array<int, array{role: string, text: string}> $lines The bounded context lines.
+	 *
+	 * @return int
 	 */
 	private function total_chars( array $lines ): int {
 		$total = 0;

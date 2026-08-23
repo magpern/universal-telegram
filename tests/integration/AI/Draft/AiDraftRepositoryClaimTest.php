@@ -14,7 +14,7 @@ use UniversalTelegram\Persistence\SchemaHealth;
 use WP_UnitTestCase;
 
 /**
- * docs/adr/0028 decision 5, §3.1-B/§3.3/§3.5 of the frozen plan: race-safe
+ * Docs/adr/0028 decision 5, §3.1-B/§3.3/§3.5 of the frozen plan: race-safe
  * concurrency claim, compare-and-set completion/release/failure, and the
  * stale-lease sweep's own atomic reclaim/exhaust primitives.
  */
@@ -30,10 +30,27 @@ final class AiDraftRepositoryClaimTest extends WP_UnitTestCase {
 		return $conversations->create( wp_generate_uuid4(), 'hashed-secret', 1, null )->id();
 	}
 
-	protected function tear_down(): void {
+	/**
+	 * Explicit reset, not an assumption: the ai_drafts table is not
+	 * reliably rolled back by WP_UnitTestCase's per-test transaction
+	 * wrapping once a DDL statement elsewhere in the same run has forced
+	 * an implicit commit — several of this class's own tests assert an
+	 * exact concurrency cap, which a leaked 'generating' row from an
+	 * earlier test would silently defeat.
+	 */
+	protected function setUp(): void {
+		parent::setUp();
+		$this->reset_ai_drafts();
+	}
+
+	protected function tearDown(): void {
+		$this->reset_ai_drafts();
+		parent::tearDown();
+	}
+
+	private function reset_ai_drafts(): void {
 		global $wpdb;
 		$wpdb->query( "DELETE FROM {$wpdb->prefix}universal_telegram_ai_drafts" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		parent::tear_down();
 	}
 
 	public function test_claim_succeeds_on_a_queued_row_and_increments_attempt_count(): void {
@@ -51,7 +68,7 @@ final class AiDraftRepositoryClaimTest extends WP_UnitTestCase {
 	}
 
 	public function test_claim_fails_when_the_concurrency_cap_is_already_reached(): void {
-		$repository = $this->repository();
+		$repository     = $this->repository();
 		$conversation_a = $this->conversation_id();
 		$conversation_b = $this->conversation_id();
 		$conversation_c = $this->conversation_id();
@@ -207,7 +224,7 @@ final class AiDraftRepositoryClaimTest extends WP_UnitTestCase {
 		global $wpdb;
 		$wpdb->query(
 			$wpdb->prepare(
-				"UPDATE {$wpdb->prefix}" . Migrator::AI_DRAFTS_TABLE . ' SET generation_lease_expires_at = %s WHERE id = %d', // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"UPDATE {$wpdb->prefix}" . Migrator::AI_DRAFTS_TABLE . ' SET generation_lease_expires_at = %s WHERE id = %d', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 				gmdate( 'Y-m-d H:i:s', time() - 3600 ),
 				$draft_id
 			)

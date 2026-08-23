@@ -39,23 +39,23 @@ class AIDraftGenerationHandler {
 
 	public const JOB_TYPE = 'ai_draft_generate';
 
-	public const LEASE_SECONDS         = 90;
-	public const MAX_CONCURRENT        = 2;
-	public const CIRCUIT_SCOPE         = 'ai_provider';
-	public const CIRCUIT_SCOPE_ID      = 1;
-	private const CIRCUIT_THRESHOLD    = 3;
-	private const CIRCUIT_WINDOW_SECONDS = 600;
+	public const LEASE_SECONDS              = 90;
+	public const MAX_CONCURRENT             = 2;
+	public const CIRCUIT_SCOPE              = 'ai_provider';
+	public const CIRCUIT_SCOPE_ID           = 1;
+	private const CIRCUIT_THRESHOLD         = 3;
+	private const CIRCUIT_WINDOW_SECONDS    = 600;
 	private const CONCURRENCY_DEFER_SECONDS = 5;
 
 	/**
 	 * Constructor.
 	 *
-	 * @param AiDraftRepository     $drafts          Draft persistence, claim, and lease.
-	 * @param AIProviderRepository  $provider_config Reads enablement/model/credential.
-	 * @param PromptBuilder         $prompt_builder  Assembles the bounded, source-grounded prompt.
-	 * @param CircuitBreaker        $circuit_breaker Per-provider breaker, 'ai_provider' scope.
-	 * @param AiFailureClassifier   $classifier      Classifies a failed provider result.
-	 * @param RetryPolicy           $retry_policy    Consulted only for its own max_attempts().
+	 * @param AiDraftRepository    $drafts          Draft persistence, claim, and lease.
+	 * @param AIProviderRepository $provider_config Reads enablement/model/credential.
+	 * @param PromptBuilder        $prompt_builder  Assembles the bounded, source-grounded prompt.
+	 * @param CircuitBreaker       $circuit_breaker Per-provider breaker, 'ai_provider' scope.
+	 * @param AiFailureClassifier  $classifier      Classifies a failed provider result.
+	 * @param RetryPolicy          $retry_policy    Consulted only for its own max_attempts().
 	 */
 	public function __construct(
 		private readonly AiDraftRepository $drafts,

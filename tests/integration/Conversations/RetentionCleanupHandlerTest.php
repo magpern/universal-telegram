@@ -76,7 +76,7 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * docs/adr/0028 §4 retention table: AI draft bodies follow the exact
+	 * Docs/adr/0028 §4 retention table: AI draft bodies follow the exact
 	 * same 30-day nulling pass as message bodies.
 	 */
 	public function test_run_nulls_ai_draft_bodies_thirty_days_after_archival(): void {

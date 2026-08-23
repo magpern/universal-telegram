@@ -30,10 +30,10 @@ class AISettingsPage {
 
 	public const TAB_ID = 'ai';
 
-	public const ACTION_SAVE_SETTINGS   = 'universal_telegram_ai_save_settings';
-	public const ACTION_SET_CREDENTIAL  = 'universal_telegram_ai_set_credential';
+	public const ACTION_SAVE_SETTINGS     = 'universal_telegram_ai_save_settings';
+	public const ACTION_SET_CREDENTIAL    = 'universal_telegram_ai_set_credential';
 	public const ACTION_DELETE_CREDENTIAL = 'universal_telegram_ai_delete_credential';
-	public const ACTION_BUMP_ACK        = 'universal_telegram_ai_bump_ack';
+	public const ACTION_BUMP_ACK          = 'universal_telegram_ai_bump_ack';
 
 	/**
 	 * Constructor.

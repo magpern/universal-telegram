@@ -106,7 +106,7 @@ final class ApprovedContentRepository {
 				'post_type'      => array( 'post', 'page' ),
 				'post_status'    => 'publish',
 				'has_password'   => false,
-				'posts_per_page' => 200,
+				'posts_per_page' => 100,
 				'orderby'        => 'modified',
 				'order'          => 'DESC',
 				'no_found_rows'  => true,
@@ -117,7 +117,7 @@ final class ApprovedContentRepository {
 
 		foreach ( $query->posts as $post ) {
 			$is_marked_approved = '1' === get_post_meta( $post->ID, self::APPROVED_META_KEY, true );
-			$candidates[]        = array(
+			$candidates[]       = array(
 				'post'     => $post,
 				'approved' => $is_marked_approved,
 				'stale'    => $is_marked_approved && ! $this->is_currently_approved( $post->ID ),
@@ -194,7 +194,10 @@ final class ApprovedContentRepository {
 			}
 
 			if ( $score > 0 ) {
-				$scored[] = array( 'post' => $post, 'score' => $score );
+				$scored[] = array(
+					'post'  => $post,
+					'score' => $score,
+				);
 			}
 		}
 
@@ -261,10 +264,12 @@ final class ApprovedContentRepository {
 	private function tokenize( string $text ): array {
 		static $stopwords = array( 'the', 'a', 'an', 'is', 'are', 'to', 'of', 'and', 'or', 'i', 'you', 'it', 'in', 'on', 'for', 'my', 'me', 'do', 'does', 'how', 'can', 'what' );
 
-		$lower  = strtolower( $text );
-		$plain  = preg_replace( '/[^a-z0-9\s]/', ' ', $lower ) ?? $lower;
+		$lower = strtolower( $text );
+		$plain = preg_replace( '/[^a-z0-9\s]/', ' ', $lower ) ?? $lower;
+		$split = preg_split( '/\s+/', trim( $plain ) );
+
 		$tokens = array_filter(
-			preg_split( '/\s+/', trim( $plain ) ) ?: array(),
+			false !== $split ? $split : array(),
 			static fn( string $token ): bool => strlen( $token ) > 2 && ! in_array( $token, $stopwords, true )
 		);
 

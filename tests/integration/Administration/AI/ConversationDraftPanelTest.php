@@ -16,17 +16,32 @@ use UniversalTelegram\Persistence\SchemaHealth;
 use WP_UnitTestCase;
 
 /**
- * docs/adr/0028 decision 6: the operator-facing review/approve/discard
+ * Docs/adr/0028 decision 6: the operator-facing review/approve/discard
  * surface, with a fixed "NOT SENT" banner and no automatic send of any
  * kind — approving here only changes a status column.
  */
 final class ConversationDraftPanelTest extends WP_UnitTestCase {
 
-	protected function tear_down(): void {
+	/**
+	 * Explicit reset, not an assumption: the singleton ai_config row and
+	 * the ai_drafts table are not reliably rolled back by
+	 * WP_UnitTestCase's per-test transaction wrapping once a DDL
+	 * statement elsewhere in the same run has forced an implicit commit.
+	 */
+	protected function setUp(): void {
+		parent::setUp();
+		$this->reset_ai_state();
+	}
+
+	protected function tearDown(): void {
+		$this->reset_ai_state();
+		parent::tearDown();
+	}
+
+	private function reset_ai_state(): void {
 		global $wpdb;
 		$wpdb->query( "DELETE FROM {$wpdb->prefix}universal_telegram_ai_drafts" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$wpdb->query( "UPDATE {$wpdb->prefix}universal_telegram_ai_config SET enabled = 0, model = '', api_key_ciphertext = NULL WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		parent::tear_down();
 	}
 
 	private function drafts(): AiDraftRepository {

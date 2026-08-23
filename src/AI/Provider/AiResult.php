@@ -35,22 +35,47 @@ final class AiResult {
 		private readonly bool $is_network_error
 	) {}
 
+	/**
+	 * Whether a completion was successfully produced.
+	 *
+	 * @return bool
+	 */
 	public function ok(): bool {
 		return $this->ok;
 	}
 
+	/**
+	 * The completion text, truncated to the request's bound; present only when $ok.
+	 *
+	 * @return ?string
+	 */
 	public function text(): ?string {
 		return $this->text;
 	}
 
+	/**
+	 * Whether the raw completion exceeded the bound and was cut.
+	 *
+	 * @return bool
+	 */
 	public function truncated(): bool {
 		return $this->truncated;
 	}
 
+	/**
+	 * The HTTP status code, or null when no response was received at all.
+	 *
+	 * @return ?int
+	 */
 	public function http_status(): ?int {
 		return $this->http_status;
 	}
 
+	/**
+	 * True only when no HTTP response was received at all.
+	 *
+	 * @return bool
+	 */
 	public function is_network_error(): bool {
 		return $this->is_network_error;
 	}

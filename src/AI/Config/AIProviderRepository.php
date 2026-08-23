@@ -107,8 +107,8 @@ final class AIProviderRepository {
 			return false;
 		}
 
-		$model         = trim( $model );
-		$has_credential = $current->has_credential();
+		$model             = trim( $model );
+		$has_credential    = $current->has_credential();
 		$effective_enabled = $enabled && $has_credential && '' !== $model;
 
 		global $wpdb;

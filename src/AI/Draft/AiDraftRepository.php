@@ -73,16 +73,16 @@ final class AiDraftRepository {
 		$inserted = $wpdb->insert(
 			$wpdb->prefix . Migrator::AI_DRAFTS_TABLE,
 			array(
-				'draft_uuid'             => $draft_uuid,
-				'conversation_id'        => $conversation_id,
-				'status'                 => 'queued',
-				'provider'               => $provider,
-				'model'                  => $model,
-				'prompt_policy_version'  => $prompt_policy_version,
-				'requested_by_user_id'   => $requested_by_user_id,
-				'attempt_count'          => 0,
-				'created_at'             => $now,
-				'updated_at'             => $now,
+				'draft_uuid'            => $draft_uuid,
+				'conversation_id'       => $conversation_id,
+				'status'                => 'queued',
+				'provider'              => $provider,
+				'model'                 => $model,
+				'prompt_policy_version' => $prompt_policy_version,
+				'requested_by_user_id'  => $requested_by_user_id,
+				'attempt_count'         => 0,
+				'created_at'            => $now,
+				'updated_at'            => $now,
 			),
 			array( '%s', '%d', '%s', '%s', '%s', '%s', '%d', '%d', '%s', '%s' )
 		);
@@ -95,6 +95,8 @@ final class AiDraftRepository {
 	}
 
 	/**
+	 * Finds a draft by primary key.
+	 *
 	 * @param int $id Primary key.
 	 *
 	 * @return AiDraft|null
@@ -113,6 +115,8 @@ final class AiDraftRepository {
 	}
 
 	/**
+	 * Finds a draft by its opaque queue/reference identifier.
+	 *
 	 * @param string $draft_uuid The opaque queue/reference identifier.
 	 *
 	 * @return AiDraft|null
@@ -840,16 +844,19 @@ final class AiDraftRepository {
 		$set_clauses[] = 'updated_at = %s';
 		$set_values[]  = current_time( 'mysql', true );
 
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- column names come only from this file's own fixed internal call sites, never user input; placeholders are filled by the immediately following prepare() call.
 		$sql = "UPDATE {$table} SET " . implode( ', ', $set_clauses ) . " WHERE id = %d AND status IN ({$placeholders})";
 
 		$updated = $wpdb->query(
-			$wpdb->prepare( $sql, array_merge( $set_values, array( $id ), $from ) ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->prepare( $sql, array_merge( $set_values, array( $id ), $from ) ) // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- $sql is this method's own fixed-shape format string (see comment above), never user input.
 		);
 
 		return false !== $updated && $updated > 0;
 	}
 
 	/**
+	 * Finds the single draft for a conversation matching any of the given statuses.
+	 *
 	 * @param int                $conversation_id The owning conversation.
 	 * @param array<int, string> $statuses        Statuses to match.
 	 *

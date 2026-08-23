@@ -39,12 +39,12 @@ final class DiagnosticsPage {
 	/**
 	 * Constructor.
 	 *
-	 * @param DiagnosticsReport $report                             The report data source.
-	 * @param SchemaHealth      $schema_health                       The current schema-availability state.
-	 * @param SelfTest          $self_test                           The bounded diagnostic self-test.
-	 * @param QueueHealthAlert  $queue_health_alert                  The alert computation for the site-wide banner.
-	 * @param int               $stale_pending_threshold_seconds      The message-staleness threshold, in seconds.
-	 * @param int               $stale_registration_threshold_hours   The registration-staleness threshold, in hours.
+	 * @param DiagnosticsReport       $report                             The report data source.
+	 * @param SchemaHealth            $schema_health                       The current schema-availability state.
+	 * @param SelfTest                $self_test                           The bounded diagnostic self-test.
+	 * @param QueueHealthAlert        $queue_health_alert                  The alert computation for the site-wide banner.
+	 * @param int                     $stale_pending_threshold_seconds      The message-staleness threshold, in seconds.
+	 * @param int                     $stale_registration_threshold_hours   The registration-staleness threshold, in hours.
 	 * @param AIDiagnosticsPanel|null $ai_panel The AI provider panel (M09, docs/adr/0028); null in contexts that do not need it.
 	 */
 	public function __construct(

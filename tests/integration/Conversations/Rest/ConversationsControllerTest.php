@@ -63,6 +63,12 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		// Settings default alone.
 		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_allow_anonymous' => false ) ) );
 
+		// Same root cause, for the M09 singleton ai_config row
+		// (docs/adr/0028): a prior test's "enabled" state must not leak
+		// into this file's own disabled-by-default acknowledgement tests.
+		global $wpdb;
+		$wpdb->query( "UPDATE {$wpdb->prefix}universal_telegram_ai_config SET enabled = 0, model = '', api_key_ciphertext = NULL WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();
 
@@ -831,7 +837,7 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * docs/adr/0028 decision 1: ai_ack_policy_version is set only when AI is
+	 * Docs/adr/0028 decision 1: ai_ack_policy_version is set only when AI is
 	 * enabled AND the visitor submitted the literal boolean true — never
 	 * inferred from enablement alone.
 	 */

@@ -13,17 +13,32 @@ use UniversalTelegram\Persistence\SchemaHealth;
 use WP_UnitTestCase;
 
 /**
- * docs/adr/0028 §4 retention table: operator account deletion anonymizes
+ * Docs/adr/0028 §4 retention table: operator account deletion anonymizes
  * requester/reviewer identity on every draft — draft content and status
  * are untouched, mirroring ConversationNote's identical precedent
  * (ADR-0026 decision 12b).
  */
 final class AiDraftRepositoryAnonymizationTest extends WP_UnitTestCase {
 
-	protected function tear_down(): void {
+	/**
+	 * Explicit reset, not an assumption: the ai_drafts table is not
+	 * reliably rolled back by WP_UnitTestCase's per-test transaction
+	 * wrapping once a DDL statement elsewhere in the same run has forced
+	 * an implicit commit.
+	 */
+	protected function setUp(): void {
+		parent::setUp();
+		$this->reset_ai_drafts();
+	}
+
+	protected function tearDown(): void {
+		$this->reset_ai_drafts();
+		parent::tearDown();
+	}
+
+	private function reset_ai_drafts(): void {
 		global $wpdb;
 		$wpdb->query( "DELETE FROM {$wpdb->prefix}universal_telegram_ai_drafts" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		parent::tear_down();
 	}
 
 	private function repository(): AiDraftRepository {
