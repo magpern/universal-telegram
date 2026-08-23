@@ -43,6 +43,7 @@ final class Conversation {
 	 * @param string|null $display_name_ciphertext  Encrypted visitor display name, or null if none is stored yet (M06.3, ADR-0024).
 	 * @param int|null    $owner_user_id            The authenticated WordPress user this conversation belongs to, or null for a legacy/ownerless row or one whose owner account was deleted (M06.3.1, ADR-0025).
 	 * @param int|null    $assignee_last_seen_message_id The highest message id the currently assigned operator has viewed, or null if unset/reset on reassignment (M07, docs/adr/0026).
+	 * @param string|null $ai_ack_policy_version          Set only if the visitor explicitly acknowledged AI processing at creation time while it was enabled; null means permanently AI-draft-ineligible (M09, docs/adr/0028 decision 1). Distinct from consent_state, which M09 does not use.
 	 */
 	public function __construct(
 		private readonly int $id,
@@ -66,7 +67,8 @@ final class Conversation {
 		private readonly ?string $topic_claim_expires_at = null,
 		private readonly ?string $display_name_ciphertext = null,
 		private readonly ?int $owner_user_id = null,
-		private readonly ?int $assignee_last_seen_message_id = null
+		private readonly ?int $assignee_last_seen_message_id = null,
+		private readonly ?string $ai_ack_policy_version = null
 	) {}
 
 	/**
@@ -291,5 +293,21 @@ final class Conversation {
 	 */
 	public function assignee_last_seen_message_id(): ?int {
 		return $this->assignee_last_seen_message_id;
+	}
+
+	/**
+	 * Whether this conversation is currently AI-draft-eligible under the
+	 * given current policy version (docs/adr/0028 decision 1) — null or a
+	 * stale (non-matching) version means permanently ineligible; no
+	 * backfill or re-prompt ever changes that for an existing row.
+	 *
+	 * @param string $current_ack_policy_version The AI config's current ack_policy_version.
+	 */
+	public function is_ai_draft_eligible( string $current_ack_policy_version ): bool {
+		return null !== $this->ai_ack_policy_version && $this->ai_ack_policy_version === $current_ack_policy_version;
+	}
+
+	public function ai_ack_policy_version(): ?string {
+		return $this->ai_ack_policy_version;
 	}
 }

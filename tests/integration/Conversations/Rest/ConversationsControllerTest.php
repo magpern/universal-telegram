@@ -5,6 +5,7 @@
 
 namespace UniversalTelegram\Tests\Integration\Conversations\Rest;
 
+use UniversalTelegram\AI\Config\AIProviderRepository;
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationOutboundDispatcher;
 use UniversalTelegram\Conversations\ConversationOutboundHandler;
@@ -47,6 +48,7 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 	private BotProfileRepository $bots;
 	private DestinationRepository $destinations;
 	private ConversationsController $controller;
+	private AIProviderRepository $ai_provider;
 	private SpyExpeditedDispatchTrigger $expedited_dispatch;
 	private int $user_id;
 	private string $nonce;
@@ -70,6 +72,7 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 		$this->bots               = new BotProfileRepository( $schema_health, $vault );
 		$this->destinations       = new DestinationRepository( $schema_health );
 		$this->expedited_dispatch = new SpyExpeditedDispatchTrigger( new AuditLogger( $schema_health, new Redactor() ) );
+		$this->ai_provider        = new AIProviderRepository( $schema_health, $vault );
 
 		$this->controller = $this->build_controller( $schema_health, new RateLimiter( $schema_health ), $this->expedited_dispatch );
 
@@ -130,7 +133,8 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 			new ConversationOutboundDispatcher( $dispatcher ),
 			$immediate_attempt,
 			$prompt_fallback,
-			new Settings()
+			new Settings(),
+			$this->ai_provider
 		);
 	}
 
@@ -824,6 +828,68 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 
 		$this->assertSame( $this->user_id, $conversation->owner_user_id() );
 		$this->assertSame( 'Alice', $this->conversations->decrypt_display_name( $conversation ) );
+	}
+
+	/**
+	 * docs/adr/0028 decision 1: ai_ack_policy_version is set only when AI is
+	 * enabled AND the visitor submitted the literal boolean true — never
+	 * inferred from enablement alone.
+	 */
+	public function test_start_records_no_acknowledgement_when_ai_is_disabled_even_if_ai_ack_is_true(): void {
+		$this->bots->create( 'Support Bot', 'token' );
+
+		$response     = $this->controller->handle_start( $this->start_request( '{"ai_ack":true}' ) );
+		$conversation = $this->conversations->find_by_uuid( $response->get_data()['conversation_uuid'] );
+
+		$this->assertNull( $conversation->ai_ack_policy_version() );
+	}
+
+	public function test_start_records_no_acknowledgement_when_ai_ack_is_omitted_even_if_ai_is_enabled(): void {
+		$this->ai_provider->set_credential( 'sk-test-key' );
+		$this->ai_provider->update_settings( 'gpt-4o-mini', true );
+		$this->bots->create( 'Support Bot', 'token' );
+
+		$response     = $this->controller->handle_start( $this->start_request() );
+		$conversation = $this->conversations->find_by_uuid( $response->get_data()['conversation_uuid'] );
+
+		$this->assertNull( $conversation->ai_ack_policy_version() );
+	}
+
+	public function test_start_records_no_acknowledgement_when_ai_ack_is_malformed(): void {
+		$this->ai_provider->set_credential( 'sk-test-key' );
+		$this->ai_provider->update_settings( 'gpt-4o-mini', true );
+		$this->bots->create( 'Support Bot', 'token' );
+
+		$response     = $this->controller->handle_start( $this->start_request( '{"ai_ack":"yes"}' ) );
+		$conversation = $this->conversations->find_by_uuid( $response->get_data()['conversation_uuid'] );
+
+		$this->assertNull( $conversation->ai_ack_policy_version() );
+	}
+
+	public function test_start_records_the_current_ack_policy_version_when_ai_is_enabled_and_acknowledged(): void {
+		$this->ai_provider->set_credential( 'sk-test-key' );
+		$this->ai_provider->update_settings( 'gpt-4o-mini', true );
+		$this->bots->create( 'Support Bot', 'token' );
+
+		$response     = $this->controller->handle_start( $this->start_request( '{"ai_ack":true}' ) );
+		$conversation = $this->conversations->find_by_uuid( $response->get_data()['conversation_uuid'] );
+
+		$this->assertSame( $this->ai_provider->get()->ack_policy_version(), $conversation->ai_ack_policy_version() );
+		$this->assertTrue( $conversation->is_ai_draft_eligible( $this->ai_provider->get()->ack_policy_version() ) );
+	}
+
+	public function test_start_anonymous_acknowledgement_uses_the_identical_field_with_no_new_identifier(): void {
+		$this->allow_anonymous_chat( true );
+		wp_set_current_user( 0 );
+		$this->ai_provider->set_credential( 'sk-test-key' );
+		$this->ai_provider->update_settings( 'gpt-4o-mini', true );
+		$this->bots->create( 'Support Bot', 'token' );
+
+		$response     = $this->controller->handle_start( $this->start_request( '{"ai_ack":true}', null, null, false ) );
+		$conversation = $this->conversations->find_by_uuid( $response->get_data()['conversation_uuid'] );
+
+		$this->assertSame( $this->ai_provider->get()->ack_policy_version(), $conversation->ai_ack_policy_version() );
+		$this->assertNull( $conversation->owner_user_id() );
 	}
 
 	public function test_start_anonymous_replay_does_not_cross_with_an_owned_conversations_key(): void {

@@ -5,6 +5,7 @@
 
 namespace UniversalTelegram\Tests\Integration\ChatWidget;
 
+use UniversalTelegram\AI\Config\AIProviderRepository;
 use UniversalTelegram\ChatWidget\AccountUrlResolver;
 use UniversalTelegram\ChatWidget\ChatWidgetAssets;
 use UniversalTelegram\ChatWidget\ChatWidgetAvailability;
@@ -44,7 +45,7 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 		$bots          = new BotProfileRepository( $schema_health, new CredentialVault() );
 		$destinations  = new DestinationRepository( $schema_health );
 
-		return new ChatWidgetAssets( new ChatWidgetAvailability( new Settings(), new ChatProfileResolver( $bots, $destinations ) ), new Settings(), new AccountUrlResolver() );
+		return new ChatWidgetAssets( new ChatWidgetAvailability( new Settings(), new ChatProfileResolver( $bots, $destinations ) ), new Settings(), new AccountUrlResolver(), new AIProviderRepository( $schema_health, new CredentialVault() ) );
 	}
 
 	public function test_disabled_setting_enqueues_nothing_and_prints_nothing(): void {
@@ -104,6 +105,50 @@ final class ChatWidgetAssetsTest extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( 'conversation_uuid', $output );
 		$this->assertStringNotContainsString( 'secret', $output );
 		$this->assertSame( 1, substr_count( $output, '</script>' ) );
+	}
+
+	/**
+	 * docs/adr/0028 decision 1: aiEnabled defaults false and the config
+	 * island never leaks the credential or model identifier — only the
+	 * fixed, public enablement flag and disclosure text.
+	 */
+	public function test_config_island_ai_disabled_by_default_and_never_leaks_credential_or_model(): void {
+		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
+		$this->make_eligible_destination();
+
+		$this->go_to( home_url( '/' ) );
+		$assets = $this->assets();
+
+		ob_start();
+		$assets->print_config();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( '"aiEnabled":false', $output );
+		$this->assertStringNotContainsString( 'sk-test-key', $output );
+		$this->assertStringNotContainsString( 'gpt-4o-mini', $output );
+	}
+
+	public function test_config_island_reflects_ai_enabled_and_disclosure_text_once_configured(): void {
+		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_enabled' => true ) ) );
+		$this->make_eligible_destination();
+
+		$schema_health = new SchemaHealth();
+		$ai_provider   = new AIProviderRepository( $schema_health, new CredentialVault() );
+		$ai_provider->set_credential( 'sk-test-key' );
+		$ai_provider->update_settings( 'gpt-4o-mini', true );
+		$ai_provider->bump_ack_policy( 'v2-test', 'A distinctive disclosure sentence.' );
+
+		$this->go_to( home_url( '/' ) );
+		$assets = $this->assets();
+
+		ob_start();
+		$assets->print_config();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( '"aiEnabled":true', $output );
+		$this->assertStringContainsString( 'A distinctive disclosure sentence.', $output );
+		$this->assertStringNotContainsString( 'sk-test-key', $output );
+		$this->assertStringNotContainsString( 'gpt-4o-mini', $output );
 	}
 
 	public function test_config_island_is_identical_across_two_anonymous_requests_to_the_same_page(): void {

@@ -628,6 +628,12 @@ final class Plugin {
 
 		$this->credential_vault = new CredentialVault();
 
+		// Constructed early (M09, docs/adr/0028): ConversationsController
+		// needs it at conversation-creation time to resolve the visitor
+		// acknowledgement gate, well before the Hub's own AI tab is
+		// registered later in this method.
+		$this->ai_provider_repository = new AIProviderRepository( $this->schema_health, $this->credential_vault );
+
 		$this->capability_registrar = new CapabilityRegistrar();
 
 		$this->handler_registry = new HandlerRegistry();
@@ -780,7 +786,8 @@ final class Plugin {
 			$conversation_outbound_dispatcher,
 			$immediate_delivery_attempt,
 			$prompt_delivery_fallback,
-			$settings
+			$settings,
+			$this->ai_provider_repository
 		);
 		add_action( 'rest_api_init', array( $this->conversations_controller, 'register_routes' ) );
 
@@ -1050,7 +1057,8 @@ final class Plugin {
 				new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository )
 			),
 			$settings,
-			new AccountUrlResolver()
+			new AccountUrlResolver(),
+			$this->ai_provider_repository
 		);
 		add_action( 'wp_enqueue_scripts', array( $chat_widget_assets, 'enqueue' ) );
 		add_action( 'wp_footer', array( $chat_widget_assets, 'print_config' ), 5 );
@@ -1247,8 +1255,7 @@ final class Plugin {
 		// AI draft assistant (M09, docs/adr/0028): operator-assist-only
 		// provider configuration and visitor-disclosure text. Registered
 		// after Conversations, before 'diagnostics' (which stays last).
-		$this->ai_provider_repository = new AIProviderRepository( $this->schema_health, $this->credential_vault );
-		$this->ai_settings_page       = new AISettingsPage( $this->ai_provider_repository );
+		$this->ai_settings_page = new AISettingsPage( $this->ai_provider_repository );
 		$this->hub_tab_registry->register(
 			new Tab( AISettingsPage::TAB_ID, __( 'AI', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->ai_settings_page, 'render_tab_content' ) )
 		);

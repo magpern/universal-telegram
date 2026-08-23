@@ -142,11 +142,50 @@ test( 'sendMessage on a fresh conversation constructs the start request with hea
 
 	const startCall = fetch.calls[ 0 ];
 	assert.equal( startCall.url, CONFIG.restUrl + '/conversations' );
-	assert.equal( startCall.init.body, '{}' );
+	// M09, docs/adr/0028 decision 1: config.aiAck is undefined here (no UI
+	// layer/checkbox is involved in this client-only test), which resolves
+	// to a declined acknowledgement — the sole write path to
+	// ai_ack_policy_version, whose absence is always safe/ineligible.
+	assert.equal( startCall.init.body, '{"ai_ack":false}' );
 	assert.match( startCall.init.headers[ 'Idempotency-Key' ], /^[0-9a-f-]{36}$/i );
 	assert.match( startCall.init.headers[ 'X-Universal-Telegram-Conversation-Secret' ], /^[0-9a-f]{64}$/ );
 	assert.equal( startCall.url.indexOf( 'Idempotency-Key' ), -1 );
 	assert.equal( startCall.url.indexOf( startCall.init.headers[ 'X-Universal-Telegram-Conversation-Secret' ] ), -1 );
+} );
+
+test( 'sendMessage reflects an explicit config.aiAck=true into the start request body (M09, docs/adr/0028)', async () => {
+	const fetch = makeFakeFetch();
+	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-1', secret: 'irrelevant' } ) );
+	fetch.queueResponse( jsonResponse( 200, { ok: true } ) );
+
+	const { sandbox } = makeSandbox( { fetch } );
+	const state  = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	// The UI layer (buildWidget) mutates this same shared config object's
+	// aiAck property from its checkbox's change handler; createClient
+	// never renders or reads the checkbox itself, only this property.
+	const config = Object.assign( {}, CONFIG, { aiAck: true } );
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, config );
+
+	await client.sendMessage( 'hello' );
+
+	const startCall = fetch.calls[ 0 ];
+	assert.equal( startCall.init.body, '{"ai_ack":true}' );
+} );
+
+test( 'sendMessage treats any non-true config.aiAck value as a declined acknowledgement, fail-closed', async () => {
+	const fetch = makeFakeFetch();
+	fetch.queueResponse( jsonResponse( 200, { ok: true, conversation_uuid: 'uuid-1', secret: 'irrelevant' } ) );
+	fetch.queueResponse( jsonResponse( 200, { ok: true } ) );
+
+	const { sandbox } = makeSandbox( { fetch } );
+	const state  = sandbox.__UT_CHAT_WIDGET_STATE_FACTORY__();
+	const config = Object.assign( {}, CONFIG, { aiAck: 'yes' } );
+	const client = sandbox.__UT_CHAT_WIDGET_CLIENT_FACTORY__( state, config );
+
+	await client.sendMessage( 'hello' );
+
+	const startCall = fetch.calls[ 0 ];
+	assert.equal( startCall.init.body, '{"ai_ack":false}' );
 } );
 
 test( 'sendMessage persists the conversation and attaches the bearer secret as an Authorization header on the message request', async () => {

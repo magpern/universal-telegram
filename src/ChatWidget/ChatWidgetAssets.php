@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\ChatWidget;
 
+use UniversalTelegram\AI\Config\AIProviderRepository;
 use UniversalTelegram\Core\Configuration\Settings;
 
 /**
@@ -49,11 +50,13 @@ final class ChatWidgetAssets {
 	 * @param ChatWidgetAvailability $availability   Whether the widget should run on this request at all.
 	 * @param Settings               $settings       Reads the current preset/geometry/motion/participant-label configuration.
 	 * @param AccountUrlResolver     $account_urls   Resolves the logged-out login/registration links (M06.3.1, ADR-0025).
+	 * @param AIProviderRepository   $ai_provider    Reads the AI enablement flag and public disclosure text/version (M09, docs/adr/0028 decision 1) — never the credential.
 	 */
 	public function __construct(
 		private readonly ChatWidgetAvailability $availability,
 		private readonly Settings $settings,
-		private readonly AccountUrlResolver $account_urls
+		private readonly AccountUrlResolver $account_urls,
+		private readonly AIProviderRepository $ai_provider
 	) {}
 
 	/**
@@ -171,6 +174,16 @@ final class ChatWidgetAssets {
 			// so it stays cache-safe (M06.3.1 addendum).
 			'anonymousChatAllowed' => (bool) $values['chat_widget_allow_anonymous'],
 		);
+
+		// M09, docs/adr/0028: public, fixed, non-secret configuration only
+		// — the enablement flag and the current disclosure text/version.
+		// Never the API key or model identifier, and identical for every
+		// visitor of a given page, so this stays as cache-safe as every
+		// other field above; a text/version edit simply invalidates the
+		// cached fragment like any other config change.
+		$ai_config             = $this->ai_provider->get();
+		$config['aiEnabled']   = null !== $ai_config && $ai_config->is_ready();
+		$config['aiAckText']   = null !== $ai_config ? $ai_config->ack_text() : '';
 
 		printf(
 			'<script type="application/json" id="%1$s">%2$s</script>',

@@ -247,7 +247,12 @@
 						'Idempotency-Key': idempotencyKey,
 						'X-Universal-Telegram-Conversation-Secret': secret,
 					} ),
-					body: '{}',
+					// M09, docs/adr/0028 decision 1: config.aiAck is set (only
+					// ever to true) by the UI layer's checkbox change
+					// handler on the same shared config object this client
+					// was constructed with — the client itself owns no DOM
+					// and never renders or reads the checkbox directly.
+					body: JSON.stringify( { ai_ack: true === config.aiAck } ),
 				}
 			).then(
 				function ( response ) {
@@ -737,6 +742,36 @@
 		statusRegion.setAttribute( 'role', 'status' );
 		statusRegion.setAttribute( 'aria-live', 'polite' );
 
+		// AI acknowledgement (M09, docs/adr/0028 decision 1): unchecked by
+		// default, shown only while AI is enabled and only before the
+		// first message — never re-shown or re-askable afterward. Purely
+		// a visitor choice; sending a message with the box unchecked is
+		// always allowed.
+		var ackContainer = null;
+		config.aiAck     = false;
+
+		if ( config.aiEnabled && config.aiAckText ) {
+			ackContainer = doc.createElement( 'label' );
+			ackContainer.className = 'ut-chat-widget__ai-ack';
+
+			var ackCheckbox = doc.createElement( 'input' );
+			ackCheckbox.type = 'checkbox';
+			ackCheckbox.checked = false;
+			ackCheckbox.addEventListener( 'change', function () {
+				// The client (createClient, a separate factory/closure)
+				// reads this same shared config object at start-request
+				// time — this is the sole channel between the checkbox and
+				// the request body, since the client owns no DOM.
+				config.aiAck = !! ackCheckbox.checked;
+			} );
+
+			var ackText = doc.createElement( 'span' );
+			ackText.textContent = config.aiAckText;
+
+			ackContainer.appendChild( ackCheckbox );
+			ackContainer.appendChild( ackText );
+		}
+
 		var form = doc.createElement( 'form' );
 		form.className = 'ut-chat-widget__form';
 
@@ -758,6 +793,9 @@
 		panel.appendChild( log );
 		panel.appendChild( newMessagesButton );
 		panel.appendChild( statusRegion );
+		if ( ackContainer ) {
+			panel.appendChild( ackContainer );
+		}
 		panel.appendChild( form );
 
 		root.appendChild( toggleButton );
@@ -1009,6 +1047,15 @@
 			var text = input.value;
 			if ( ! text ) {
 				return;
+			}
+
+			// The acknowledgement is read exactly once, at the request that
+			// creates the conversation row server-side (docs/adr/0028
+			// decision 1) — remove the control immediately on the first
+			// send so it is never shown again for this conversation,
+			// regardless of the async start/send outcome.
+			if ( ackContainer && ackContainer.parentNode ) {
+				ackContainer.parentNode.removeChild( ackContainer );
 			}
 
 			pendingVisitorTexts.push( text );
