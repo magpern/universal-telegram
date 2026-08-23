@@ -287,6 +287,142 @@ final class AiDraftRepository {
 	}
 
 	/**
+	 * The single, transactional entry point for an operator's draft
+	 * request (docs/adr/0028 decision 5, §3.1-A/§3.2 of the frozen plan).
+	 * Locks the owning, already-existing conversation row for the duration
+	 * of one explicit transaction — this is also the sole idempotency
+	 * mechanism for a duplicate/rapid-double-click request, and what makes
+	 * "at most one active draft per conversation" race-safe. Enforces, in
+	 * order: an already-active draft is returned as-is (idempotent, no new
+	 * row); a retained (`generated`/`reviewed`/`approved`) draft rejects
+	 * the request outright; a `failed` draft within the last
+	 * $cooldown_seconds rejects the request; otherwise a fresh `queued`
+	 * row is inserted.
+	 *
+	 * @param int    $conversation_id       The owning conversation (must already exist).
+	 * @param int    $requested_by_user_id  The requesting operator.
+	 * @param string $provider              Traceability copy at request time.
+	 * @param string $model                 Traceability copy at request time.
+	 * @param string $prompt_policy_version The prompt policy version in effect.
+	 * @param int    $cooldown_seconds      The post-failure cooldown window.
+	 *
+	 * @return array{outcome: string, draft_uuid: ?string, cooldown_remaining_seconds: ?int}
+	 *               outcome is one of 'created', 'existing_active', 'rejected_retained', 'rejected_cooldown', 'not_found'.
+	 */
+	public function request_draft(
+		int $conversation_id,
+		int $requested_by_user_id,
+		string $provider,
+		string $model,
+		string $prompt_policy_version,
+		int $cooldown_seconds
+	): array {
+		$not_found = array(
+			'outcome'                    => 'not_found',
+			'draft_uuid'                 => null,
+			'cooldown_remaining_seconds' => null,
+		);
+
+		if ( ! $this->schema_health->is_available() ) {
+			return $not_found;
+		}
+
+		global $wpdb;
+
+		$conversations_table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$drafts_table        = $wpdb->prefix . Migrator::AI_DRAFTS_TABLE;
+		$now                 = current_time( 'mysql', true );
+
+		$wpdb->query( 'START TRANSACTION' );
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$locked = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$conversations_table} WHERE id = %d FOR UPDATE", $conversation_id ) );
+
+		if ( null === $locked ) {
+			$wpdb->query( 'ROLLBACK' );
+			return $not_found;
+		}
+
+		$active = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT draft_uuid FROM {$drafts_table} WHERE conversation_id = %d AND status IN ('queued','generating') LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$conversation_id
+			),
+			ARRAY_A
+		);
+
+		if ( null !== $active ) {
+			$wpdb->query( 'COMMIT' );
+			return array(
+				'outcome'                    => 'existing_active',
+				'draft_uuid'                 => (string) $active['draft_uuid'],
+				'cooldown_remaining_seconds' => null,
+			);
+		}
+
+		$retained = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT id FROM {$drafts_table} WHERE conversation_id = %d AND status IN ('generated','reviewed','approved') LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$conversation_id
+			)
+		);
+
+		if ( null !== $retained ) {
+			$wpdb->query( 'COMMIT' );
+			return array(
+				'outcome'                    => 'rejected_retained',
+				'draft_uuid'                 => null,
+				'cooldown_remaining_seconds' => null,
+			);
+		}
+
+		$last_failed_at = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT updated_at FROM {$drafts_table} WHERE conversation_id = %d AND status = 'failed' ORDER BY updated_at DESC LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$conversation_id
+			)
+		);
+
+		if ( null !== $last_failed_at ) {
+			$elapsed   = time() - (int) strtotime( $last_failed_at . ' UTC' );
+			$remaining = $cooldown_seconds - $elapsed;
+
+			if ( $remaining > 0 ) {
+				$wpdb->query( 'COMMIT' );
+				return array(
+					'outcome'                    => 'rejected_cooldown',
+					'draft_uuid'                 => null,
+					'cooldown_remaining_seconds' => $remaining,
+				);
+			}
+		}
+
+		$draft_uuid = wp_generate_uuid4();
+
+		$wpdb->query(
+			$wpdb->prepare(
+				"INSERT INTO {$drafts_table} (draft_uuid, conversation_id, status, provider, model, prompt_policy_version, requested_by_user_id, attempt_count, created_at, updated_at) VALUES (%s, %d, 'queued', %s, %s, %s, %d, 0, %s, %s)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$draft_uuid,
+				$conversation_id,
+				$provider,
+				$model,
+				$prompt_policy_version,
+				$requested_by_user_id,
+				$now,
+				$now
+			)
+		);
+
+		$wpdb->query( 'COMMIT' );
+
+		return array(
+			'outcome'                    => 'created',
+			'draft_uuid'                 => $draft_uuid,
+			'cooldown_remaining_seconds' => null,
+		);
+	}
+
+	/**
 	 * Claims a `queued` (or expired-lease `generating`) draft for
 	 * generation, under the site-wide concurrency cap (docs/adr/0028
 	 * decision 5, §3.1-B of the frozen plan). Locks the always-present,

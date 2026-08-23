@@ -40,6 +40,7 @@ use UniversalTelegram\AI\Content\ApprovedContentRepository;
 use UniversalTelegram\AI\Draft\AIDraftGenerationHandler;
 use UniversalTelegram\AI\Draft\AiDraftLeaseSweep;
 use UniversalTelegram\AI\Draft\AiDraftRepository;
+use UniversalTelegram\AI\Draft\DraftRequestHandler;
 use UniversalTelegram\AI\Draft\PromptBuilder;
 use UniversalTelegram\AI\Provider\AiFailureClassifier;
 use UniversalTelegram\Audit\AuditLogger;
@@ -1294,6 +1295,16 @@ final class Plugin {
 		$ai_lease_sweep = new AiDraftLeaseSweep( $ai_drafts );
 		add_action( AiDraftLeaseSweep::JOB_TYPE, array( $ai_lease_sweep, 'run' ) );
 		add_action( 'init', array( $ai_lease_sweep, 'register' ) );
+
+		// Operator draft-request endpoint (M09, docs/adr/0028 decisions 1
+		// and 5): the only path that ever enqueues an ai_draft_generate job.
+		$ai_draft_request_handler = new DraftRequestHandler(
+			$ai_drafts,
+			$this->ai_provider_repository,
+			$this->conversation_repository,
+			$this->dispatcher
+		);
+		add_action( 'admin_post_' . DraftRequestHandler::ADMIN_POST_ACTION, array( $ai_draft_request_handler, 'handle_request' ) );
 
 		$this->hub_tab_registry->register(
 			new Tab( 'diagnostics', __( 'Diagnostics', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->diagnostics_page, 'render_tab_content' ) )
