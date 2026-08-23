@@ -659,6 +659,7 @@ final class Plugin {
 			$this->operator_identity_repository,
 			$this->conversation_repository,
 			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
+			$this->operator_availability_repository,
 			$this->message_dispatcher,
 			$this->audit_logger
 		);

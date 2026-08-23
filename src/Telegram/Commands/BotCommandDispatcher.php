@@ -12,7 +12,11 @@ namespace UniversalTelegram\Telegram\Commands;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\Conversation;
+use UniversalTelegram\Conversations\ConversationDisplay;
 use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\ConversationStatus;
+use UniversalTelegram\Conversations\OperatorAvailability;
+use UniversalTelegram\Conversations\OperatorAvailabilityRepository;
 use UniversalTelegram\Conversations\OperatorIdentity;
 use UniversalTelegram\Conversations\OperatorIdentityRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
@@ -41,14 +45,16 @@ final class BotCommandDispatcher {
 	 *
 	 * @param OperatorIdentityRepository $operator_identities Resolves the inbound sender's mapped WordPress operator.
 	 * @param ConversationRepository     $conversations       Resolves conversation-topic context and (later work packages) lifecycle writes.
-	 * @param ChatProfileResolver        $chat_profiles       Resolves the bot's configured support chat/destination.
-	 * @param MessageDispatcher          $message_dispatcher  The existing, sole outbound Telegram-send path.
-	 * @param AuditLogger                $audit               Records rejection and (later work packages) success entries.
+	 * @param ChatProfileResolver             $chat_profiles       Resolves the bot's configured support chat/destination.
+	 * @param OperatorAvailabilityRepository  $availability        Resolves an operator's current availability state (for `/whoami`).
+	 * @param MessageDispatcher               $message_dispatcher  The existing, sole outbound Telegram-send path.
+	 * @param AuditLogger                     $audit               Records rejection and (later work packages) success entries.
 	 */
 	public function __construct(
 		private readonly OperatorIdentityRepository $operator_identities,
 		private readonly ConversationRepository $conversations,
 		private readonly ChatProfileResolver $chat_profiles,
+		private readonly OperatorAvailabilityRepository $availability,
 		private readonly MessageDispatcher $message_dispatcher,
 		private readonly AuditLogger $audit
 	) {}
@@ -159,27 +165,109 @@ final class BotCommandDispatcher {
 			return;
 		}
 
-		$this->execute( $parsed, $bot, $conversation, $mapped_identity, $destination_id );
+		$this->execute( $parsed, $bot, $conversation, $mapped_identity, $destination_id, $context );
 	}
 
 	/**
 	 * Dispatches an authorized, correct-context, well-formed command to its
-	 * own handler. Populated incrementally by later work packages
-	 * (WP3-WP6); a command reaching this method with no case below is a
-	 * defensive no-op, never reachable once every work package lands.
+	 * own handler. Populated incrementally by later work packages (WP3
+	 * adds help/whoami/conversations below; WP4-WP6 add the remaining
+	 * families) — an unmatched case is a defensive no-op, never reachable
+	 * once every work package lands.
 	 *
-	 * @param ParsedCommand    $parsed          The recognized command.
-	 * @param BotProfile       $bot             The receiving bot.
-	 * @param Conversation|null $conversation   The resolved conversation, when in conversation-topic context.
-	 * @param OperatorIdentity $mapped_identity The authorized caller's operator identity.
-	 * @param int|null         $destination_id  Where to send the acknowledgement.
+	 * @param ParsedCommand     $parsed          The recognized command.
+	 * @param BotProfile        $bot             The receiving bot.
+	 * @param Conversation|null $conversation    The resolved conversation, when in conversation-topic context.
+	 * @param OperatorIdentity  $mapped_identity The authorized caller's operator identity.
+	 * @param int|null          $destination_id  Where to send the acknowledgement.
+	 * @param string            $context         CONTEXT_GENERAL or CONTEXT_CONVERSATION.
 	 */
-	private function execute( ParsedCommand $parsed, BotProfile $bot, ?Conversation $conversation, OperatorIdentity $mapped_identity, ?int $destination_id ): void {
-		// Intentionally empty in WP2 — every command's real handler is
-		// added by WP3 (help/whoami/conversations), WP4 (status/errors/
-		// visitors), WP5 (orders/order/stock/sales), and WP6 (here/
-		// presence/claim/release/resolve/reopen/confirm).
-		unset( $parsed, $bot, $conversation, $mapped_identity, $destination_id );
+	private function execute( ParsedCommand $parsed, BotProfile $bot, ?Conversation $conversation, OperatorIdentity $mapped_identity, ?int $destination_id, string $context ): void {
+		switch ( $parsed->command() ) {
+			case 'help':
+				$this->handle_help( $bot, $destination_id, $context );
+				break;
+			case 'whoami':
+				$this->handle_whoami( $bot, $destination_id, $mapped_identity );
+				break;
+			case 'conversations':
+				$this->handle_conversations( $bot, $destination_id );
+				break;
+			default:
+				// Populated by WP4 (status/errors/visitors), WP5
+				// (orders/order/stock/sales), and WP6 (here/presence/
+				// claim/release/resolve/reopen/confirm).
+				break;
+		}
+	}
+
+	/**
+	 * `/help` — lists every command valid in the current context.
+	 *
+	 * @param BotProfile $bot            The receiving bot.
+	 * @param int|null   $destination_id Where to send the reply.
+	 * @param string     $context        CONTEXT_GENERAL or CONTEXT_CONVERSATION.
+	 */
+	private function handle_help( BotProfile $bot, ?int $destination_id, string $context ): void {
+		$catalogue_context = self::CONTEXT_GENERAL === $context
+			? CommandCatalogue::CONTEXT_GENERAL
+			: CommandCatalogue::CONTEXT_CONVERSATION;
+
+		$commands = CommandCatalogue::commands_valid_in( $catalogue_context );
+		sort( $commands );
+
+		$lines = array_map(
+			static function ( string $command ): string {
+				return '/' . $command;
+			},
+			$commands
+		);
+
+		$this->reply( $bot->id(), $destination_id, "Available commands here:\n" . implode( "\n", $lines ) );
+	}
+
+	/**
+	 * `/whoami` — the caller's own mapped WP display name and current
+	 * availability state. Never the raw Telegram id or username.
+	 *
+	 * @param BotProfile       $bot             The receiving bot.
+	 * @param int|null         $destination_id  Where to send the reply.
+	 * @param OperatorIdentity $mapped_identity The authorized caller's operator identity.
+	 */
+	private function handle_whoami( BotProfile $bot, ?int $destination_id, OperatorIdentity $mapped_identity ): void {
+		$user         = get_userdata( $mapped_identity->wp_user_id() );
+		$display_name = false !== $user ? $user->display_name : __( 'Unknown operator', 'universal-telegram' );
+
+		$state_row = $this->availability->find_for_operator( $mapped_identity->wp_user_id() );
+		$state     = null !== $state_row ? $state_row->state() : OperatorAvailability::OFFLINE . ' (never set)';
+
+		$this->reply( $bot->id(), $destination_id, "You are mapped as: {$display_name}\nAvailability: {$state}" );
+	}
+
+	/**
+	 * `/conversations` — up to 10 currently open conversations, short
+	 * reference and status only.
+	 *
+	 * @param BotProfile $bot            The receiving bot.
+	 * @param int|null   $destination_id Where to send the reply.
+	 */
+	private function handle_conversations( BotProfile $bot, ?int $destination_id ): void {
+		$open = $this->conversations->for_inbox( ConversationStatus::OPEN, 10, 0, null, $bot->id() );
+
+		if ( array() === $open ) {
+			$this->reply( $bot->id(), $destination_id, 'No open conversations.' );
+
+			return;
+		}
+
+		$lines = array_map(
+			static function ( Conversation $conversation ): string {
+				return ConversationDisplay::short_ref( $conversation->conversation_uuid() ) . ' — ' . $conversation->status();
+			},
+			$open
+		);
+
+		$this->reply( $bot->id(), $destination_id, "Open conversations (up to 10):\n" . implode( "\n", $lines ) );
 	}
 
 	/**

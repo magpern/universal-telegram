@@ -11,6 +11,7 @@ use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\ConversationStatus;
 use UniversalTelegram\Conversations\MessageRepository;
+use UniversalTelegram\Conversations\OperatorAvailabilityRepository;
 use UniversalTelegram\Conversations\OperatorIdentityRepository;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
@@ -72,6 +73,7 @@ final class WebhookControllerBotCommandTest extends WP_UnitTestCase {
 			$this->operator_identities,
 			$this->conversations,
 			new ChatProfileResolver( $this->bots, $this->destinations ),
+			new OperatorAvailabilityRepository( $this->schema_health ),
 			$message_dispatcher,
 			$this->audit_logger
 		);
