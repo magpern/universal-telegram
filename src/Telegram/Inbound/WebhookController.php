@@ -17,6 +17,8 @@ use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\OperatorIdentityRepository;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Classification;
+use UniversalTelegram\Telegram\Commands\BotCommandDispatcher;
+use UniversalTelegram\Telegram\Commands\CommandParser;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -60,6 +62,7 @@ final class WebhookController {
 	 * @param ChatProfileResolver        $chat_profiles Resolves a bot's conversation-support chat id.
 	 * @param OperatorIdentityRepository $operator_identities Resolves the inbound sender's mapped WordPress operator (M07, docs/adr/0026) — the inbound Telegram operator-authorization gate.
 	 * @param AuditLogger                $audit         Records a rejected-unmapped-sender attempt.
+	 * @param BotCommandDispatcher       $bot_commands  Handles a recognized administrative bot command (M08, docs/adr/0027) in place of reply capture.
 	 * @param int                        $max_body_bytes Request body size cap, enforced before JSON decoding.
 	 */
 	public function __construct(
@@ -72,6 +75,7 @@ final class WebhookController {
 		private readonly ChatProfileResolver $chat_profiles,
 		private readonly OperatorIdentityRepository $operator_identities,
 		private readonly AuditLogger $audit,
+		private readonly BotCommandDispatcher $bot_commands,
 		private readonly int $max_body_bytes = 1048576
 	) {}
 
@@ -144,7 +148,18 @@ final class WebhookController {
 		$is_new_update = $this->updates->record( $bot->id(), $decoded['update_id'], $update_type, $chat_id, $message_thread_id );
 
 		if ( $is_new_update && UpdateType::MESSAGE === $update_type ) {
-			$this->maybe_route_to_conversation( $bot->id(), $chat_id, $message_thread_id, $decoded );
+			$parsed_command = isset( $decoded['message'] ) && is_array( $decoded['message'] )
+				? CommandParser::parse( $decoded['message'], $bot->telegram_username() )
+				: null;
+
+			if ( null !== $parsed_command ) {
+				// A recognized administrative bot command (M08, docs/adr/0027)
+				// is dispatched instead of, never in addition to, reply
+				// capture — the two paths are mutually exclusive.
+				$this->bot_commands->handle( $bot, $chat_id, $message_thread_id, $parsed_command, $decoded );
+			} else {
+				$this->maybe_route_to_conversation( $bot->id(), $chat_id, $message_thread_id, $decoded );
+			}
 		}
 
 		return new WP_REST_Response( array( 'ok' => true ), 200 );

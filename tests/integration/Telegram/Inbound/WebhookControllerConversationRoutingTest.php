@@ -9,19 +9,30 @@ use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\OperatorAvailabilityRepository;
 use UniversalTelegram\Conversations\OperatorIdentityRepository;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Conversations\ConversationStatus;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Core\Security\CredentialVault;
+use UniversalTelegram\Events\EventHistoryRepository;
+use UniversalTelegram\Events\Registry;
+use UniversalTelegram\Integrations\WooCommerce\WooCommerceCommandQueryService;
+use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
+use UniversalTelegram\Queue\Dispatcher;
+use UniversalTelegram\Queue\QueueHealth;
+use UniversalTelegram\Telegram\Commands\BotCommandDispatcher;
+use UniversalTelegram\Telegram\Commands\ConfirmationStore;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationKind;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Inbound\UpdateRepository;
 use UniversalTelegram\Telegram\Inbound\WebhookController;
 use UniversalTelegram\Telegram\Inbound\WebhookSecretVerifier;
+use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
+use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
 use WP_REST_Request;
 use WP_UnitTestCase;
 
@@ -62,6 +73,22 @@ final class WebhookControllerConversationRoutingTest extends WP_UnitTestCase {
 
 		$this->operator_identities->create( 1, self::MAPPED_SENDER_TELEGRAM_ID, 'opuser', 1 );
 
+		$outbound_messages  = new OutboundMessageRepository( $this->schema_health, $vault );
+		$message_dispatcher = new MessageDispatcher( $outbound_messages, new Dispatcher( $this->schema_health ) );
+		$bot_commands       = new BotCommandDispatcher(
+			$this->operator_identities,
+			$this->conversations,
+			new ChatProfileResolver( $this->bots, $this->destinations ),
+			new OperatorAvailabilityRepository( $this->schema_health ),
+			new QueueHealth(),
+			new EventHistoryRepository( $this->schema_health, new Registry(), new Redactor() ),
+			new WooCommerceSupport(),
+			new WooCommerceCommandQueryService(),
+			new ConfirmationStore(),
+			$message_dispatcher,
+			$this->audit_logger
+		);
+
 		$this->controller = new WebhookController(
 			$this->schema_health,
 			$this->bots,
@@ -71,7 +98,8 @@ final class WebhookControllerConversationRoutingTest extends WP_UnitTestCase {
 			$this->messages,
 			new ChatProfileResolver( $this->bots, $this->destinations ),
 			$this->operator_identities,
-			$this->audit_logger
+			$this->audit_logger,
+			$bot_commands
 		);
 	}
 

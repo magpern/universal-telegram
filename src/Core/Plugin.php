@@ -91,6 +91,7 @@ use UniversalTelegram\Integrations\WooCommerce\Events\StockEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Visitor\VisitorCommerceEventCatalog;
 use UniversalTelegram\Events\Registry;
 use UniversalTelegram\Events\RetentionCleanup;
+use UniversalTelegram\Integrations\WooCommerce\WooCommerceCommandQueryService;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Persistence\MigrationFailedException;
 use UniversalTelegram\Persistence\MigrationLock;
@@ -105,6 +106,8 @@ use UniversalTelegram\Queue\QueueHealth;
 use UniversalTelegram\Queue\RetryPolicy;
 use UniversalTelegram\Queue\WorkerRunner;
 use UniversalTelegram\Telegram\Client\TelegramApiClient;
+use UniversalTelegram\Telegram\Commands\BotCommandDispatcher;
+use UniversalTelegram\Telegram\Commands\ConfirmationStore;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Inbound\UpdateRepository;
@@ -304,6 +307,14 @@ final class Plugin {
 	 * @var WebhookController|null
 	 */
 	private ?WebhookController $webhook_controller = null;
+
+	/**
+	 * Administrative-bot command authorization/context/dispatch (M08,
+	 * docs/adr/0027), constructed by init().
+	 *
+	 * @var BotCommandDispatcher|null
+	 */
+	private ?BotCommandDispatcher $bot_command_dispatcher = null;
 
 	/**
 	 * The per-bot/per-destination rate limiter, constructed by init().
@@ -645,7 +656,30 @@ final class Plugin {
 
 		$this->update_repository       = new UpdateRepository( $this->schema_health );
 		$this->webhook_secret_verifier = new WebhookSecretVerifier( $this->bot_profile_repository, $this->audit_logger );
-		$this->webhook_controller      = new WebhookController(
+
+		// Constructed here (ahead of the Events/Automations block further
+		// below, which constructs the remaining two M02 repositories) so
+		// BotCommandDispatcher's read-only /status, /errors, and /visitors
+		// commands (M08) can use event_history_repository's existing
+		// aggregate-count methods without duplicating them.
+		$this->event_registry           = new Registry();
+		$this->event_history_repository = new EventHistoryRepository( $this->schema_health, $this->event_registry, new Redactor() );
+
+		$this->bot_command_dispatcher = new BotCommandDispatcher(
+			$this->operator_identity_repository,
+			$this->conversation_repository,
+			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
+			$this->operator_availability_repository,
+			$this->queue_health,
+			$this->event_history_repository,
+			$this->woocommerce_support,
+			new WooCommerceCommandQueryService(),
+			new ConfirmationStore(),
+			$this->message_dispatcher,
+			$this->audit_logger
+		);
+
+		$this->webhook_controller = new WebhookController(
 			$this->schema_health,
 			$this->bot_profile_repository,
 			$this->webhook_secret_verifier,
@@ -655,6 +689,7 @@ final class Plugin {
 			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
 			$this->operator_identity_repository,
 			$this->audit_logger,
+			$this->bot_command_dispatcher,
 			(int) $settings_values['telegram_webhook_max_body_bytes']
 		);
 		add_action( 'rest_api_init', array( $this->webhook_controller, 'register_routes' ) );
@@ -856,13 +891,14 @@ final class Plugin {
 			$this->conversation_repository
 		);
 
-		// Events/Automations (M02) repositories: constructed here, ahead of
-		// DiagnosticsReport below (which reads their aggregate counts),
-		// always unconditionally regardless of schema availability —
-		// individual repositories check SchemaHealth at their own point of
-		// use (docs/adr/0007).
-		$this->event_registry               = new Registry();
-		$this->event_history_repository     = new EventHistoryRepository( $this->schema_health, $this->event_registry, new Redactor() );
+		// Events/Automations (M02) repositories: event_registry and
+		// event_history_repository are constructed earlier (see above,
+		// ahead of BotCommandDispatcher, which needs the latter for
+		// /status /errors /visitors); the remaining two are constructed
+		// here, ahead of DiagnosticsReport below (which reads their
+		// aggregate counts), always unconditionally regardless of schema
+		// availability — individual repositories check SchemaHealth at
+		// their own point of use (docs/adr/0007).
 		$this->notification_rule_repository = new NotificationRuleRepository( $this->schema_health, $this->event_registry );
 		$this->dispatch_log_repository      = new DispatchLogRepository( $this->schema_health );
 
@@ -1363,6 +1399,13 @@ final class Plugin {
 	 */
 	public function webhook_controller(): ?WebhookController {
 		return $this->webhook_controller;
+	}
+
+	/**
+	 * Administrative-bot command dispatcher. Available only after init() has run.
+	 */
+	public function bot_command_dispatcher(): ?BotCommandDispatcher {
+		return $this->bot_command_dispatcher;
 	}
 
 	/**
