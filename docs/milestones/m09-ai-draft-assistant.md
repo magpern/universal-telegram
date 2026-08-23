@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress — implementation plan frozen at `docs/plans/m09-ai-draft-assistant-plan-v1.md` (ADR-0028)
+Implemented — technical work complete on `feature/m09-ai-draft-assistant`, merged to `main` at `396b1d8d44357b4e2a4405e0bc195c0b157facc1`, frozen plan `docs/plans/m09-ai-draft-assistant-plan-v1.md`, ADR-0028. Product Owner acceptance pending the manual dev-provider checklist. See `docs/closure/m09-ai-draft-assistant-closure.md`.
 
 ## Dependencies
 
