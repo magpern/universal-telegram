@@ -101,6 +101,9 @@ final class DiagnosticsReport {
 	 *     visitor_events_rejected_24h: int,
 	 *     visitor_events_rate_limited_24h: int,
 	 *     visitor_events_bot_filtered_24h: int,
+	 *     bot_commands_active: bool,
+	 *     bot_commands_rejected_unauthorized_24h: int,
+	 *     bot_commands_rejected_wrong_context_24h: int,
 	 *     recent_audit_entries: array<int, array<string, mixed>>
 	 * }
 	 */
@@ -164,6 +167,15 @@ final class DiagnosticsReport {
 			'visitor_events_rejected_24h'              => $this->audit_log_repository->count_by_action_24h( 'visitor_events.rejected' ),
 			'visitor_events_rate_limited_24h'          => $this->audit_log_repository->count_by_action_24h( 'visitor_events.rate_limited' ),
 			'visitor_events_bot_filtered_24h'          => $this->audit_log_repository->count_by_action_24h( 'visitor_events.bot_filtered' ),
+			// Administrative bot commands (M08, ADR-0027): read-only counts
+			// of the two rejection outcomes only — never a raw Telegram id,
+			// bot_id alone carries no sensitive meaning. No command-content
+			// or success-count breakdown is surfaced here (successful reads
+			// are unaudited by design, matching this codebase's existing
+			// precedent elsewhere in this report).
+			'bot_commands_active'                      => $this->schema_health->is_available(),
+			'bot_commands_rejected_unauthorized_24h'   => $this->audit_log_repository->count_by_action_24h( 'bot_command.rejected_unauthorized' ),
+			'bot_commands_rejected_wrong_context_24h'  => $this->audit_log_repository->count_by_action_24h( 'bot_command.rejected_wrong_context' ),
 			'recent_audit_entries'                     => $this->audit_log_repository->recent( 20 ),
 		);
 	}
