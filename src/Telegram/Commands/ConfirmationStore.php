@@ -65,6 +65,8 @@ final class ConfirmationStore {
 	}
 
 	/**
+	 * Builds the deterministic transient key for one pending confirmation.
+	 *
 	 * @param int $bot_id          The bot's primary key.
 	 * @param int $conversation_id The conversation's primary key.
 	 * @param int $wp_user_id      The operator's WordPress user id.

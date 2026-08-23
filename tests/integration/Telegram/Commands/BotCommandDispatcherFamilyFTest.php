@@ -55,8 +55,8 @@ final class BotCommandDispatcherFamilyFTest extends WP_UnitTestCase {
 		parent::setUp();
 
 		$this->schema_health = new SchemaHealth();
-		$vault                = new CredentialVault();
-		$this->audit          = new AuditLogger( $this->schema_health, new Redactor() );
+		$vault               = new CredentialVault();
+		$this->audit         = new AuditLogger( $this->schema_health, new Redactor() );
 
 		$this->bots                = new BotProfileRepository( $this->schema_health, $vault );
 		$this->conversations       = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
@@ -145,11 +145,17 @@ final class BotCommandDispatcherFamilyFTest extends WP_UnitTestCase {
 		);
 	}
 
-	private function send( $bot, int $thread_id, string $command_text, int $entity_length, int $sender_telegram_user_id ): void {
+	private function send( $bot, ?int $thread_id, string $command_text, int $entity_length, int $sender_telegram_user_id ): void {
 		$parsed = CommandParser::parse(
 			array(
 				'text'     => $command_text,
-				'entities' => array( array( 'type' => 'bot_command', 'offset' => 0, 'length' => $entity_length ) ),
+				'entities' => array(
+					array(
+						'type'   => 'bot_command',
+						'offset' => 0,
+						'length' => $entity_length,
+					),
+				),
 			),
 			$bot->telegram_username()
 		);
@@ -164,7 +170,7 @@ final class BotCommandDispatcherFamilyFTest extends WP_UnitTestCase {
 	}
 
 	public function test_here_shows_short_reference_status_and_unassigned(): void {
-		$fixture = $this->conversation_fixture();
+		$fixture                       = $this->conversation_fixture();
 		list( $operator_wp_id, $role ) = $this->mapped_operator();
 		$this->operator_identities->create( $operator_wp_id, 30, null, 1 );
 
@@ -180,7 +186,7 @@ final class BotCommandDispatcherFamilyFTest extends WP_UnitTestCase {
 	}
 
 	public function test_presence_sets_own_availability_and_audits(): void {
-		$fixture = $this->conversation_fixture();
+		$fixture                       = $this->conversation_fixture();
 		list( $operator_wp_id, $role ) = $this->mapped_operator();
 		$this->operator_identities->create( $operator_wp_id, 31, null, 1 );
 
@@ -195,7 +201,7 @@ final class BotCommandDispatcherFamilyFTest extends WP_UnitTestCase {
 	}
 
 	public function test_claim_assigns_and_is_rejected_when_busy(): void {
-		$fixture = $this->conversation_fixture();
+		$fixture                       = $this->conversation_fixture();
 		list( $operator_wp_id, $role ) = $this->mapped_operator();
 		$this->operator_identities->create( $operator_wp_id, 32, null, 1 );
 		$this->availability->set_state( $operator_wp_id, OperatorAvailability::BUSY, $operator_wp_id );
@@ -217,8 +223,8 @@ final class BotCommandDispatcherFamilyFTest extends WP_UnitTestCase {
 	}
 
 	public function test_release_requires_being_the_current_assignee(): void {
-		list( $assignee_wp_id, $assignee_role )   = $this->mapped_operator();
-		$fixture = $this->conversation_fixture( ConversationStatus::OPEN, $assignee_wp_id );
+		list( $assignee_wp_id, $assignee_role ) = $this->mapped_operator();
+		$fixture                                = $this->conversation_fixture( ConversationStatus::OPEN, $assignee_wp_id );
 
 		list( $bystander_wp_id, $bystander_role ) = $this->mapped_operator();
 		$this->operator_identities->create( $assignee_wp_id, 33, null, 1 );
@@ -240,7 +246,7 @@ final class BotCommandDispatcherFamilyFTest extends WP_UnitTestCase {
 
 	public function test_resolve_requires_confirmation_before_transitioning(): void {
 		list( $operator_wp_id, $role ) = $this->mapped_operator();
-		$fixture = $this->conversation_fixture( ConversationStatus::OPEN, $operator_wp_id );
+		$fixture                       = $this->conversation_fixture( ConversationStatus::OPEN, $operator_wp_id );
 		$this->operator_identities->create( $operator_wp_id, 35, null, 1 );
 
 		try {
@@ -262,7 +268,7 @@ final class BotCommandDispatcherFamilyFTest extends WP_UnitTestCase {
 
 	public function test_confirm_is_single_use_a_duplicate_send_is_a_no_op(): void {
 		list( $operator_wp_id, $role ) = $this->mapped_operator();
-		$fixture = $this->conversation_fixture( ConversationStatus::OPEN, $operator_wp_id );
+		$fixture                       = $this->conversation_fixture( ConversationStatus::OPEN, $operator_wp_id );
 		$this->operator_identities->create( $operator_wp_id, 36, null, 1 );
 
 		try {
@@ -281,7 +287,7 @@ final class BotCommandDispatcherFamilyFTest extends WP_UnitTestCase {
 
 	public function test_confirm_expiry_after_the_ttl_reports_no_pending_confirmation(): void {
 		list( $operator_wp_id, $role ) = $this->mapped_operator();
-		$fixture = $this->conversation_fixture( ConversationStatus::OPEN, $operator_wp_id );
+		$fixture                       = $this->conversation_fixture( ConversationStatus::OPEN, $operator_wp_id );
 		$this->operator_identities->create( $operator_wp_id, 37, null, 1 );
 
 		try {
@@ -300,9 +306,9 @@ final class BotCommandDispatcherFamilyFTest extends WP_UnitTestCase {
 	}
 
 	public function test_confirm_from_a_different_mapped_operator_does_not_match(): void {
-		list( $operator_wp_id, $role )     = $this->mapped_operator();
-		$fixture = $this->conversation_fixture( ConversationStatus::OPEN, $operator_wp_id );
-		list( $other_wp_id, $other_role )  = $this->mapped_operator();
+		list( $operator_wp_id, $role )    = $this->mapped_operator();
+		$fixture                          = $this->conversation_fixture( ConversationStatus::OPEN, $operator_wp_id );
+		list( $other_wp_id, $other_role ) = $this->mapped_operator();
 		$this->operator_identities->create( $operator_wp_id, 38, null, 1 );
 		$this->operator_identities->create( $other_wp_id, 39, null, 1 );
 
@@ -325,13 +331,13 @@ final class BotCommandDispatcherFamilyFTest extends WP_UnitTestCase {
 
 	public function test_confirm_in_a_different_conversation_topic_does_not_match(): void {
 		list( $operator_wp_id, $role ) = $this->mapped_operator();
-		$fixture_a = $this->conversation_fixture( ConversationStatus::OPEN, $operator_wp_id );
+		$fixture_a                     = $this->conversation_fixture( ConversationStatus::OPEN, $operator_wp_id );
 		$this->operator_identities->create( $operator_wp_id, 40, null, 1 );
 
 		// A second conversation, same bot, same operator, assigned too.
 		$conversation_b = $this->conversations->create( 'uuid-wp6-other', 'hash', $fixture_a['bot']->id(), null );
-		$thread_b        = random_int( 1000, 999999 );
-		$destination_b   = $this->destinations->create( $fixture_a['bot']->id(), DestinationKind::SUPERGROUP, '-100123', $thread_b, 'Topic B' );
+		$thread_b       = random_int( 1000, 999999 );
+		$destination_b  = $this->destinations->create( $fixture_a['bot']->id(), DestinationKind::SUPERGROUP, '-100123', $thread_b, 'Topic B' );
 		$this->conversations->mark_topic_created( $conversation_b->id(), $thread_b, $destination_b->id() );
 		$this->conversations->assign_with_expected( $conversation_b->id(), null, $operator_wp_id );
 
@@ -350,7 +356,7 @@ final class BotCommandDispatcherFamilyFTest extends WP_UnitTestCase {
 
 	public function test_state_drift_between_request_and_confirm_is_idempotent_safe(): void {
 		list( $operator_wp_id, $role ) = $this->mapped_operator();
-		$fixture = $this->conversation_fixture( ConversationStatus::OPEN, $operator_wp_id );
+		$fixture                       = $this->conversation_fixture( ConversationStatus::OPEN, $operator_wp_id );
 		$this->operator_identities->create( $operator_wp_id, 41, null, 1 );
 
 		try {
@@ -370,8 +376,8 @@ final class BotCommandDispatcherFamilyFTest extends WP_UnitTestCase {
 	}
 
 	public function test_reopen_requires_the_assignee_a_bystander_is_rejected_outright(): void {
-		list( $assignee_wp_id, $assignee_role )   = $this->mapped_operator();
-		$fixture = $this->conversation_fixture( ConversationStatus::RESOLVED, $assignee_wp_id );
+		list( $assignee_wp_id, $assignee_role ) = $this->mapped_operator();
+		$fixture                                = $this->conversation_fixture( ConversationStatus::RESOLVED, $assignee_wp_id );
 
 		list( $bystander_wp_id, $bystander_role ) = $this->mapped_operator();
 		$this->operator_identities->create( $assignee_wp_id, 42, null, 1 );
@@ -389,7 +395,7 @@ final class BotCommandDispatcherFamilyFTest extends WP_UnitTestCase {
 	}
 
 	public function test_reopen_on_an_unassigned_resolved_conversation_is_rejected_for_every_operator(): void {
-		$fixture = $this->conversation_fixture( ConversationStatus::RESOLVED, null );
+		$fixture                       = $this->conversation_fixture( ConversationStatus::RESOLVED, null );
 		list( $operator_wp_id, $role ) = $this->mapped_operator();
 		$this->operator_identities->create( $operator_wp_id, 44, null, 1 );
 
@@ -405,7 +411,7 @@ final class BotCommandDispatcherFamilyFTest extends WP_UnitTestCase {
 
 	public function test_reopen_by_the_assignee_requires_confirmation_then_transitions(): void {
 		list( $operator_wp_id, $role ) = $this->mapped_operator();
-		$fixture = $this->conversation_fixture( ConversationStatus::RESOLVED, $operator_wp_id );
+		$fixture                       = $this->conversation_fixture( ConversationStatus::RESOLVED, $operator_wp_id );
 		$this->operator_identities->create( $operator_wp_id, 45, null, 1 );
 
 		try {

@@ -5,6 +5,7 @@
 
 namespace UniversalTelegram\Tests\Integration\Telegram\Commands;
 
+use ActionScheduler;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationRepository;
@@ -20,6 +21,7 @@ use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
 use UniversalTelegram\Queue\Dispatcher;
 use UniversalTelegram\Queue\QueueHealth;
+use UniversalTelegram\Queue\WorkerRunner;
 use UniversalTelegram\Telegram\Commands\BotCommandDispatcher;
 use UniversalTelegram\Telegram\Commands\CommandParser;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
@@ -45,15 +47,26 @@ final class BotCommandDispatcherFamilyBCTest extends WP_UnitTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
+		// Action Scheduler's own tables are not fully isolated by
+		// WP_UnitTestCase's per-test transaction rollback — mirroring
+		// DiagnosticsReportQueueTest's own precedent, purge pending
+		// actions explicitly so this class's queue-count assertions are
+		// never polluted by another test in the same process.
+		$ids = ActionScheduler::store()->query_actions( array( 'group' => WorkerRunner::GROUP ) );
+
+		foreach ( (array) $ids as $id ) {
+			ActionScheduler::store()->delete_action( (int) $id );
+		}
+
 		$this->schema_health = new SchemaHealth();
-		$vault                = new CredentialVault();
-		$audit                = new AuditLogger( $this->schema_health, new Redactor() );
+		$vault               = new CredentialVault();
+		$audit               = new AuditLogger( $this->schema_health, new Redactor() );
 
 		$this->bots                = new BotProfileRepository( $this->schema_health, $vault );
-		$conversations              = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
+		$conversations             = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
 		$this->destinations        = new DestinationRepository( $this->schema_health );
 		$this->operator_identities = new OperatorIdentityRepository( $this->schema_health );
-		$availability               = new OperatorAvailabilityRepository( $this->schema_health );
+		$availability              = new OperatorAvailabilityRepository( $this->schema_health );
 
 		$this->outbound_messages = new OutboundMessageRepository( $this->schema_health, $vault );
 		$message_dispatcher      = new MessageDispatcher( $this->outbound_messages, new Dispatcher( $this->schema_health ) );
@@ -77,6 +90,15 @@ final class BotCommandDispatcherFamilyBCTest extends WP_UnitTestCase {
 		$operator = self::factory()->user->create( array( 'role' => 'subscriber' ) );
 		$role     = get_role( 'subscriber' );
 		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+
+		// Creating the fixture user itself emits a real
+		// `wordpress.user_registered` event (UserLifecycleEmitter) —
+		// truncated here, after that side effect and before any test's
+		// own fixture rows are inserted, so this class's absolute
+		// wordpress_core/woocommerce/visitor count assertions start from
+		// a genuinely empty table.
+		global $wpdb;
+		$wpdb->query( 'DELETE FROM ' . $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 
 		return array( $operator, $role );
 	}
@@ -117,7 +139,13 @@ final class BotCommandDispatcherFamilyBCTest extends WP_UnitTestCase {
 		$parsed = CommandParser::parse(
 			array(
 				'text'     => $command_text,
-				'entities' => array( array( 'type' => 'bot_command', 'offset' => 0, 'length' => $entity_length ) ),
+				'entities' => array(
+					array(
+						'type'   => 'bot_command',
+						'offset' => 0,
+						'length' => $entity_length,
+					),
+				),
 			),
 			$bot->telegram_username()
 		);
@@ -149,7 +177,7 @@ final class BotCommandDispatcherFamilyBCTest extends WP_UnitTestCase {
 			$text = $this->last_outbound_text();
 			$this->assertNotNull( $text );
 			$this->assertStringContainsString( 'Queue: 0 pending, 0 failed', $text );
-			$this->assertStringContainsString( 'wordpress=1', $text );
+			$this->assertStringContainsString( 'WordPress=1', $text );
 			$this->assertStringContainsString( 'woocommerce=1', $text );
 			$this->assertStringContainsString( 'visitor=2', $text );
 		} finally {
@@ -203,7 +231,7 @@ final class BotCommandDispatcherFamilyBCTest extends WP_UnitTestCase {
 	public function test_status_errors_visitors_are_general_topic_only(): void {
 		$bot = $this->bots->create( 'Support Bot', 'token' );
 		$this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100123', null, 'Support group' );
-		$conversation = $this->conversation_topic_fixture( $bot );
+		$conversation                  = $this->conversation_topic_fixture( $bot );
 		list( $operator_wp_id, $role ) = $this->mapped_operator();
 		$this->operator_identities->create( $operator_wp_id, 24, null, 1 );
 
@@ -211,7 +239,13 @@ final class BotCommandDispatcherFamilyBCTest extends WP_UnitTestCase {
 			$parsed = CommandParser::parse(
 				array(
 					'text'     => '/status',
-					'entities' => array( array( 'type' => 'bot_command', 'offset' => 0, 'length' => 7 ) ),
+					'entities' => array(
+						array(
+							'type'   => 'bot_command',
+							'offset' => 0,
+							'length' => 7,
+						),
+					),
 				),
 				$bot->telegram_username()
 			);

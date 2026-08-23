@@ -48,17 +48,17 @@ final class BotCommandDispatcher {
 	/**
 	 * Constructor.
 	 *
-	 * @param OperatorIdentityRepository $operator_identities Resolves the inbound sender's mapped WordPress operator.
-	 * @param ConversationRepository     $conversations       Resolves conversation-topic context and (later work packages) lifecycle writes.
-	 * @param ChatProfileResolver             $chat_profiles       Resolves the bot's configured support chat/destination.
-	 * @param OperatorAvailabilityRepository  $availability        Resolves an operator's current availability state (for `/whoami`).
-	 * @param QueueHealth                     $queue_health        Bounded queue-depth aggregates (for `/status`, `/errors`).
-	 * @param EventHistoryRepository          $event_history       Bounded 24h event-count aggregates (for `/status`, `/errors`, `/visitors`).
-	 * @param WooCommerceSupport              $woocommerce_support Whether WooCommerce is active (for the Family D WooCommerce-inactive gate).
-	 * @param WooCommerceCommandQueryService  $woocommerce_queries Bounded, read-only WooCommerce queries (for `/orders`, `/order`, `/stock`, `/sales`).
-	 * @param ConfirmationStore                $confirmations       Short-lived confirmation state (for `/resolve`, `/reopen`, `/confirm`).
-	 * @param MessageDispatcher               $message_dispatcher  The existing, sole outbound Telegram-send path.
-	 * @param AuditLogger                     $audit               Records rejection and success entries.
+	 * @param OperatorIdentityRepository     $operator_identities Resolves the inbound sender's mapped WordPress operator.
+	 * @param ConversationRepository         $conversations       Resolves conversation-topic context and (later work packages) lifecycle writes.
+	 * @param ChatProfileResolver            $chat_profiles       Resolves the bot's configured support chat/destination.
+	 * @param OperatorAvailabilityRepository $availability        Resolves an operator's current availability state (for `/whoami`).
+	 * @param QueueHealth                    $queue_health        Bounded queue-depth aggregates (for `/status`, `/errors`).
+	 * @param EventHistoryRepository         $event_history       Bounded 24h event-count aggregates (for `/status`, `/errors`, `/visitors`).
+	 * @param WooCommerceSupport             $woocommerce_support Whether WooCommerce is active (for the Family D WooCommerce-inactive gate).
+	 * @param WooCommerceCommandQueryService $woocommerce_queries Bounded, read-only WooCommerce queries (for `/orders`, `/order`, `/stock`, `/sales`).
+	 * @param ConfirmationStore              $confirmations       Short-lived confirmation state (for `/resolve`, `/reopen`, `/confirm`).
+	 * @param MessageDispatcher              $message_dispatcher  The existing, sole outbound Telegram-send path.
+	 * @param AuditLogger                    $audit               Records rejection and success entries.
 	 */
 	public function __construct(
 		private readonly OperatorIdentityRepository $operator_identities,
@@ -328,7 +328,7 @@ final class BotCommandDispatcher {
 	 */
 	private function handle_status( BotProfile $bot, ?int $destination_id ): void {
 		$text = sprintf(
-			"Queue: %d pending, %d failed, oldest pending %ds\nActivity (24h): wordpress=%d, woocommerce=%d, visitor=%d",
+			"Queue: %d pending, %d failed, oldest pending %ds\nActivity (24h): WordPress=%d, woocommerce=%d, visitor=%d",
 			$this->queue_health->pending_count(),
 			$this->queue_health->failed_count(),
 			$this->queue_health->oldest_pending_age_seconds(),
@@ -492,7 +492,7 @@ final class BotCommandDispatcher {
 		}
 
 		$text = sprintf(
-			"Sales (%s): %d orders, total %s",
+			'Sales (%s): %d orders, total %s',
 			$parsed->raw_argument(),
 			$summary['count'],
 			number_format( $summary['gross_total'], 2 )

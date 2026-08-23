@@ -8,17 +8,28 @@ namespace UniversalTelegram\Tests\Integration\Telegram\Inbound;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\OperatorAvailabilityRepository;
 use UniversalTelegram\Conversations\OperatorIdentityRepository;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Core\Security\CredentialVault;
+use UniversalTelegram\Events\EventHistoryRepository;
+use UniversalTelegram\Events\Registry;
+use UniversalTelegram\Integrations\WooCommerce\WooCommerceCommandQueryService;
+use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
+use UniversalTelegram\Queue\Dispatcher;
+use UniversalTelegram\Queue\QueueHealth;
+use UniversalTelegram\Telegram\Commands\BotCommandDispatcher;
+use UniversalTelegram\Telegram\Commands\ConfirmationStore;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Inbound\UpdateRepository;
 use UniversalTelegram\Telegram\Inbound\WebhookController;
 use UniversalTelegram\Telegram\Inbound\WebhookSecretVerifier;
+use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
+use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
 use WP_REST_Request;
 use WP_UnitTestCase;
 
@@ -62,7 +73,24 @@ final class WebhookControllerTest extends WP_UnitTestCase {
 		$this->destinations  = new DestinationRepository( $schema_health );
 		$messages            = new MessageRepository( $schema_health, $vault );
 		$verifier            = new WebhookSecretVerifier( $this->bots, $audit_logger );
-		$this->controller    = new WebhookController(
+
+		$outbound_messages  = new OutboundMessageRepository( $schema_health, $vault );
+		$message_dispatcher = new MessageDispatcher( $outbound_messages, new Dispatcher( $schema_health ) );
+		$bot_commands       = new BotCommandDispatcher(
+			new OperatorIdentityRepository( $schema_health ),
+			$this->conversations,
+			new ChatProfileResolver( $this->bots, $this->destinations ),
+			new OperatorAvailabilityRepository( $schema_health ),
+			new QueueHealth(),
+			new EventHistoryRepository( $schema_health, new Registry(), new Redactor() ),
+			new WooCommerceSupport(),
+			new WooCommerceCommandQueryService(),
+			new ConfirmationStore(),
+			$message_dispatcher,
+			$audit_logger
+		);
+
+		$this->controller = new WebhookController(
 			$schema_health,
 			$this->bots,
 			$verifier,
@@ -71,7 +99,8 @@ final class WebhookControllerTest extends WP_UnitTestCase {
 			$messages,
 			new ChatProfileResolver( $this->bots, $this->destinations ),
 			new OperatorIdentityRepository( $schema_health ),
-			$audit_logger
+			$audit_logger,
+			$bot_commands
 		);
 	}
 
@@ -181,16 +210,33 @@ final class WebhookControllerTest extends WP_UnitTestCase {
 		$bot    = $this->bots->create( 'Bot', 'token' );
 		$secret = $this->active_secret_for( $bot );
 
+		$oversized_schema_health = new SchemaHealth();
+		$oversized_audit         = new AuditLogger( $oversized_schema_health, new Redactor() );
+		$oversized_bot_commands  = new BotCommandDispatcher(
+			new OperatorIdentityRepository( $oversized_schema_health ),
+			$this->conversations,
+			new ChatProfileResolver( $this->bots, $this->destinations ),
+			new OperatorAvailabilityRepository( $oversized_schema_health ),
+			new QueueHealth(),
+			new EventHistoryRepository( $oversized_schema_health, new Registry(), new Redactor() ),
+			new WooCommerceSupport(),
+			new WooCommerceCommandQueryService(),
+			new ConfirmationStore(),
+			new MessageDispatcher( new OutboundMessageRepository( $oversized_schema_health, new CredentialVault() ), new Dispatcher( $oversized_schema_health ) ),
+			$oversized_audit
+		);
+
 		$controller = new WebhookController(
-			new SchemaHealth(),
+			$oversized_schema_health,
 			$this->bots,
-			new WebhookSecretVerifier( $this->bots, new AuditLogger( new SchemaHealth(), new Redactor() ) ),
+			new WebhookSecretVerifier( $this->bots, $oversized_audit ),
 			$this->updates,
 			$this->conversations,
-			new MessageRepository( new SchemaHealth(), new CredentialVault() ),
+			new MessageRepository( $oversized_schema_health, new CredentialVault() ),
 			new ChatProfileResolver( $this->bots, $this->destinations ),
-			new OperatorIdentityRepository( new SchemaHealth() ),
-			new AuditLogger( new SchemaHealth(), new Redactor() ),
+			new OperatorIdentityRepository( $oversized_schema_health ),
+			$oversized_audit,
+			$oversized_bot_commands,
 			10
 		);
 
@@ -248,19 +294,36 @@ final class WebhookControllerTest extends WP_UnitTestCase {
 		$degraded = new SchemaHealth();
 		$degraded->mark_unavailable( \UniversalTelegram\Persistence\MigrationFailureCode::STEP_FAILED );
 
-		$bots       = new BotProfileRepository( $degraded, new CredentialVault() );
-		$updates    = new UpdateRepository( $degraded );
-		$verifier   = new WebhookSecretVerifier( $bots, new AuditLogger( $degraded, new Redactor() ) );
+		$bots                   = new BotProfileRepository( $degraded, new CredentialVault() );
+		$updates                = new UpdateRepository( $degraded );
+		$degraded_audit         = new AuditLogger( $degraded, new Redactor() );
+		$verifier               = new WebhookSecretVerifier( $bots, $degraded_audit );
+		$degraded_conversations = new ConversationRepository( $degraded, new CredentialVault(), new VisitorTokenGenerator() );
+		$degraded_bot_commands  = new BotCommandDispatcher(
+			new OperatorIdentityRepository( $degraded ),
+			$degraded_conversations,
+			new ChatProfileResolver( $bots, new DestinationRepository( $degraded ) ),
+			new OperatorAvailabilityRepository( $degraded ),
+			new QueueHealth(),
+			new EventHistoryRepository( $degraded, new Registry(), new Redactor() ),
+			new WooCommerceSupport(),
+			new WooCommerceCommandQueryService(),
+			new ConfirmationStore(),
+			new MessageDispatcher( new OutboundMessageRepository( $degraded, new CredentialVault() ), new Dispatcher( $degraded ) ),
+			$degraded_audit
+		);
+
 		$controller = new WebhookController(
 			$degraded,
 			$bots,
 			$verifier,
 			$updates,
-			new ConversationRepository( $degraded, new CredentialVault(), new VisitorTokenGenerator() ),
+			$degraded_conversations,
 			new MessageRepository( $degraded, new CredentialVault() ),
 			new ChatProfileResolver( $bots, new DestinationRepository( $degraded ) ),
 			new OperatorIdentityRepository( $degraded ),
-			new AuditLogger( $degraded, new Redactor() )
+			$degraded_audit,
+			$degraded_bot_commands
 		);
 
 		$response = $controller->handle_request( $this->request_for( 'anything', 'anything', '{}' ) );

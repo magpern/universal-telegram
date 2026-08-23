@@ -62,9 +62,9 @@ final class WooCommerceCommandQueryService {
 	 *
 	 * @param int $order_id The requested order id.
 	 *
-	 * @return array{status: string, date_created: string, currency: string, total: string, item_count: int}|null
-	 *               Null when not found, not retrievable, or not a normal order object — the caller renders the
-	 *               identical "not found or unavailable" text regardless of cause.
+	 * @return array{status: string, date_created: string, currency: string, total: float, item_count: int}|null
+	 *               Null when not found, not retrievable, or not a normal (non-refund) order object — the caller
+	 *               renders the identical "not found or unavailable" text regardless of cause.
 	 */
 	public function order_summary( int $order_id ): ?array {
 		if ( ! function_exists( 'wc_get_order' ) ) {
@@ -73,17 +73,21 @@ final class WooCommerceCommandQueryService {
 
 		$order = wc_get_order( $order_id );
 
-		if ( ! is_object( $order ) || ! method_exists( $order, 'get_status' ) ) {
+		// Not-found, a WP_Error-shaped failure, or any non-order object
+		// (the charter's own "not a normal order object" case) — all
+		// covered by requiring a genuine WC_Order instance.
+		if ( ! $order instanceof \WC_Order ) {
 			return null;
 		}
 
-		$date_created = $order->get_date_created();
+		$date_created      = $order->get_date_created();
+		$date_created_text = null !== $date_created ? wp_date( 'Y-m-d H:i', $date_created->getTimestamp() ) : '';
 
 		return array(
 			'status'       => $order->get_status(),
-			'date_created' => null !== $date_created ? wp_date( 'Y-m-d H:i', $date_created->getTimestamp() ) : '',
+			'date_created' => false !== $date_created_text ? $date_created_text : '',
 			'currency'     => $order->get_currency(),
-			'total'        => $order->get_total(),
+			'total'        => (float) $order->get_total(),
 			'item_count'   => count( $order->get_items() ),
 		);
 	}
@@ -110,7 +114,7 @@ final class WooCommerceCommandQueryService {
 
 		$product = wc_get_product( $product_id );
 
-		if ( ! is_object( $product ) || ! method_exists( $product, 'get_name' ) ) {
+		if ( ! $product instanceof \WC_Product ) {
 			return null;
 		}
 
@@ -164,7 +168,7 @@ final class WooCommerceCommandQueryService {
 		}
 
 		list( $since, $until ) = $this->window_bounds( $window );
-		$statuses               = array( 'completed', 'processing' );
+		$statuses              = array( 'completed', 'processing' );
 
 		$total = $this->count_only_probe( $statuses, $since, $until );
 

@@ -25,6 +25,8 @@ namespace UniversalTelegram\Telegram\Commands;
 final class CommandParser {
 
 	/**
+	 * Parses a decoded `message` payload into a recognized command, if any.
+	 *
 	 * @param array<string, mixed> $message      The decoded `message` payload (the same array
 	 *                                            WebhookController already extracts text/sender from).
 	 * @param string|null          $bot_username  The receiving bot's own BotProfile::telegram_username(),

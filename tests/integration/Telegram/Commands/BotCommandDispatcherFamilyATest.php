@@ -45,8 +45,8 @@ final class BotCommandDispatcherFamilyATest extends WP_UnitTestCase {
 		parent::setUp();
 
 		$this->schema_health = new SchemaHealth();
-		$vault                = new CredentialVault();
-		$audit                = new AuditLogger( $this->schema_health, new Redactor() );
+		$vault               = new CredentialVault();
+		$audit               = new AuditLogger( $this->schema_health, new Redactor() );
 
 		$this->bots                = new BotProfileRepository( $this->schema_health, $vault );
 		$this->conversations       = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
@@ -99,7 +99,13 @@ final class BotCommandDispatcherFamilyATest extends WP_UnitTestCase {
 		$parsed = CommandParser::parse(
 			array(
 				'text'     => $command_text,
-				'entities' => array( array( 'type' => 'bot_command', 'offset' => 0, 'length' => $entity_length ) ),
+				'entities' => array(
+					array(
+						'type'   => 'bot_command',
+						'offset' => 0,
+						'length' => $entity_length,
+					),
+				),
 			),
 			$bot->telegram_username()
 		);
@@ -158,7 +164,12 @@ final class BotCommandDispatcherFamilyATest extends WP_UnitTestCase {
 		$bot = $this->bots->create( 'Support Bot', 'token' );
 		$this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100123', null, 'Support group' );
 		list( $operator_wp_id, $role ) = $this->mapped_operator();
-		wp_update_user( array( 'ID' => $operator_wp_id, 'display_name' => 'Alex Operator' ) );
+		wp_update_user(
+			array(
+				'ID'           => $operator_wp_id,
+				'display_name' => 'Alex Operator',
+			)
+		);
 		$this->operator_identities->create( $operator_wp_id, 3, null, 1 );
 		$this->availability->set_state( $operator_wp_id, OperatorAvailability::AVAILABLE, $operator_wp_id );
 

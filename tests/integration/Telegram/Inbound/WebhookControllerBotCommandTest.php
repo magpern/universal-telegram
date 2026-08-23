@@ -55,8 +55,8 @@ final class WebhookControllerBotCommandTest extends WP_UnitTestCase {
 		parent::setUp();
 
 		$this->schema_health = new SchemaHealth();
-		$vault                = new CredentialVault();
-		$this->audit_logger   = new AuditLogger( $this->schema_health, new Redactor() );
+		$vault               = new CredentialVault();
+		$this->audit_logger  = new AuditLogger( $this->schema_health, new Redactor() );
 
 		$this->bots                = new BotProfileRepository( $this->schema_health, $vault );
 		$this->conversations       = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
@@ -106,7 +106,13 @@ final class WebhookControllerBotCommandTest extends WP_UnitTestCase {
 						'chat'              => array( 'id' => $chat_id ),
 						'message_thread_id' => $message_thread_id,
 						'text'              => $text,
-						'entities'          => array( array( 'type' => 'bot_command', 'offset' => 0, 'length' => $entity_length ) ),
+						'entities'          => array(
+							array(
+								'type'   => 'bot_command',
+								'offset' => 0,
+								'length' => $entity_length,
+							),
+						),
 						'from'              => null === $sender_telegram_user_id ? null : array( 'id' => $sender_telegram_user_id ),
 					),
 					static function ( $value ) {
@@ -319,7 +325,13 @@ final class WebhookControllerBotCommandTest extends WP_UnitTestCase {
 						'chat'              => array( 'id' => '-100123' ),
 						'message_thread_id' => 66,
 						'text'              => '/pricing is on our website',
-						'entities'          => array( array( 'type' => 'bot_command', 'offset' => 0, 'length' => 8 ) ),
+						'entities'          => array(
+							array(
+								'type'   => 'bot_command',
+								'offset' => 0,
+								'length' => 8,
+							),
+						),
 						'from'              => array( 'id' => 1111 ),
 					),
 				)

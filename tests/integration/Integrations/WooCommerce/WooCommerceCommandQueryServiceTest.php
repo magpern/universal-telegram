@@ -118,7 +118,7 @@ final class WooCommerceCommandQueryServiceTest extends WP_UnitTestCase {
 	public function test_sales_summary_sums_only_completed_and_processing_orders_in_the_window(): void {
 		$this->create_order( 'completed', 20.00 );
 		$this->create_order( 'processing', 30.00 );
-		$this->create_order( 'pending', 999.00 ); // must not be counted
+		$this->create_order( 'pending', 999.00 ); // Must not be counted.
 
 		$summary = $this->service->sales_summary( 'today' );
 

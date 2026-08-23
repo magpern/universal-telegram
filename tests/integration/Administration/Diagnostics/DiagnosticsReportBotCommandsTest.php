@@ -40,7 +40,7 @@ final class DiagnosticsReportBotCommandsTest extends WP_UnitTestCase {
 		parent::setUp();
 
 		$this->schema_health = new SchemaHealth();
-		$this->audit          = new AuditLogger( $this->schema_health, new Redactor() );
+		$this->audit         = new AuditLogger( $this->schema_health, new Redactor() );
 	}
 
 	private function report(): DiagnosticsReport {
@@ -89,16 +89,28 @@ final class DiagnosticsReportBotCommandsTest extends WP_UnitTestCase {
 			'bot_command.rejected_wrong_context',
 			'system',
 			null,
-			array( 'bot_id' => 7, 'command' => 'claim' ),
-			array( 'bot_id' => Classification::INTERNAL, 'command' => Classification::INTERNAL ),
+			array(
+				'bot_id'  => 7,
+				'command' => 'claim',
+			),
+			array(
+				'bot_id'  => Classification::INTERNAL,
+				'command' => Classification::INTERNAL,
+			),
 			Classification::INTERNAL
 		);
 		$this->audit->record(
 			'bot_command.rejected_wrong_context',
 			'system',
 			null,
-			array( 'bot_id' => 7, 'command' => 'presence' ),
-			array( 'bot_id' => Classification::INTERNAL, 'command' => Classification::INTERNAL ),
+			array(
+				'bot_id'  => 7,
+				'command' => 'presence',
+			),
+			array(
+				'bot_id'  => Classification::INTERNAL,
+				'command' => Classification::INTERNAL,
+			),
 			Classification::INTERNAL
 		);
 

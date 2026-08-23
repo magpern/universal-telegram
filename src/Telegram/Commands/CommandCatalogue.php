@@ -42,7 +42,7 @@ final class CommandCatalogue {
 	private const MAX_TOKEN_CHARS = 100;
 
 	/**
-	 * command => [context, argument_kind, allowed literals (for ARGUMENT_LITERAL only)].
+	 * Command => [context, argument_kind, allowed literals (for ARGUMENT_LITERAL only)].
 	 *
 	 * @return array<string, array{0: string, 1: string, 2: array<int, string>}>
 	 */
