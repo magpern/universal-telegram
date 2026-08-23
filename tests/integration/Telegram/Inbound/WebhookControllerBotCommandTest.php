@@ -74,6 +74,8 @@ final class WebhookControllerBotCommandTest extends WP_UnitTestCase {
 			$this->conversations,
 			new ChatProfileResolver( $this->bots, $this->destinations ),
 			new OperatorAvailabilityRepository( $this->schema_health ),
+			new \UniversalTelegram\Queue\QueueHealth(),
+			new \UniversalTelegram\Events\EventHistoryRepository( $this->schema_health, new \UniversalTelegram\Events\Registry(), new Redactor() ),
 			$message_dispatcher,
 			$this->audit_logger
 		);

@@ -20,7 +20,10 @@ use UniversalTelegram\Conversations\OperatorAvailabilityRepository;
 use UniversalTelegram\Conversations\OperatorIdentity;
 use UniversalTelegram\Conversations\OperatorIdentityRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
+use UniversalTelegram\Events\EventHistoryRepository;
+use UniversalTelegram\Events\EventSource;
 use UniversalTelegram\Privacy\Classification;
+use UniversalTelegram\Queue\QueueHealth;
 use UniversalTelegram\Telegram\Configuration\BotProfile;
 use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
 
@@ -47,6 +50,8 @@ final class BotCommandDispatcher {
 	 * @param ConversationRepository     $conversations       Resolves conversation-topic context and (later work packages) lifecycle writes.
 	 * @param ChatProfileResolver             $chat_profiles       Resolves the bot's configured support chat/destination.
 	 * @param OperatorAvailabilityRepository  $availability        Resolves an operator's current availability state (for `/whoami`).
+	 * @param QueueHealth                     $queue_health        Bounded queue-depth aggregates (for `/status`, `/errors`).
+	 * @param EventHistoryRepository          $event_history       Bounded 24h event-count aggregates (for `/status`, `/errors`, `/visitors`).
 	 * @param MessageDispatcher               $message_dispatcher  The existing, sole outbound Telegram-send path.
 	 * @param AuditLogger                     $audit               Records rejection and (later work packages) success entries.
 	 */
@@ -55,6 +60,8 @@ final class BotCommandDispatcher {
 		private readonly ConversationRepository $conversations,
 		private readonly ChatProfileResolver $chat_profiles,
 		private readonly OperatorAvailabilityRepository $availability,
+		private readonly QueueHealth $queue_health,
+		private readonly EventHistoryRepository $event_history,
 		private readonly MessageDispatcher $message_dispatcher,
 		private readonly AuditLogger $audit
 	) {}
@@ -193,10 +200,18 @@ final class BotCommandDispatcher {
 			case 'conversations':
 				$this->handle_conversations( $bot, $destination_id );
 				break;
+			case 'status':
+				$this->handle_status( $bot, $destination_id );
+				break;
+			case 'errors':
+				$this->handle_errors( $bot, $destination_id );
+				break;
+			case 'visitors':
+				$this->handle_visitors( $bot, $destination_id );
+				break;
 			default:
-				// Populated by WP4 (status/errors/visitors), WP5
-				// (orders/order/stock/sales), and WP6 (here/presence/
-				// claim/release/resolve/reopen/confirm).
+				// Populated by WP5 (orders/order/stock/sales) and WP6
+				// (here/presence/claim/release/resolve/reopen/confirm).
 				break;
 		}
 	}
@@ -268,6 +283,57 @@ final class BotCommandDispatcher {
 		);
 
 		$this->reply( $bot->id(), $destination_id, "Open conversations (up to 10):\n" . implode( "\n", $lines ) );
+	}
+
+	/**
+	 * `/status` — bounded queue-depth and 24h activity aggregates. No
+	 * customer, order, or visitor identifier of any kind.
+	 *
+	 * @param BotProfile $bot            The receiving bot.
+	 * @param int|null   $destination_id Where to send the reply.
+	 */
+	private function handle_status( BotProfile $bot, ?int $destination_id ): void {
+		$text = sprintf(
+			"Queue: %d pending, %d failed, oldest pending %ds\nActivity (24h): wordpress=%d, woocommerce=%d, visitor=%d",
+			$this->queue_health->pending_count(),
+			$this->queue_health->failed_count(),
+			$this->queue_health->oldest_pending_age_seconds(),
+			$this->event_history->count_24h_by_source( EventSource::WORDPRESS_CORE->value ),
+			$this->event_history->count_24h_by_source( EventSource::WOOCOMMERCE->value ),
+			$this->event_history->count_24h_by_source( EventSource::VISITOR->value )
+		);
+
+		$this->reply( $bot->id(), $destination_id, $text );
+	}
+
+	/**
+	 * `/errors` — bounded 24h WordPress-core event count (includes
+	 * fatal-error-promoted events) plus the current queue failed count.
+	 *
+	 * @param BotProfile $bot            The receiving bot.
+	 * @param int|null   $destination_id Where to send the reply.
+	 */
+	private function handle_errors( BotProfile $bot, ?int $destination_id ): void {
+		$text = sprintf(
+			"WordPress errors (24h): %d\nQueue failed: %d",
+			$this->event_history->count_24h_by_source( EventSource::WORDPRESS_CORE->value ),
+			$this->queue_health->failed_count()
+		);
+
+		$this->reply( $bot->id(), $destination_id, $text );
+	}
+
+	/**
+	 * `/visitors` — bounded 24h visitor-event count. Fixed 24h window only —
+	 * no configurable-window boundary exists (M08 plan §1 Family C).
+	 *
+	 * @param BotProfile $bot            The receiving bot.
+	 * @param int|null   $destination_id Where to send the reply.
+	 */
+	private function handle_visitors( BotProfile $bot, ?int $destination_id ): void {
+		$text = sprintf( 'Visitor events (24h): %d', $this->event_history->count_24h_by_source( EventSource::VISITOR->value ) );
+
+		$this->reply( $bot->id(), $destination_id, $text );
 	}
 
 	/**

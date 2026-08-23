@@ -655,11 +655,21 @@ final class Plugin {
 		$this->update_repository       = new UpdateRepository( $this->schema_health );
 		$this->webhook_secret_verifier = new WebhookSecretVerifier( $this->bot_profile_repository, $this->audit_logger );
 
+		// Constructed here (ahead of the Events/Automations block further
+		// below, which constructs the remaining two M02 repositories) so
+		// BotCommandDispatcher's read-only /status, /errors, and /visitors
+		// commands (M08) can use event_history_repository's existing
+		// aggregate-count methods without duplicating them.
+		$this->event_registry           = new Registry();
+		$this->event_history_repository = new EventHistoryRepository( $this->schema_health, $this->event_registry, new Redactor() );
+
 		$this->bot_command_dispatcher = new BotCommandDispatcher(
 			$this->operator_identity_repository,
 			$this->conversation_repository,
 			new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository ),
 			$this->operator_availability_repository,
+			$this->queue_health,
+			$this->event_history_repository,
 			$this->message_dispatcher,
 			$this->audit_logger
 		);
@@ -876,13 +886,14 @@ final class Plugin {
 			$this->conversation_repository
 		);
 
-		// Events/Automations (M02) repositories: constructed here, ahead of
-		// DiagnosticsReport below (which reads their aggregate counts),
-		// always unconditionally regardless of schema availability —
-		// individual repositories check SchemaHealth at their own point of
-		// use (docs/adr/0007).
-		$this->event_registry               = new Registry();
-		$this->event_history_repository     = new EventHistoryRepository( $this->schema_health, $this->event_registry, new Redactor() );
+		// Events/Automations (M02) repositories: event_registry and
+		// event_history_repository are constructed earlier (see above,
+		// ahead of BotCommandDispatcher, which needs the latter for
+		// /status /errors /visitors); the remaining two are constructed
+		// here, ahead of DiagnosticsReport below (which reads their
+		// aggregate counts), always unconditionally regardless of schema
+		// availability — individual repositories check SchemaHealth at
+		// their own point of use (docs/adr/0007).
 		$this->notification_rule_repository = new NotificationRuleRepository( $this->schema_health, $this->event_registry );
 		$this->dispatch_log_repository      = new DispatchLogRepository( $this->schema_health );
 

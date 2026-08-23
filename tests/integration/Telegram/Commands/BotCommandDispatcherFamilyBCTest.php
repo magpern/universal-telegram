@@ -8,15 +8,18 @@ namespace UniversalTelegram\Tests\Integration\Telegram\Commands;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\ConversationRepository;
-use UniversalTelegram\Conversations\OperatorAvailability;
 use UniversalTelegram\Conversations\OperatorAvailabilityRepository;
 use UniversalTelegram\Conversations\OperatorIdentityRepository;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Security\CredentialVault;
+use UniversalTelegram\Events\EventHistoryRepository;
+use UniversalTelegram\Events\Registry;
+use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
 use UniversalTelegram\Queue\Dispatcher;
+use UniversalTelegram\Queue\QueueHealth;
 use UniversalTelegram\Telegram\Commands\BotCommandDispatcher;
 use UniversalTelegram\Telegram\Commands\CommandParser;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
@@ -27,17 +30,15 @@ use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
 use WP_UnitTestCase;
 
 /**
- * M08 WP3: /help, /whoami, /conversations — the first three commands with
- * real, non-stub output.
+ * M08 WP4: /status, /errors, /visitors — bounded site/queue/visitor
+ * aggregates reused from the existing Diagnostics data boundary.
  */
-final class BotCommandDispatcherFamilyATest extends WP_UnitTestCase {
+final class BotCommandDispatcherFamilyBCTest extends WP_UnitTestCase {
 
 	private SchemaHealth $schema_health;
 	private BotProfileRepository $bots;
-	private ConversationRepository $conversations;
 	private DestinationRepository $destinations;
 	private OperatorIdentityRepository $operator_identities;
-	private OperatorAvailabilityRepository $availability;
 	private OutboundMessageRepository $outbound_messages;
 	private BotCommandDispatcher $dispatcher;
 
@@ -49,21 +50,21 @@ final class BotCommandDispatcherFamilyATest extends WP_UnitTestCase {
 		$audit                = new AuditLogger( $this->schema_health, new Redactor() );
 
 		$this->bots                = new BotProfileRepository( $this->schema_health, $vault );
-		$this->conversations       = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
+		$conversations              = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
 		$this->destinations        = new DestinationRepository( $this->schema_health );
 		$this->operator_identities = new OperatorIdentityRepository( $this->schema_health );
-		$this->availability        = new OperatorAvailabilityRepository( $this->schema_health );
+		$availability               = new OperatorAvailabilityRepository( $this->schema_health );
 
 		$this->outbound_messages = new OutboundMessageRepository( $this->schema_health, $vault );
 		$message_dispatcher      = new MessageDispatcher( $this->outbound_messages, new Dispatcher( $this->schema_health ) );
 
 		$this->dispatcher = new BotCommandDispatcher(
 			$this->operator_identities,
-			$this->conversations,
+			$conversations,
 			new ChatProfileResolver( $this->bots, $this->destinations ),
-			$this->availability,
-			new \UniversalTelegram\Queue\QueueHealth(),
-			new \UniversalTelegram\Events\EventHistoryRepository( $this->schema_health, new \UniversalTelegram\Events\Registry(), new Redactor() ),
+			$availability,
+			new QueueHealth(),
+			new EventHistoryRepository( $this->schema_health, new Registry(), new Redactor() ),
 			$message_dispatcher,
 			$audit
 		);
@@ -77,10 +78,27 @@ final class BotCommandDispatcherFamilyATest extends WP_UnitTestCase {
 		return array( $operator, $role );
 	}
 
+	private function insert_history_row( string $event_id, string $source, string $occurred_at ): void {
+		global $wpdb;
+
+		$wpdb->insert(
+			$wpdb->prefix . Migrator::EVENT_HISTORY_TABLE,
+			array(
+				'event_id'              => $event_id,
+				'event_type'            => 'custom.test_event',
+				'schema_version'        => 1,
+				'occurred_at'           => $occurred_at,
+				'source'                => $source,
+				'projected_fields_json' => '{}',
+				'created_at'            => current_time( 'mysql', true ),
+			)
+		);
+	}
+
 	private function last_outbound_text(): ?string {
 		global $wpdb;
 
-		$table = $wpdb->prefix . \UniversalTelegram\Persistence\Migrator::OUTBOUND_MESSAGES_TABLE;
+		$table = $wpdb->prefix . Migrator::OUTBOUND_MESSAGES_TABLE;
 		$id    = $wpdb->get_var( "SELECT id FROM {$table} ORDER BY id DESC LIMIT 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if ( null === $id ) {
@@ -92,7 +110,7 @@ final class BotCommandDispatcherFamilyATest extends WP_UnitTestCase {
 		return null === $message ? null : $this->outbound_messages->decrypt_body( $message )->plaintext();
 	}
 
-	private function handle( $bot, ?string $chat_id, ?int $thread_id, string $command_text, int $entity_length, int $sender_telegram_user_id ): void {
+	private function handle( $bot, string $command_text, int $entity_length, int $sender_telegram_user_id ): void {
 		$parsed = CommandParser::parse(
 			array(
 				'text'     => $command_text,
@@ -103,125 +121,118 @@ final class BotCommandDispatcherFamilyATest extends WP_UnitTestCase {
 
 		$this->dispatcher->handle(
 			$bot,
-			$chat_id,
-			$thread_id,
+			'-100123',
+			null,
 			$parsed,
 			array( 'message' => array( 'from' => array( 'id' => $sender_telegram_user_id ) ) )
 		);
 	}
 
-	public function test_help_in_the_general_topic_lists_only_general_and_any_context_commands(): void {
+	public function test_status_reports_bounded_queue_and_activity_aggregates(): void {
 		$bot = $this->bots->create( 'Support Bot', 'token' );
 		$this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100123', null, 'Support group' );
 		list( $operator_wp_id, $role ) = $this->mapped_operator();
-		$this->operator_identities->create( $operator_wp_id, 1, null, 1 );
+		$this->operator_identities->create( $operator_wp_id, 21, null, 1 );
+
+		$now = current_time( 'mysql', true );
+		$this->insert_history_row( 'evt-wp4-1', 'wordpress_core', $now );
+		$this->insert_history_row( 'evt-wp4-2', 'woocommerce', $now );
+		$this->insert_history_row( 'evt-wp4-3', 'visitor', $now );
+		$this->insert_history_row( 'evt-wp4-4', 'visitor', $now );
 
 		try {
-			$this->handle( $bot, '-100123', null, '/help', 5, 1 );
+			$this->handle( $bot, '/status', 7, 21 );
 
 			$text = $this->last_outbound_text();
 			$this->assertNotNull( $text );
-			$this->assertStringContainsString( '/help', $text );
-			$this->assertStringContainsString( '/status', $text );
-			$this->assertStringNotContainsString( '/claim', $text );
+			$this->assertStringContainsString( 'Queue: 0 pending, 0 failed', $text );
+			$this->assertStringContainsString( 'wordpress=1', $text );
+			$this->assertStringContainsString( 'woocommerce=1', $text );
+			$this->assertStringContainsString( 'visitor=2', $text );
 		} finally {
 			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
 		}
 	}
 
-	public function test_help_in_a_conversation_topic_lists_only_conversation_and_any_context_commands(): void {
+	public function test_errors_reports_bounded_wordpress_core_count_and_queue_failed(): void {
 		$bot = $this->bots->create( 'Support Bot', 'token' );
 		$this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100123', null, 'Support group' );
-		$conversation = $this->conversations->create( 'uuid-help-1', 'hash', $bot->id(), null );
-		$destination  = $this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100123', 40, 'Topic' );
-		$this->conversations->mark_topic_created( $conversation->id(), 40, $destination->id() );
-
 		list( $operator_wp_id, $role ) = $this->mapped_operator();
-		$this->operator_identities->create( $operator_wp_id, 2, null, 1 );
+		$this->operator_identities->create( $operator_wp_id, 22, null, 1 );
+
+		$now = current_time( 'mysql', true );
+		$this->insert_history_row( 'evt-wp4-5', 'wordpress_core', $now );
+		$this->insert_history_row( 'evt-wp4-6', 'wordpress_core', $now );
+		// Outside the 24h window — must not be counted.
+		$this->insert_history_row( 'evt-wp4-7', 'wordpress_core', gmdate( 'Y-m-d H:i:s', time() - ( 25 * HOUR_IN_SECONDS ) ) );
 
 		try {
-			$this->handle( $bot, '-100123', 40, '/help', 5, 2 );
+			$this->handle( $bot, '/errors', 7, 22 );
 
 			$text = $this->last_outbound_text();
-			$this->assertNotNull( $text );
-			$this->assertStringContainsString( '/claim', $text );
-			$this->assertStringNotContainsString( '/status', $text );
+			$this->assertStringContainsString( 'WordPress errors (24h): 2', $text );
+			$this->assertStringContainsString( 'Queue failed: 0', $text );
 		} finally {
 			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
 		}
 	}
 
-	public function test_whoami_reports_display_name_and_availability(): void {
+	public function test_visitors_reports_the_fixed_24h_count(): void {
 		$bot = $this->bots->create( 'Support Bot', 'token' );
 		$this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100123', null, 'Support group' );
 		list( $operator_wp_id, $role ) = $this->mapped_operator();
-		wp_update_user( array( 'ID' => $operator_wp_id, 'display_name' => 'Alex Operator' ) );
-		$this->operator_identities->create( $operator_wp_id, 3, null, 1 );
-		$this->availability->set_state( $operator_wp_id, OperatorAvailability::AVAILABLE, $operator_wp_id );
+		$this->operator_identities->create( $operator_wp_id, 23, null, 1 );
+
+		$now = current_time( 'mysql', true );
+		$this->insert_history_row( 'evt-wp4-8', 'visitor', $now );
+		$this->insert_history_row( 'evt-wp4-9', 'visitor', $now );
+		$this->insert_history_row( 'evt-wp4-10', 'visitor', $now );
 
 		try {
-			$this->handle( $bot, '-100123', null, '/whoami', 7, 3 );
+			$this->handle( $bot, '/visitors', 9, 23 );
 
-			$text = $this->last_outbound_text();
-			$this->assertStringContainsString( 'Alex Operator', $text );
-			$this->assertStringContainsString( OperatorAvailability::AVAILABLE, $text );
+			$this->assertSame( 'Visitor events (24h): 3', $this->last_outbound_text() );
 		} finally {
 			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
 		}
 	}
 
-	public function test_whoami_with_no_availability_row_reports_offline(): void {
+	public function test_status_errors_visitors_are_general_topic_only(): void {
 		$bot = $this->bots->create( 'Support Bot', 'token' );
 		$this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100123', null, 'Support group' );
+		$conversation = $this->conversation_topic_fixture( $bot );
 		list( $operator_wp_id, $role ) = $this->mapped_operator();
-		$this->operator_identities->create( $operator_wp_id, 4, null, 1 );
+		$this->operator_identities->create( $operator_wp_id, 24, null, 1 );
 
 		try {
-			$this->handle( $bot, '-100123', null, '/whoami', 7, 4 );
+			$parsed = CommandParser::parse(
+				array(
+					'text'     => '/status',
+					'entities' => array( array( 'type' => 'bot_command', 'offset' => 0, 'length' => 7 ) ),
+				),
+				$bot->telegram_username()
+			);
 
-			$text = $this->last_outbound_text();
-			$this->assertStringContainsString( OperatorAvailability::OFFLINE, $text );
+			$this->dispatcher->handle(
+				$bot,
+				'-100123',
+				$conversation['thread_id'],
+				$parsed,
+				array( 'message' => array( 'from' => array( 'id' => 24 ) ) )
+			);
+
+			$this->assertSame( "This command isn't available here.", $this->last_outbound_text() );
 		} finally {
 			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
 		}
 	}
 
-	public function test_conversations_lists_open_conversations_capped_at_ten_with_no_visitor_content(): void {
-		$bot = $this->bots->create( 'Support Bot', 'token' );
-		$this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100123', null, 'Support group' );
+	private function conversation_topic_fixture( $bot ): array {
+		$conversations = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
+		$conversation  = $conversations->create( 'uuid-wp4-1', 'hash', $bot->id(), null );
+		$destination   = $this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100123', 77, 'Topic' );
+		$conversations->mark_topic_created( $conversation->id(), 77, $destination->id() );
 
-		for ( $i = 0; $i < 12; $i++ ) {
-			$conversation = $this->conversations->create( 'uuid-list-' . $i, 'hash', $bot->id(), null );
-			$destination  = $this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100123', 100 + $i, 'Topic ' . $i );
-			$this->conversations->mark_topic_created( $conversation->id(), 100 + $i, $destination->id() );
-		}
-
-		list( $operator_wp_id, $role ) = $this->mapped_operator();
-		$this->operator_identities->create( $operator_wp_id, 5, null, 1 );
-
-		try {
-			$this->handle( $bot, '-100123', null, '/conversations', 14, 5 );
-
-			$text = $this->last_outbound_text();
-			$this->assertNotNull( $text );
-			$this->assertSame( 10, substr_count( $text, ' — ' . \UniversalTelegram\Conversations\ConversationStatus::OPEN ) );
-		} finally {
-			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
-		}
-	}
-
-	public function test_conversations_with_none_open_reports_a_fixed_message(): void {
-		$bot = $this->bots->create( 'Support Bot', 'token' );
-		$this->destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100123', null, 'Support group' );
-		list( $operator_wp_id, $role ) = $this->mapped_operator();
-		$this->operator_identities->create( $operator_wp_id, 6, null, 1 );
-
-		try {
-			$this->handle( $bot, '-100123', null, '/conversations', 14, 6 );
-
-			$this->assertSame( 'No open conversations.', $this->last_outbound_text() );
-		} finally {
-			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
-		}
+		return array( 'thread_id' => 77 );
 	}
 }
