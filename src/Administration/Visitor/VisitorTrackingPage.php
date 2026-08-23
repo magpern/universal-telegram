@@ -43,7 +43,6 @@ class VisitorTrackingPage {
 		'visitor_family_page_views',
 		'visitor_family_navigation',
 		'visitor_family_search',
-		'visitor_family_clicks',
 		'visitor_family_errors',
 		'visitor_family_commerce',
 		'visitor_exclude_administrators',
@@ -79,9 +78,12 @@ class VisitorTrackingPage {
 			$input[ $field ] = isset( $input[ $field ] );
 		}
 
-		if ( isset( $input['visitor_click_target_allowlist'] ) && is_string( $input['visitor_click_target_allowlist'] ) ) {
-			$input['visitor_click_target_allowlist'] = array_filter( array_map( 'trim', explode( "\n", $input['visitor_click_target_allowlist'] ) ) );
-		}
+		// Developer-only click tracking is not administrator-configurable
+		// (bug-fix authorization, corrective removal): any click-related
+		// keys a crafted request might still submit are dropped here so
+		// they never reach Settings::sanitize(), which independently
+		// ignores them anyway.
+		unset( $input['visitor_family_clicks'], $input['visitor_click_target_allowlist'] );
 
 		$sanitized = $this->settings->sanitize( array_merge( $this->settings->get(), $input ) );
 		update_option( Settings::OPTION_NAME, $sanitized );
@@ -108,7 +110,6 @@ class VisitorTrackingPage {
 		$this->checkbox( $values, 'visitor_family_page_views', __( 'Page views', 'universal-telegram' ) );
 		$this->checkbox( $values, 'visitor_family_navigation', __( 'Navigation', 'universal-telegram' ) );
 		$this->checkbox( $values, 'visitor_family_search', __( 'Search', 'universal-telegram' ) );
-		$this->checkbox( $values, 'visitor_family_clicks', __( 'Clicks', 'universal-telegram' ) );
 		$this->checkbox( $values, 'visitor_family_errors', __( 'JavaScript errors', 'universal-telegram' ) );
 		$this->checkbox( $values, 'visitor_family_commerce', __( 'WooCommerce (product views, classic add-to-cart, checkout entry)', 'universal-telegram' ) );
 		$this->checkbox( $values, 'visitor_exclude_administrators', __( 'Exclude administrators', 'universal-telegram' ) );
@@ -133,14 +134,6 @@ class VisitorTrackingPage {
 		echo '</label></p>';
 		echo '<p class="description">' . esc_html__(
 			'The percentage of visitor sessions to record, chosen once per session. 100 records every session; a lower value reduces stored event volume on high-traffic sites but means some sessions are not tracked at all.',
-			'universal-telegram'
-		) . '</p>';
-
-		echo '<p><label>' . esc_html__( 'Click target allowlist (one key per line, max 8)', 'universal-telegram' ) . '<br />';
-		echo '<textarea name="visitor_settings[visitor_click_target_allowlist]" rows="4" cols="40">' . esc_textarea( implode( "\n", $values['visitor_click_target_allowlist'] ) ) . '</textarea>';
-		echo '</label></p>';
-		echo '<p class="description">' . esc_html__(
-			'Only used when "Clicks" tracking is enabled above. Each line is one identifying key; a click event must carry a key from this list (exact, case-sensitive match) to be recorded, and any click with an unlisted or missing key is discarded and never stored. Leave blank to record no click events even with "Clicks" enabled.',
 			'universal-telegram'
 		) . '</p>';
 

@@ -95,12 +95,17 @@ final class Settings {
 			$sanitized['remove_data_on_uninstall'] = (bool) $input['remove_data_on_uninstall'];
 		}
 
+		// visitor_family_clicks and visitor_click_target_allowlist are
+		// deliberately absent from $boolean_fields/the allowlist handling
+		// below (bug-fix authorization, corrective removal): this developer-
+		// only feature requires identifiers ordinary administrators cannot
+		// configure meaningfully, so no submitted input — crafted or
+		// otherwise — can ever set them to anything but their defaults.
 		$boolean_fields = array(
 			'visitor_tracking_enabled',
 			'visitor_family_page_views',
 			'visitor_family_navigation',
 			'visitor_family_search',
-			'visitor_family_clicks',
 			'visitor_family_errors',
 			'visitor_family_commerce',
 			'visitor_exclude_administrators',
@@ -142,21 +147,6 @@ final class Settings {
 
 		if ( isset( $input['visitor_sampling_percent'] ) && is_numeric( $input['visitor_sampling_percent'] ) ) {
 			$sanitized['visitor_sampling_percent'] = max( 1, min( 100, (int) $input['visitor_sampling_percent'] ) );
-		}
-
-		if ( isset( $input['visitor_click_target_allowlist'] ) && is_array( $input['visitor_click_target_allowlist'] ) ) {
-			$allowlist = array();
-
-			foreach ( array_slice( $input['visitor_click_target_allowlist'], 0, 8 ) as $key ) {
-				if ( is_string( $key ) && '' !== $key ) {
-					$normalized = strtolower( preg_replace( '/[^a-z0-9_\-]/i', '', $key ) ?? '' );
-					if ( '' !== $normalized ) {
-						$allowlist[] = $normalized;
-					}
-				}
-			}
-
-			$sanitized['visitor_click_target_allowlist'] = array_values( array_unique( $allowlist ) );
 		}
 
 		$positive_integer_fields = array(

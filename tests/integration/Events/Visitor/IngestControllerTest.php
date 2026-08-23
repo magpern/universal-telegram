@@ -38,10 +38,8 @@ final class IngestControllerTest extends WP_UnitTestCase {
 			array_merge(
 				( new Settings() )->defaults(),
 				array(
-					'visitor_tracking_enabled'       => true,
-					'visitor_family_page_views'      => true,
-					'visitor_family_clicks'          => true,
-					'visitor_click_target_allowlist' => array( 'hero-cta' ),
+					'visitor_tracking_enabled'  => true,
+					'visitor_family_page_views' => true,
 				)
 			)
 		);
@@ -199,5 +197,49 @@ final class IngestControllerTest extends WP_UnitTestCase {
 
 			$this->assertSame( 429, $response->get_status() );
 		}
+	}
+
+	/**
+	 * Developer-only click tracking is not administrator-configurable
+	 * (bug-fix authorization, corrective removal): even a legacy stored
+	 * enabled flag plus a matching allowlist entry must not let a click
+	 * event through the ordinary browser tracking path.
+	 */
+	public function test_a_click_event_is_never_recorded_even_with_legacy_settings_enabling_it(): void {
+		update_option(
+			Settings::OPTION_NAME,
+			array_merge(
+				( new Settings() )->defaults(),
+				array(
+					'visitor_tracking_enabled'       => true,
+					'visitor_family_clicks'          => true,
+					'visitor_click_target_allowlist' => array( 'hero-cta' ),
+				)
+			)
+		);
+
+		$batch = wp_json_encode(
+			array(
+				'v'      => 1,
+				'visit'  => str_repeat( 'a', 32 ),
+				'events' => array(
+					array(
+						'uuid' => '22222222-2222-4222-8222-222222222222',
+						'type' => 'ck',
+						'data' => array( 'target_key' => 'hero-cta' ),
+					),
+				),
+			)
+		);
+
+		$response = $this->controller->handle_request( $this->request( $batch ) );
+
+		$this->assertSame( 202, $response->get_status() );
+
+		global $wpdb;
+		$table = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
+		$count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE event_type = %s", VisitorEventCatalog::CLICK ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		$this->assertSame( 0, $count );
 	}
 }

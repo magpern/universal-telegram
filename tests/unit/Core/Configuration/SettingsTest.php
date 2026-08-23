@@ -242,7 +242,6 @@ final class SettingsTest extends TestCase {
 			'visitor_family_page_views'      => array( 'visitor_family_page_views' ),
 			'visitor_family_navigation'      => array( 'visitor_family_navigation' ),
 			'visitor_family_search'          => array( 'visitor_family_search' ),
-			'visitor_family_clicks'          => array( 'visitor_family_clicks' ),
 			'visitor_family_errors'          => array( 'visitor_family_errors' ),
 			'visitor_family_commerce'        => array( 'visitor_family_commerce' ),
 			'visitor_exclude_administrators' => array( 'visitor_exclude_administrators' ),
@@ -264,17 +263,22 @@ final class SettingsTest extends TestCase {
 		$this->assertSame( 42, $settings->sanitize( array( 'visitor_sampling_percent' => 42 ) )['visitor_sampling_percent'] );
 	}
 
-	public function test_sanitize_bounds_the_click_target_allowlist_to_eight_sanitized_keys(): void {
+	/**
+	 * Developer-only click tracking is not administrator-configurable
+	 * (bug-fix authorization, corrective removal): no submitted value,
+	 * crafted or otherwise, can enable it or populate its allowlist.
+	 */
+	public function test_sanitize_ignores_any_submitted_click_tracking_input(): void {
 		$settings = new Settings();
-		$input    = array_map(
-			static function ( int $i ): string {
-				return "key-$i";
-			},
-			range( 1, 12 )
+
+		$result = $settings->sanitize(
+			array(
+				'visitor_family_clicks'          => true,
+				'visitor_click_target_allowlist' => array( 'hero-cta', 'nav-link' ),
+			)
 		);
 
-		$result = $settings->sanitize( array( 'visitor_click_target_allowlist' => $input ) )['visitor_click_target_allowlist'];
-
-		$this->assertCount( 8, $result );
+		$this->assertFalse( $result['visitor_family_clicks'] );
+		$this->assertSame( array(), $result['visitor_click_target_allowlist'] );
 	}
 }
