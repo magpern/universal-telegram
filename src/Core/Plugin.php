@@ -37,6 +37,11 @@ use UniversalTelegram\Administration\Telegram\TelegramFormFields;
 use UniversalTelegram\Administration\Visitor\VisitorTrackingPage;
 use UniversalTelegram\AI\Config\AIProviderRepository;
 use UniversalTelegram\AI\Content\ApprovedContentRepository;
+use UniversalTelegram\AI\Draft\AIDraftGenerationHandler;
+use UniversalTelegram\AI\Draft\AiDraftLeaseSweep;
+use UniversalTelegram\AI\Draft\AiDraftRepository;
+use UniversalTelegram\AI\Draft\PromptBuilder;
+use UniversalTelegram\AI\Provider\AiFailureClassifier;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Automations\DispatchLogRepository;
@@ -1270,6 +1275,25 @@ final class Plugin {
 			new Tab( ApprovedContentPage::TAB_ID, __( 'AI Content', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->approved_content_page, 'render_tab_content' ) )
 		);
 		add_action( 'admin_post_' . ApprovedContentPage::ADMIN_POST_ACTION, array( $this->approved_content_page, 'handle_request' ) );
+
+		// AI draft generation queue worker + stale-lease recovery sweep
+		// (M09, docs/adr/0028 decisions 4–5). No Hub tab of its own — reached
+		// only via the queue and the recurring sweep action.
+		$ai_drafts        = new AiDraftRepository( $this->schema_health, $this->credential_vault );
+		$prompt_builder   = new PromptBuilder( $this->message_repository, $this->approved_content_repository );
+		$ai_draft_handler = new AIDraftGenerationHandler(
+			$ai_drafts,
+			$this->ai_provider_repository,
+			$prompt_builder,
+			$this->circuit_breaker,
+			new AiFailureClassifier(),
+			new RetryPolicy()
+		);
+		$this->handler_registry->register( AIDraftGenerationHandler::JOB_TYPE, array( $ai_draft_handler, 'handle_job' ) );
+
+		$ai_lease_sweep = new AiDraftLeaseSweep( $ai_drafts );
+		add_action( AiDraftLeaseSweep::JOB_TYPE, array( $ai_lease_sweep, 'run' ) );
+		add_action( 'init', array( $ai_lease_sweep, 'register' ) );
 
 		$this->hub_tab_registry->register(
 			new Tab( 'diagnostics', __( 'Diagnostics', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->diagnostics_page, 'render_tab_content' ) )

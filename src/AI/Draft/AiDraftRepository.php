@@ -287,6 +287,348 @@ final class AiDraftRepository {
 	}
 
 	/**
+	 * Claims a `queued` (or expired-lease `generating`) draft for
+	 * generation, under the site-wide concurrency cap (docs/adr/0028
+	 * decision 5, §3.1-B of the frozen plan). Locks the always-present,
+	 * migration-seeded singleton `universal_telegram_ai_config` row
+	 * (`id=1`) as the global admission mutex for the duration of one
+	 * explicit transaction — every claim attempt across the whole site
+	 * serializes on this single row lock, which is what makes the
+	 * count-then-claim sequence race-safe (an aggregate `COUNT(*) FOR
+	 * UPDATE` alone does not reliably serialize). This is the one place in
+	 * the `AI` boundary that uses an explicit transaction rather than a
+	 * single atomic `UPDATE ... WHERE`, because "at most N rows may be
+	 * `generating` at once" cannot be expressed as a single-row
+	 * compare-and-set.
+	 *
+	 * @param string $draft_uuid      The draft to claim.
+	 * @param int    $lease_seconds   The lease duration.
+	 * @param int    $max_concurrent  The site-wide concurrency cap.
+	 *
+	 * @return array{draft_id: int, lease_token: string, attempt_count: int}|null Null if the row is not currently claimable, or the cap is reached.
+	 */
+	public function claim_for_generation( string $draft_uuid, int $lease_seconds, int $max_concurrent ): ?array {
+		if ( ! $this->schema_health->is_available() ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$config_table = $wpdb->prefix . Migrator::AI_CONFIG_TABLE;
+		$drafts_table = $wpdb->prefix . Migrator::AI_DRAFTS_TABLE;
+		$now          = current_time( 'mysql', true );
+
+		$wpdb->query( 'START TRANSACTION' );
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$locked = $wpdb->get_var( "SELECT id FROM {$config_table} WHERE id = 1 FOR UPDATE" );
+
+		if ( null === $locked ) {
+			$wpdb->query( 'ROLLBACK' );
+			return null;
+		}
+
+		$active_count = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$drafts_table} WHERE status = 'generating' AND generation_lease_expires_at > %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$now
+			)
+		);
+
+		if ( $active_count >= $max_concurrent ) {
+			$wpdb->query( 'ROLLBACK' );
+			return null;
+		}
+
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT id, attempt_count FROM {$drafts_table} WHERE draft_uuid = %s AND (status = 'queued' OR (status = 'generating' AND generation_lease_expires_at <= %s)) FOR UPDATE", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$draft_uuid,
+				$now
+			),
+			ARRAY_A
+		);
+
+		if ( null === $row ) {
+			$wpdb->query( 'ROLLBACK' );
+			return null;
+		}
+
+		$lease_token   = wp_generate_uuid4();
+		$attempt_count = (int) $row['attempt_count'] + 1;
+		$lease_expiry  = gmdate( 'Y-m-d H:i:s', time() + $lease_seconds );
+
+		$wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$drafts_table} SET status = 'generating', lease_token = %s, generation_lease_expires_at = %s, claimed_at = %s, attempt_count = %d, updated_at = %s WHERE id = %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$lease_token,
+				$lease_expiry,
+				$now,
+				$attempt_count,
+				$now,
+				$row['id']
+			)
+		);
+
+		$wpdb->query( 'COMMIT' );
+
+		return array(
+			'draft_id'      => (int) $row['id'],
+			'lease_token'   => $lease_token,
+			'attempt_count' => $attempt_count,
+		);
+	}
+
+	/**
+	 * Compare-and-set success write: only the claimant whose lease_token
+	 * still matches may complete the row — a stale, delayed worker's
+	 * completion after its lease was reclaimed is silently discarded
+	 * (docs/adr/0028 decision 5, §3.3 of the frozen plan).
+	 *
+	 * @param int    $draft_id              Primary key.
+	 * @param string $draft_uuid            The owning draft's opaque identifier, for the encryption context binding.
+	 * @param string $lease_token           This claim's lease token.
+	 * @param string $plaintext_body        The generated draft text, encrypted here — never passed in already-encrypted.
+	 * @param string $source_ids_json       JSON array of sources used.
+	 * @param string $context_fingerprint   SHA-256 of the submitted context.
+	 * @param string $prompt_policy_version The prompt policy version used.
+	 *
+	 * @return bool Whether this call's write won (false = stale/superseded claim).
+	 */
+	public function complete_generation(
+		int $draft_id,
+		string $draft_uuid,
+		string $lease_token,
+		string $plaintext_body,
+		string $source_ids_json,
+		string $context_fingerprint,
+		string $prompt_policy_version
+	): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		$body_ciphertext = $this->credential_vault->encrypt( $plaintext_body, self::CONTEXT_PREFIX . $draft_uuid );
+
+		global $wpdb;
+
+		$table   = $wpdb->prefix . Migrator::AI_DRAFTS_TABLE;
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$table} SET status = 'generated', body_ciphertext = %s, source_ids_json = %s, context_fingerprint = %s, prompt_policy_version = %s, generated_at = %s, lease_token = NULL, generation_lease_expires_at = NULL, updated_at = %s WHERE id = %d AND lease_token = %s AND status = 'generating'", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$body_ciphertext,
+				$source_ids_json,
+				$context_fingerprint,
+				$prompt_policy_version,
+				current_time( 'mysql', true ),
+				current_time( 'mysql', true ),
+				$draft_id,
+				$lease_token
+			)
+		);
+
+		return false !== $updated && $updated > 0;
+	}
+
+	/**
+	 * Compare-and-set terminal failure: dead-letters the row and clears
+	 * its lease. When $lease_token is null, matches by status alone — used
+	 * for a pre-claim failure (e.g. circuit already open) where no lease
+	 * was ever taken.
+	 *
+	 * @param int         $draft_id      Primary key.
+	 * @param string|null $lease_token   This claim's lease token, or null for a pre-claim failure.
+	 * @param string      $failure_class Fixed taxonomy code.
+	 *
+	 * @return bool
+	 */
+	public function fail( int $draft_id, ?string $lease_token, string $failure_class ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::AI_DRAFTS_TABLE;
+		$now   = current_time( 'mysql', true );
+
+		if ( null !== $lease_token ) {
+			$updated = $wpdb->query(
+				$wpdb->prepare(
+					"UPDATE {$table} SET status = 'failed', failure_class = %s, lease_token = NULL, generation_lease_expires_at = NULL, updated_at = %s WHERE id = %d AND lease_token = %s AND status = 'generating'", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					$failure_class,
+					$now,
+					$draft_id,
+					$lease_token
+				)
+			);
+		} else {
+			$updated = $wpdb->query(
+				$wpdb->prepare(
+					"UPDATE {$table} SET status = 'failed', failure_class = %s, lease_token = NULL, generation_lease_expires_at = NULL, updated_at = %s WHERE id = %d AND status IN ('queued','generating')", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					$failure_class,
+					$now,
+					$draft_id
+				)
+			);
+		}
+
+		return false !== $updated && $updated > 0;
+	}
+
+	/**
+	 * Compare-and-set retryable-failure release: returns the row to
+	 * `queued` before the caller rethrows to let WorkerRunner's own
+	 * bounded retry sequence run (docs/adr/0028 decision 5, §3.3 of the
+	 * frozen plan). attempt_count is left untouched — it is incremented
+	 * only at claim time.
+	 *
+	 * @param int    $draft_id    Primary key.
+	 * @param string $lease_token This claim's lease token.
+	 *
+	 * @return bool
+	 */
+	public function release_to_queued( int $draft_id, string $lease_token ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table   = $wpdb->prefix . Migrator::AI_DRAFTS_TABLE;
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$table} SET status = 'queued', lease_token = NULL, generation_lease_expires_at = NULL, updated_at = %s WHERE id = %d AND lease_token = %s AND status = 'generating'", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				current_time( 'mysql', true ),
+				$draft_id,
+				$lease_token
+			)
+		);
+
+		return false !== $updated && $updated > 0;
+	}
+
+	/**
+	 * Records the current Action Scheduler action id for a draft — set on
+	 * the initial enqueue and overwritten on every retry or sweep-triggered
+	 * re-enqueue (docs/adr/0028 decision 4, §3.5 of the frozen plan).
+	 * Diagnostics only, never referenced from any queue payload.
+	 *
+	 * @param int    $draft_id      Primary key.
+	 * @param string $job_reference The Action Scheduler action id.
+	 *
+	 * @return bool
+	 */
+	public function set_job_reference( int $draft_id, string $job_reference ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		return false !== $wpdb->update(
+			$wpdb->prefix . Migrator::AI_DRAFTS_TABLE,
+			array( 'job_reference' => $job_reference ),
+			array( 'id' => $draft_id ),
+			array( '%s' ),
+			array( '%d' )
+		);
+	}
+
+	/**
+	 * Every `generating` row whose lease has expired — the stale-lease
+	 * sweep's own candidate scan (docs/adr/0028 decision 5, §3.5 of the
+	 * frozen plan). A plain, unlocked read: the sweep's own reclaim/exhaust
+	 * writes are each an atomic, self-verifying compare-and-set, so a
+	 * stale snapshot here can never cause an unsafe write.
+	 *
+	 * @param int $limit Bounded candidate-scan size.
+	 *
+	 * @return array<int, AiDraft>
+	 */
+	public function find_stale_generating( int $limit = 50 ): array {
+		if ( ! $this->schema_health->is_available() ) {
+			return array();
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::AI_DRAFTS_TABLE;
+		$rows  = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM {$table} WHERE status = 'generating' AND generation_lease_expires_at < %s ORDER BY id ASC LIMIT %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				current_time( 'mysql', true ),
+				$limit
+			),
+			ARRAY_A
+		);
+
+		return array_map( array( $this, 'hydrate' ), null === $rows ? array() : $rows );
+	}
+
+	/**
+	 * Atomically re-arms one stale row back to `queued`, clearing its
+	 * lease — succeeds only if the row is still exactly in the expired
+	 * state this call observed (re-verified in the WHERE clause, not
+	 * assumed from a prior read), so two overlapping sweep runs can never
+	 * both win the same row (docs/adr/0028 decision 5, §3.5).
+	 *
+	 * @param int $draft_id Primary key.
+	 *
+	 * @return bool
+	 */
+	public function try_reclaim_stale( int $draft_id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table   = $wpdb->prefix . Migrator::AI_DRAFTS_TABLE;
+		$now     = current_time( 'mysql', true );
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$table} SET status = 'queued', lease_token = NULL, generation_lease_expires_at = NULL, updated_at = %s WHERE id = %d AND status = 'generating' AND generation_lease_expires_at < %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$now,
+				$draft_id,
+				$now
+			)
+		);
+
+		return false !== $updated && $updated > 0;
+	}
+
+	/**
+	 * Atomically dead-letters one stale row whose shared attempt budget is
+	 * already exhausted — same self-verifying WHERE-clause guarantee as
+	 * try_reclaim_stale() (docs/adr/0028 decision 5, §3.5).
+	 *
+	 * @param int $draft_id Primary key.
+	 *
+	 * @return bool
+	 */
+	public function try_exhaust_stale( int $draft_id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table   = $wpdb->prefix . Migrator::AI_DRAFTS_TABLE;
+		$now     = current_time( 'mysql', true );
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$table} SET status = 'failed', failure_class = 'crashed_exhausted', lease_token = NULL, generation_lease_expires_at = NULL, updated_at = %s WHERE id = %d AND status = 'generating' AND generation_lease_expires_at < %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$now,
+				$draft_id,
+				$now
+			)
+		);
+
+		return false !== $updated && $updated > 0;
+	}
+
+	/**
 	 * A compare-and-set transition: succeeds only if the row is currently
 	 * in one of the expected statuses.
 	 *
