@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.9.0
+Stable tag: 0.10.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -41,6 +41,23 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.10.0 =
+* Administrative bot commands (M08, ADR-0027): a fixed, allow-listed set of Telegram bot commands
+  for mapped operators — `/help`, `/whoami`, `/status`, `/errors`, `/visitors`, `/orders`, `/order`,
+  `/stock`, `/sales`, `/conversations`, `/here`, `/presence`, `/claim`, `/release`, `/resolve`,
+  `/reopen`, `/confirm`. A command is recognized only via Telegram's own `bot_command` message
+  entity at offset 0, addressed to this bot; every command requires both the existing M07 operator
+  identity mapping and a freshly evaluated `MANAGE_CONVERSATIONS` capability — an unmapped or
+  capability-revoked sender gets an identical, non-disclosing outcome. Unknown forum topics are
+  fully silent for every command. `/order`, `/stock`, and `/sales` are backed by a new, read-only
+  `WooCommerceCommandQueryService` using only documented, HPOS-safe WooCommerce APIs, bounded to a
+  500-record/5-page safe processing cap — never a `wc_get_orders(limit: -1)` call, and never a
+  partial figure past the cap. `/resolve` and `/reopen` require a `/confirm` follow-up within 60
+  seconds (a WordPress core transient, matching the existing Diagnostics-page precedent); `/reopen`
+  is additionally restricted to the conversation's current assignee, narrower than the Hub's own
+  administrator-level reopen action. Every command reply uses the existing outbound Telegram-send
+  path — no second send mechanism, no new REST route, no schema change (`db_version` stays `18`).
 
 = 0.9.0 =
 * Operator workflow (M07, ADR-0026): a manual WordPress-user <-> Telegram numeric-id identity

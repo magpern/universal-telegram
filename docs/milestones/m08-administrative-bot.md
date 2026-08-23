@@ -2,7 +2,12 @@
 
 ## Status
 
-Not Started
+Implemented — technical work complete on `feature/m08-administrative-bot-commands`, frozen plan `docs/plans/m08-administrative-bot-commands-plan-v1.md`, ADR-0027. Product Owner acceptance pending the manual dev-bot checklist (plan §12). See `docs/closure/m08-administrative-bot-commands-closure.md` once merged.
+
+## Implementation notes
+
+- Command execution requires **both** the existing `OperatorIdentityPage` Telegram-operator mapping (M07) **and** a currently-held `MANAGE_CONVERSATIONS` capability, checked fresh on every command — a role change takes effect immediately without needing to also edit the Telegram mapping. Every operator must be mapped, and hold the capability, before their first command.
+- The read-only command set implemented is `/help`, `/whoami`, `/status`, `/errors`, `/visitors`, `/orders`, `/order`, `/stock`, `/sales`, `/conversations`, plus the operator-workflow commands `/here`, `/presence`, `/claim`, `/release`, `/resolve`, `/reopen`, `/confirm` — the last two conversation-lifecycle transitions require a `/confirm` follow-up within 60 seconds. Full syntax, context, and privacy matrices: the frozen plan.
 
 ## Dependencies
 

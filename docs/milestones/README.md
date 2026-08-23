@@ -12,7 +12,7 @@ Status values: Not Started, Planned, In Progress, Implemented, Verifying, Closed
 | M05 | Conversation backend | [m05-conversation-backend.md](m05-conversation-backend.md) | Not Started | M00, M01 |
 | M06 | Configurable chat widget | [m06-configurable-chat-widget.md](m06-configurable-chat-widget.md) | Not Started | M05 |
 | M07 | Operator workflow | [m07-operator-workflow.md](m07-operator-workflow.md) | Not Started | M05, M06 |
-| M08 | Administrative bot | [m08-administrative-bot.md](m08-administrative-bot.md) | Not Started | M01, M02, M03, M04, M05 |
+| M08 | Administrative bot | [m08-administrative-bot.md](m08-administrative-bot.md) | Implemented | M01, M02, M03, M04, M05 |
 | M09 | AI draft assistant | [m09-ai-draft-assistant.md](m09-ai-draft-assistant.md) | Not Started | M05, M07 |
 | M10 | Controlled AI responses | [m10-controlled-ai-responses.md](m10-controlled-ai-responses.md) | Not Started | M09 (must close PASS or PASS WITH LIMITATIONS on safety/quality) |
 | M11 | Digests and operational intelligence | [m11-digests-and-operational-intelligence.md](m11-digests-and-operational-intelligence.md) | Not Started | M02, M03, M04, M09 |
