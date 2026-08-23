@@ -36,6 +36,29 @@ class AISettingsPage {
 	public const ACTION_BUMP_ACK          = 'universal_telegram_ai_bump_ack';
 
 	/**
+	 * Sentinel `model` value selecting the free-text fallback field, never
+	 * itself persisted as a model identifier.
+	 */
+	private const OTHER_MODEL_VALUE = '__other__';
+
+	/**
+	 * Suggested OpenAI chat-completion model identifiers offered in the
+	 * dropdown. Not an enforced allow-list — decision 3's "no runtime
+	 * provider model discovery" rules out fetching this from OpenAI, so it
+	 * is a fixed, hand-maintained shortlist; "Other (advanced)" remains the
+	 * escape hatch for any model identifier not listed here.
+	 *
+	 * @var string[]
+	 */
+	private const KNOWN_MODELS = array(
+		'gpt-4o-mini',
+		'gpt-4o',
+		'gpt-4.1-mini',
+		'gpt-4.1',
+		'o4-mini',
+	);
+
+	/**
 	 * Constructor.
 	 *
 	 * @param AIProviderRepository $repository Reads/writes the AI provider configuration.
@@ -52,8 +75,11 @@ class AISettingsPage {
 
 		check_admin_referer( self::ACTION_SAVE_SETTINGS );
 
-		$model   = isset( $_POST['model'] ) ? sanitize_text_field( wp_unslash( (string) $_POST['model'] ) ) : '';
-		$enabled = isset( $_POST['enabled'] );
+		$submitted_model = isset( $_POST['model'] ) ? sanitize_text_field( wp_unslash( (string) $_POST['model'] ) ) : '';
+		$model           = self::OTHER_MODEL_VALUE === $submitted_model
+			? ( isset( $_POST['model_other'] ) ? sanitize_text_field( wp_unslash( (string) $_POST['model_other'] ) ) : '' )
+			: $submitted_model;
+		$enabled         = isset( $_POST['enabled'] );
 
 		$this->repository->update_settings( $model, $enabled );
 
@@ -148,11 +174,34 @@ class AISettingsPage {
 		echo '<input type="hidden" name="action" value="' . esc_attr( self::ACTION_SAVE_SETTINGS ) . '" />';
 		echo '<table class="form-table"><tbody>';
 		echo '<tr><th>' . esc_html__( 'Provider', 'universal-telegram' ) . '</th><td>' . esc_html( $config->provider() ) . '</td></tr>';
+		$current_model = $config->model();
+		$is_known      = in_array( $current_model, self::KNOWN_MODELS, true );
+		$select_value  = $is_known ? $current_model : self::OTHER_MODEL_VALUE;
+
+		echo '<tr><th><label for="ut-ai-model">' . esc_html__( 'Model identifier', 'universal-telegram' ) . '</label></th><td>';
+		echo '<select id="ut-ai-model" name="model" onchange="document.getElementById(\'ut-ai-model-other\').style.display = ( this.value === \'' . esc_js( self::OTHER_MODEL_VALUE ) . '\' ) ? \'\' : \'none\';">';
+		foreach ( self::KNOWN_MODELS as $known_model ) {
+			printf(
+				'<option value="%1$s" %2$s>%1$s</option>',
+				esc_attr( $known_model ),
+				selected( $select_value, $known_model, false )
+			);
+		}
 		printf(
-			'<tr><th><label for="ut-ai-model">%1$s</label></th><td><input type="text" id="ut-ai-model" name="model" maxlength="191" value="%2$s" /></td></tr>',
-			esc_html__( 'Model identifier', 'universal-telegram' ),
-			esc_attr( $config->model() )
+			'<option value="%1$s" %2$s>%3$s</option>',
+			esc_attr( self::OTHER_MODEL_VALUE ),
+			selected( $select_value, self::OTHER_MODEL_VALUE, false ),
+			esc_html__( 'Other (advanced)', 'universal-telegram' )
 		);
+		echo '</select> ';
+		printf(
+			'<input type="text" id="ut-ai-model-other" name="model_other" maxlength="191" placeholder="%1$s" value="%2$s" style="%3$s" />',
+			esc_attr__( 'Custom model identifier', 'universal-telegram' ),
+			esc_attr( $is_known ? '' : $current_model ),
+			$is_known ? 'display:none' : ''
+		);
+		echo '<p class="description">' . esc_html__( 'Suggested models are shown for convenience; the list is not fetched from the provider. Choose "Other (advanced)" to enter any model identifier.', 'universal-telegram' ) . '</p>';
+		echo '</td></tr>';
 		printf(
 			'<tr><th><label for="ut-ai-enabled">%1$s</label></th><td><label><input type="checkbox" id="ut-ai-enabled" name="enabled" value="1" %2$s /> %3$s</label></td></tr>',
 			esc_html__( 'Enabled', 'universal-telegram' ),
