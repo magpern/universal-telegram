@@ -68,6 +68,14 @@ final class SchemaDegradedExecutionTest extends WP_UnitTestCase {
 		// only — it never touches this plugin's own production code.
 		if ( function_exists( 'as_unschedule_all_actions' ) ) {
 			as_unschedule_all_actions( 'action_scheduler/migration_hook' );
+
+			// Same root cause, for M09's own recurring stale-lease sweep
+			// (docs/adr/0028 §3.5): AiDraftLeaseSweep::register() schedules
+			// it once, immediately due, when the plugin bootstraps for the
+			// whole test run — otherwise it can be claimed in the same
+			// batch as this test's own action, consuming a run() call
+			// this test's queue-runner assertion depends on.
+			as_unschedule_all_actions( \UniversalTelegram\AI\Draft\AiDraftLeaseSweep::JOB_TYPE );
 		}
 	}
 

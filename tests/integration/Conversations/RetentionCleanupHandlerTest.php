@@ -75,6 +75,41 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 		$this->assertNull( $reloaded->body_ciphertext() );
 	}
 
+	/**
+	 * Docs/adr/0028 §4 retention table: AI draft bodies follow the exact
+	 * same 30-day nulling pass as message bodies.
+	 */
+	public function test_run_nulls_ai_draft_bodies_thirty_days_after_archival(): void {
+		global $wpdb;
+
+		$conversation = $this->resolved_conversation();
+		$table        = $wpdb->prefix . 'universal_telegram_ai_drafts';
+		$wpdb->insert(
+			$table,
+			array(
+				'draft_uuid'            => wp_generate_uuid4(),
+				'conversation_id'       => $conversation->id(),
+				'status'                => 'generated',
+				'provider'              => 'openai',
+				'model'                 => 'gpt-4o-mini',
+				'prompt_policy_version' => 'v1',
+				'requested_by_user_id'  => 1,
+				'body_ciphertext'       => 'ciphertext-placeholder',
+				'created_at'            => current_time( 'mysql', true ),
+				'updated_at'            => current_time( 'mysql', true ),
+			)
+		);
+
+		$this->handler->run();
+		$this->set_conversation_updated_at( $conversation->id(), 31 );
+		$this->handler->run();
+
+		$body = $wpdb->get_var(
+			$wpdb->prepare( "SELECT body_ciphertext FROM {$table} WHERE conversation_id = %d", $conversation->id() ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		);
+		$this->assertNull( $body );
+	}
+
 	public function test_run_leaves_recently_archived_message_bodies_intact(): void {
 		$conversation = $this->resolved_conversation();
 		$message      = $this->messages->create( $conversation->id(), 'visitor', 'Hello there' );

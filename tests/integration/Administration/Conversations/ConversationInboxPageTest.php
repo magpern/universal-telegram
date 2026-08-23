@@ -20,6 +20,25 @@ use WP_UnitTestCase;
 
 final class ConversationInboxPageTest extends WP_UnitTestCase {
 
+	/**
+	 * Explicit reset, not an assumption: universal_telegram_conversations
+	 * rows are not reliably rolled back by WP_UnitTestCase's per-test
+	 * transaction wrapping once a DDL statement elsewhere in the same run
+	 * (e.g. a Migrator test) has forced an implicit commit — the same
+	 * documented root cause already noted elsewhere in this suite for
+	 * plain option writes and Action Scheduler rows. This class's own
+	 * assertions depend on its own fixture conversations appearing within
+	 * the inbox's default (unpaginated) result set, which an unrelated
+	 * test's accumulated, never-rolled-back rows can otherwise crowd out.
+	 */
+	protected function setUp(): void {
+		parent::setUp();
+
+		global $wpdb;
+		$wpdb->query( "DELETE FROM {$wpdb->prefix}universal_telegram_conversation_messages" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query( "DELETE FROM {$wpdb->prefix}universal_telegram_conversations" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
 	private function page(): array {
 		$schema_health = new SchemaHealth();
 		$conversations = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );

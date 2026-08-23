@@ -66,12 +66,13 @@ class ConversationRepository {
 	 * @param string|null $start_idempotency_key The client-supplied start idempotency key, if any (M06 plan §0).
 	 * @param int|null    $owner_user_id         The authenticated WordPress user this conversation belongs to (M06.3.1, ADR-0025).
 	 * @param string|null $display_name_plaintext The server-derived display name to store atomically with this row, if any (M06.3.1, ADR-0025).
+	 * @param string|null $ai_ack_policy_version   Set only if the visitor explicitly acknowledged AI processing while it was enabled (M09, docs/adr/0028 decision 1).
 	 *
 	 * @return Conversation|null Null if the schema is unavailable or the write failed
 	 *                           (including a unique-constraint collision on start_idempotency_key
 	 *                           or, for an owned conversation, the owner_active_slot index).
 	 */
-	public function create( string $conversation_uuid, string $secret_hash, int $bot_id, ?string $chat_profile, ?string $start_idempotency_key = null, ?int $owner_user_id = null, ?string $display_name_plaintext = null ): ?Conversation {
+	public function create( string $conversation_uuid, string $secret_hash, int $bot_id, ?string $chat_profile, ?string $start_idempotency_key = null, ?int $owner_user_id = null, ?string $display_name_plaintext = null, ?string $ai_ack_policy_version = null ): ?Conversation {
 		if ( ! $this->schema_health->is_available() ) {
 			return null;
 		}
@@ -105,10 +106,11 @@ class ConversationRepository {
 				'start_idempotency_key'   => $start_idempotency_key,
 				'owner_user_id'           => $owner_user_id,
 				'display_name_ciphertext' => $display_name_ciphertext,
+				'ai_ack_policy_version'   => $ai_ack_policy_version,
 				'created_at'              => $now,
 				'updated_at'              => $now,
 			),
-			array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s' )
+			array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s' )
 		);
 
 		if ( false === $inserted ) {
@@ -140,11 +142,12 @@ class ConversationRepository {
 	 * @param string      $start_idempotency_key  The client-supplied start idempotency key.
 	 * @param int         $owner_user_id          The authenticated WordPress user.
 	 * @param string      $display_name_plaintext The server-derived display name.
+	 * @param string|null $ai_ack_policy_version  Set only if the visitor explicitly acknowledged AI processing while it was enabled (M09, docs/adr/0028 decision 1).
 	 *
 	 * @return array{conversation: Conversation, secret: string|null, resumed: bool}|null
 	 */
-	public function create_or_resume_owned( string $conversation_uuid, string $secret_hash, int $bot_id, ?string $chat_profile, string $start_idempotency_key, int $owner_user_id, string $display_name_plaintext ): ?array {
-		$conversation = $this->create( $conversation_uuid, $secret_hash, $bot_id, $chat_profile, $start_idempotency_key, $owner_user_id, $display_name_plaintext );
+	public function create_or_resume_owned( string $conversation_uuid, string $secret_hash, int $bot_id, ?string $chat_profile, string $start_idempotency_key, int $owner_user_id, string $display_name_plaintext, ?string $ai_ack_policy_version = null ): ?array {
+		$conversation = $this->create( $conversation_uuid, $secret_hash, $bot_id, $chat_profile, $start_idempotency_key, $owner_user_id, $display_name_plaintext, $ai_ack_policy_version );
 
 		if ( null !== $conversation ) {
 			return array(
@@ -1052,7 +1055,8 @@ class ConversationRepository {
 			null === $row['topic_claim_expires_at'] ? null : (string) $row['topic_claim_expires_at'],
 			null === $row['display_name_ciphertext'] ? null : (string) $row['display_name_ciphertext'],
 			isset( $row['owner_user_id'] ) ? (int) $row['owner_user_id'] : null,
-			isset( $row['assignee_last_seen_message_id'] ) ? (int) $row['assignee_last_seen_message_id'] : null
+			isset( $row['assignee_last_seen_message_id'] ) ? (int) $row['assignee_last_seen_message_id'] : null,
+			isset( $row['ai_ack_policy_version'] ) ? (string) $row['ai_ack_policy_version'] : null
 		);
 	}
 

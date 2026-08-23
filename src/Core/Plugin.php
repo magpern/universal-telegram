@@ -7,6 +7,10 @@
 
 namespace UniversalTelegram\Core;
 
+use UniversalTelegram\Administration\AI\AIDiagnosticsPanel;
+use UniversalTelegram\Administration\AI\AISettingsPage;
+use UniversalTelegram\Administration\AI\ApprovedContentPage;
+use UniversalTelegram\Administration\AI\ConversationDraftPanel;
 use UniversalTelegram\Administration\Automations\EventCatalogPage;
 use UniversalTelegram\Administration\Automations\EventHistoryPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderPage;
@@ -33,6 +37,14 @@ use UniversalTelegram\Administration\Telegram\BotSetupWizardRenderer;
 use UniversalTelegram\Administration\Telegram\BotSetupWizardState;
 use UniversalTelegram\Administration\Telegram\TelegramFormFields;
 use UniversalTelegram\Administration\Visitor\VisitorTrackingPage;
+use UniversalTelegram\AI\Config\AIProviderRepository;
+use UniversalTelegram\AI\Content\ApprovedContentRepository;
+use UniversalTelegram\AI\Draft\AIDraftGenerationHandler;
+use UniversalTelegram\AI\Draft\AiDraftLeaseSweep;
+use UniversalTelegram\AI\Draft\AiDraftRepository;
+use UniversalTelegram\AI\Draft\DraftRequestHandler;
+use UniversalTelegram\AI\Draft\PromptBuilder;
+use UniversalTelegram\AI\Provider\AiFailureClassifier;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Automations\DispatchLogRepository;
@@ -244,6 +256,41 @@ final class Plugin {
 	 * @var SettingsPage|null
 	 */
 	private ?SettingsPage $settings_page = null;
+
+	/**
+	 * AI provider configuration persistence (M09), constructed by init().
+	 *
+	 * @var AIProviderRepository|null
+	 */
+	private ?AIProviderRepository $ai_provider_repository = null;
+
+	/**
+	 * AI draft persistence (M09), constructed by init().
+	 *
+	 * @var AiDraftRepository|null
+	 */
+	private ?AiDraftRepository $ai_draft_repository = null;
+
+	/**
+	 * The AI tab page (M09), constructed by init().
+	 *
+	 * @var AISettingsPage|null
+	 */
+	private ?AISettingsPage $ai_settings_page = null;
+
+	/**
+	 * Approved AI source-content persistence (M09), constructed by init().
+	 *
+	 * @var ApprovedContentRepository|null
+	 */
+	private ?ApprovedContentRepository $approved_content_repository = null;
+
+	/**
+	 * The AI Content tab page (M09), constructed by init().
+	 *
+	 * @var ApprovedContentPage|null
+	 */
+	private ?ApprovedContentPage $approved_content_page = null;
 
 	/**
 	 * The bounded diagnostic self-test, constructed by init().
@@ -596,6 +643,13 @@ final class Plugin {
 
 		$this->credential_vault = new CredentialVault();
 
+		// Constructed early (M09, docs/adr/0028): ConversationsController
+		// needs it at conversation-creation time to resolve the visitor
+		// acknowledgement gate, well before the Hub's own AI tab is
+		// registered later in this method.
+		$this->ai_provider_repository = new AIProviderRepository( $this->schema_health, $this->credential_vault );
+		$this->ai_draft_repository    = new AiDraftRepository( $this->schema_health, $this->credential_vault );
+
 		$this->capability_registrar = new CapabilityRegistrar();
 
 		$this->handler_registry = new HandlerRegistry();
@@ -748,7 +802,8 @@ final class Plugin {
 			$conversation_outbound_dispatcher,
 			$immediate_delivery_attempt,
 			$prompt_delivery_fallback,
-			$settings
+			$settings,
+			$this->ai_provider_repository
 		);
 		add_action( 'rest_api_init', array( $this->conversations_controller, 'register_routes' ) );
 
@@ -828,6 +883,9 @@ final class Plugin {
 				$this->conversation_repository->clear_assignment_for_operator( $user_id );
 				$this->operator_availability_repository->delete_for_operator( $user_id );
 				$this->operator_identity_repository->delete_for_wp_user( $user_id );
+				// M09, docs/adr/0028 §4: AI draft content is untouched — only
+				// the requester/reviewer identity is anonymized.
+				$this->ai_draft_repository->anonymize_operator( $user_id );
 
 				$this->audit_logger->record(
 					'conversation.operator_identity.account_deleted_cleanup',
@@ -923,7 +981,8 @@ final class Plugin {
 			$this->self_test,
 			$this->queue_health_alert,
 			(int) $settings_values['telegram_stale_pending_alert_seconds'],
-			(int) $settings_values['telegram_webhook_rotation_max_pending_hours']
+			(int) $settings_values['telegram_webhook_rotation_max_pending_hours'],
+			new AIDiagnosticsPanel( $this->ai_draft_repository, $this->circuit_breaker )
 		);
 		add_action( 'admin_notices', array( $this->diagnostics_page, 'render_admin_notice' ) );
 
@@ -1018,7 +1077,8 @@ final class Plugin {
 				new ChatProfileResolver( $this->bot_profile_repository, $this->destination_repository )
 			),
 			$settings,
-			new AccountUrlResolver()
+			new AccountUrlResolver(),
+			$this->ai_provider_repository
 		);
 		add_action( 'wp_enqueue_scripts', array( $chat_widget_assets, 'enqueue' ) );
 		add_action( 'wp_footer', array( $chat_widget_assets, 'print_config' ), 5 );
@@ -1193,6 +1253,14 @@ final class Plugin {
 		);
 		add_action( 'admin_post_' . ConversationActionHandler::ADMIN_POST_ACTION, array( $this->conversation_action_handler, 'handle_request' ) );
 
+		// Conversation-detail draft review panel (M09, docs/adr/0028
+		// decision 6): the only Administration\AI\* class permitted to
+		// write reviewed/approved/discarded. Constructed here, before
+		// ConversationDetailPage, since it is composed directly into that
+		// page's render.
+		$ai_conversation_draft_panel = new ConversationDraftPanel( $this->ai_draft_repository, $this->ai_provider_repository );
+		add_action( 'admin_post_' . ConversationDraftPanel::ADMIN_POST_ACTION, array( $ai_conversation_draft_panel, 'handle_request' ) );
+
 		// Operator inbox + detail view (M07, docs/adr/0026): unread badge,
 		// own-availability control, status-filtered/paginated list, and the
 		// message/note detail view with mark-seen-on-view.
@@ -1200,7 +1268,8 @@ final class Plugin {
 			$this->conversation_repository,
 			$this->message_repository,
 			$this->conversation_note_repository,
-			$this->operator_identity_repository
+			$this->operator_identity_repository,
+			$ai_conversation_draft_panel
 		);
 		$this->conversation_inbox_page  = new ConversationInboxPage(
 			$this->conversation_repository,
@@ -1211,6 +1280,53 @@ final class Plugin {
 		$this->hub_tab_registry->register(
 			new Tab( ConversationInboxPage::TAB_ID, __( 'Conversations', 'universal-telegram' ), CapabilityRegistrar::MANAGE_CONVERSATIONS, array( $this->conversation_inbox_page, 'render_tab_content' ) )
 		);
+
+		// AI draft assistant (M09, docs/adr/0028): operator-assist-only
+		// provider configuration and visitor-disclosure text. Registered
+		// after Conversations, before 'diagnostics' (which stays last).
+		$this->ai_settings_page = new AISettingsPage( $this->ai_provider_repository );
+		$this->hub_tab_registry->register(
+			new Tab( AISettingsPage::TAB_ID, __( 'AI', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->ai_settings_page, 'render_tab_content' ) )
+		);
+		add_action( 'admin_post_' . AISettingsPage::ACTION_SAVE_SETTINGS, array( $this->ai_settings_page, 'handle_save_settings' ) );
+		add_action( 'admin_post_' . AISettingsPage::ACTION_SET_CREDENTIAL, array( $this->ai_settings_page, 'handle_set_credential' ) );
+		add_action( 'admin_post_' . AISettingsPage::ACTION_DELETE_CREDENTIAL, array( $this->ai_settings_page, 'handle_delete_credential' ) );
+		add_action( 'admin_post_' . AISettingsPage::ACTION_BUMP_ACK, array( $this->ai_settings_page, 'handle_bump_ack' ) );
+
+		$this->approved_content_repository = new ApprovedContentRepository( $this->message_repository );
+		$this->approved_content_page       = new ApprovedContentPage( $this->approved_content_repository );
+		$this->hub_tab_registry->register(
+			new Tab( ApprovedContentPage::TAB_ID, __( 'AI Content', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->approved_content_page, 'render_tab_content' ) )
+		);
+		add_action( 'admin_post_' . ApprovedContentPage::ADMIN_POST_ACTION, array( $this->approved_content_page, 'handle_request' ) );
+
+		// AI draft generation queue worker + stale-lease recovery sweep
+		// (M09, docs/adr/0028 decisions 4–5). No Hub tab of its own — reached
+		// only via the queue and the recurring sweep action.
+		$prompt_builder   = new PromptBuilder( $this->message_repository, $this->approved_content_repository );
+		$ai_draft_handler = new AIDraftGenerationHandler(
+			$this->ai_draft_repository,
+			$this->ai_provider_repository,
+			$prompt_builder,
+			$this->circuit_breaker,
+			new AiFailureClassifier(),
+			new RetryPolicy()
+		);
+		$this->handler_registry->register( AIDraftGenerationHandler::JOB_TYPE, array( $ai_draft_handler, 'handle_job' ) );
+
+		$ai_lease_sweep = new AiDraftLeaseSweep( $this->ai_draft_repository );
+		add_action( AiDraftLeaseSweep::JOB_TYPE, array( $ai_lease_sweep, 'run' ) );
+		add_action( 'init', array( $ai_lease_sweep, 'register' ) );
+
+		// Operator draft-request endpoint (M09, docs/adr/0028 decisions 1
+		// and 5): the only path that ever enqueues an ai_draft_generate job.
+		$ai_draft_request_handler = new DraftRequestHandler(
+			$this->ai_draft_repository,
+			$this->ai_provider_repository,
+			$this->conversation_repository,
+			$this->dispatcher
+		);
+		add_action( 'admin_post_' . DraftRequestHandler::ADMIN_POST_ACTION, array( $ai_draft_request_handler, 'handle_request' ) );
 
 		$this->hub_tab_registry->register(
 			new Tab( 'diagnostics', __( 'Diagnostics', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->diagnostics_page, 'render_tab_content' ) )

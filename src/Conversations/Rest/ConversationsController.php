@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Conversations\Rest;
 
+use UniversalTelegram\AI\Config\AIProviderRepository;
 use UniversalTelegram\Conversations\ChatProfileResolver;
 use UniversalTelegram\Conversations\Conversation;
 use UniversalTelegram\Conversations\ConversationDisplay;
@@ -127,6 +128,7 @@ final class ConversationsController {
 	 * @param ImmediateDeliveryAttempt       $immediate_attempt  The bounded, claim-protected primary delivery mechanism (M06.2 corrective plan v2 §3.2, ADR-0023 amendment).
 	 * @param PromptDeliveryFallback         $prompt_fallback     The host-independent bounded second-layer fallback (§3.3); owns its own ExpeditedDispatchTrigger reference for the final, demoted best-effort nudge (§3.4).
 	 * @param Settings                       $settings            Reads chat_widget_allow_anonymous (M06.3.1 addendum).
+	 * @param AIProviderRepository           $ai_provider_repository Resolves the visitor acknowledgement gate (M09, docs/adr/0028 decision 1).
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
@@ -139,7 +141,8 @@ final class ConversationsController {
 		private readonly ConversationOutboundDispatcher $outbound,
 		private readonly ImmediateDeliveryAttempt $immediate_attempt,
 		private readonly PromptDeliveryFallback $prompt_fallback,
-		private readonly Settings $settings
+		private readonly Settings $settings,
+		private readonly AIProviderRepository $ai_provider_repository
 	) {}
 
 	/**
@@ -237,6 +240,7 @@ final class ConversationsController {
 
 		$raw_body     = $request->get_body();
 		$chat_profile = null;
+		$ai_ack       = false;
 
 		if ( '' !== trim( $raw_body ) ) {
 			$decoded = json_decode( $raw_body, true );
@@ -263,6 +267,15 @@ final class ConversationsController {
 				}
 
 				$chat_profile = $decoded['chat_profile'];
+			}
+
+			// M09, docs/adr/0028 decision 1: accepted only as the literal
+			// boolean true; anything else (including a malformed non-bool
+			// value) fails closed to false. This is the sole write path to
+			// ai_ack_policy_version — never re-evaluated later for this
+			// conversation.
+			if ( isset( $decoded['ai_ack'] ) && true === $decoded['ai_ack'] ) {
+				$ai_ack = true;
 			}
 		}
 
@@ -340,6 +353,8 @@ final class ConversationsController {
 			return $this->rate_limited();
 		}
 
+		$ai_ack_policy_version = $this->resolve_ai_ack_policy_version( $ai_ack );
+
 		$bot = null === $chat_profile ? $this->chat_profiles->default_bot() : $this->chat_profiles->find_by_profile( $chat_profile );
 
 		if ( null === $bot ) {
@@ -366,7 +381,8 @@ final class ConversationsController {
 				$chat_profile,
 				$idempotency_key,
 				null,
-				self::ANONYMOUS_DISPLAY_NAME
+				self::ANONYMOUS_DISPLAY_NAME,
+				$ai_ack_policy_version
 			);
 
 			if ( null === $conversation ) {
@@ -402,7 +418,8 @@ final class ConversationsController {
 			$chat_profile,
 			$idempotency_key,
 			get_current_user_id(),
-			$this->resolve_display_name()
+			$this->resolve_display_name(),
+			$ai_ack_policy_version
 		);
 
 		if ( null === $result ) {
@@ -846,6 +863,32 @@ final class ConversationsController {
 		$name = ConversationDisplay::bounded_utf8( trim( (string) $user->display_name ), 80 );
 
 		return ConversationDisplay::is_valid_display_name( $name ) ? $name : self::FALLBACK_DISPLAY_NAME;
+	}
+
+	/**
+	 * The sole write path to ai_ack_policy_version (M09, docs/adr/0028
+	 * decision 1): null unless AI is currently enabled AND the visitor
+	 * explicitly submitted ai_ack=true on this exact request. Applies
+	 * identically to anonymous and logged-in conversation creation, and
+	 * introduces no new tracking identifier — the acknowledgement is a
+	 * property of the conversation row, not of the visitor.
+	 *
+	 * @param bool $ai_ack Whether the visitor explicitly checked the acknowledgement box.
+	 *
+	 * @return string|null
+	 */
+	private function resolve_ai_ack_policy_version( bool $ai_ack ): ?string {
+		if ( ! $ai_ack ) {
+			return null;
+		}
+
+		$config = $this->ai_provider_repository->get();
+
+		if ( null === $config || ! $config->is_enabled() ) {
+			return null;
+		}
+
+		return $config->ack_policy_version();
 	}
 
 	/**

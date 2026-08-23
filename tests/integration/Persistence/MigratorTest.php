@@ -25,13 +25,13 @@ final class MigratorTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 18, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
 		$this->assertSame( $table, $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) );
 
 		// Re-running an already up-to-date schema must not error and must
 		// not change the recorded version.
 		$migrator->maybe_migrate();
-		$this->assertSame( 18, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 
 	public function test_clean_install_creates_all_six_telegram_tables(): void {
@@ -56,7 +56,7 @@ final class MigratorTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 18, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
 
 		foreach ( $tables as $table_name ) {
 			$table = $wpdb->prefix . $table_name;
@@ -65,7 +65,7 @@ final class MigratorTest extends WP_UnitTestCase {
 
 		// Re-running an already up-to-date schema is a safe no-op.
 		$migrator->maybe_migrate();
-		$this->assertSame( 18, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 
 	public function test_postcondition_verification_catches_a_partial_step_failure(): void {
@@ -132,7 +132,7 @@ final class MigratorTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 18, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
 
 		foreach ( $tables as $table_name ) {
 			$table = $wpdb->prefix . $table_name;
@@ -141,7 +141,7 @@ final class MigratorTest extends WP_UnitTestCase {
 
 		// Re-running an already up-to-date schema is a safe no-op.
 		$migrator->maybe_migrate();
-		$this->assertSame( 18, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 
 	public function test_step_18_adds_operator_workflow_columns_and_index(): void {
@@ -152,7 +152,7 @@ final class MigratorTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 18, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
 
 		$conversations_table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
 		$messages_table      = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
@@ -187,6 +187,6 @@ final class MigratorTest extends WP_UnitTestCase {
 
 		// Re-running is a safe no-op.
 		$migrator->maybe_migrate();
-		$this->assertSame( 18, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 }

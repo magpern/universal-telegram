@@ -38,6 +38,8 @@ class Migrator {
 	public const OPERATOR_IDENTITIES_TABLE   = 'universal_telegram_operator_identities';
 	public const CONVERSATION_NOTES_TABLE    = 'universal_telegram_conversation_notes';
 	public const OPERATOR_AVAILABILITY_TABLE = 'universal_telegram_operator_availability';
+	public const AI_CONFIG_TABLE             = 'universal_telegram_ai_config';
+	public const AI_DRAFTS_TABLE             = 'universal_telegram_ai_drafts';
 
 	private const DB_VERSION_OPTION = 'universal_telegram_db_version';
 
@@ -64,7 +66,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 18;
+		return 22;
 	}
 
 	/**
@@ -151,6 +153,10 @@ class Migrator {
 			16 => array( array( $this, 'step_16_add_conversation_ownership_and_concurrency_index' ), array( $this, 'verify_step_16' ) ),
 			17 => array( array( $this, 'step_17_create_operator_workflow_tables' ), array( $this, 'verify_step_17' ) ),
 			18 => array( array( $this, 'step_18_add_operator_workflow_columns' ), array( $this, 'verify_step_18' ) ),
+			19 => array( array( $this, 'step_19_create_ai_config_table' ), array( $this, 'verify_step_19' ) ),
+			20 => array( array( $this, 'step_20_create_ai_drafts_table' ), array( $this, 'verify_step_20' ) ),
+			21 => array( array( $this, 'step_21_add_conversation_ai_ack_column' ), array( $this, 'verify_step_21' ) ),
+			22 => array( array( $this, 'step_22_make_ai_draft_requester_nullable' ), array( $this, 'verify_step_22' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -1215,5 +1221,250 @@ class Migrator {
 		);
 
 		return null !== $found && (int) $found > 0;
+	}
+
+	/**
+	 * Creates the M09 AI provider configuration singleton table and seeds
+	 * its one row (`id=1`, `enabled=0`). The row must exist unconditionally
+	 * before any admin ever saves configuration, because
+	 * AI\Draft\AIDraftGenerationHandler locks it (`SELECT ... FOR UPDATE`)
+	 * as the site-wide generation-concurrency admission mutex (docs/adr/0028
+	 * decision 5) — a mutex cannot lock a row that might not exist yet.
+	 */
+	private function step_19_create_ai_config_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::AI_CONFIG_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id BIGINT UNSIGNED NOT NULL,
+				provider VARCHAR(32) NOT NULL,
+				model VARCHAR(191) NOT NULL,
+				api_key_ciphertext LONGTEXT NULL,
+				enabled TINYINT(1) UNSIGNED NOT NULL DEFAULT 0,
+				ack_policy_version VARCHAR(32) NOT NULL,
+				ack_text TEXT NOT NULL,
+				created_at DATETIME NOT NULL,
+				updated_at DATETIME NOT NULL,
+				PRIMARY KEY (id)
+			) {$charset_collate}"
+		);
+
+		$wpdb->query(
+			$wpdb->prepare(
+				"INSERT IGNORE INTO {$table} (id, provider, model, api_key_ciphertext, enabled, ack_policy_version, ack_text, created_at, updated_at)
+					VALUES (1, %s, '', NULL, 0, %s, %s, %s, %s)",
+				'openai',
+				'v1',
+				'Your messages may be reviewed with AI assistance to help support staff respond.',
+				current_time( 'mysql', true ),
+				current_time( 'mysql', true )
+			)
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition: the table exists with the expected
+	 * columns and its singleton row is present.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_19(): bool {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::AI_CONFIG_TABLE;
+
+		if ( ! $this->table_has_columns(
+			$table,
+			array( 'id', 'provider', 'model', 'api_key_ciphertext', 'enabled', 'ack_policy_version', 'ack_text', 'created_at', 'updated_at' )
+		) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$row_exists = $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE id = 1" );
+
+		return null !== $row_exists && 1 === (int) $row_exists;
+	}
+
+	/**
+	 * Creates the M09 AI draft persistence table, including the
+	 * generation-lease/claim columns (`lease_token`,
+	 * `generation_lease_expires_at`, `claimed_at`, `attempt_count`) from
+	 * initial creation rather than a later alteration (docs/adr/0028
+	 * decisions 4 and 5) — these back the compare-and-set claim protocol
+	 * AI\Draft\AIDraftGenerationHandler and AI\Draft\AiDraftLeaseSweep use
+	 * to recover a crashed worker's row without ever double-writing a
+	 * stale outcome.
+	 */
+	private function step_20_create_ai_drafts_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::AI_DRAFTS_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				draft_uuid CHAR(36) NOT NULL,
+				conversation_id BIGINT UNSIGNED NOT NULL,
+				status VARCHAR(16) NOT NULL,
+				provider VARCHAR(32) NOT NULL,
+				model VARCHAR(191) NOT NULL,
+				prompt_policy_version VARCHAR(32) NOT NULL,
+				source_ids_json TEXT NULL,
+				context_fingerprint CHAR(64) NULL,
+				body_ciphertext LONGTEXT NULL,
+				failure_class VARCHAR(32) NULL,
+				requested_by_user_id BIGINT UNSIGNED NOT NULL,
+				reviewed_by_user_id BIGINT UNSIGNED NULL,
+				job_reference VARCHAR(64) NULL,
+				lease_token CHAR(36) NULL,
+				generation_lease_expires_at DATETIME NULL,
+				claimed_at DATETIME NULL,
+				attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
+				created_at DATETIME NOT NULL,
+				generated_at DATETIME NULL,
+				reviewed_at DATETIME NULL,
+				updated_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY uq_ai_drafts_uuid (draft_uuid),
+				KEY idx_ai_drafts_conversation (conversation_id),
+				KEY idx_ai_drafts_status (status),
+				KEY idx_ai_drafts_conv_status (conversation_id, status),
+				KEY idx_ai_drafts_lease (status, generation_lease_expires_at)
+			) {$charset_collate}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_20(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::AI_DRAFTS_TABLE,
+			array(
+				'id',
+				'draft_uuid',
+				'conversation_id',
+				'status',
+				'provider',
+				'model',
+				'prompt_policy_version',
+				'source_ids_json',
+				'context_fingerprint',
+				'body_ciphertext',
+				'failure_class',
+				'requested_by_user_id',
+				'reviewed_by_user_id',
+				'job_reference',
+				'lease_token',
+				'generation_lease_expires_at',
+				'claimed_at',
+				'attempt_count',
+				'created_at',
+				'generated_at',
+				'reviewed_at',
+				'updated_at',
+			)
+		);
+	}
+
+	/**
+	 * Adds the nullable per-conversation AI-acknowledgement column
+	 * (docs/adr/0028 decision 1). `NULL` means ineligible; a non-null value
+	 * must equal the AI config row's current `ack_policy_version` exactly
+	 * for the conversation to be draft-eligible. This is the only write
+	 * path to the column — set once at conversation-creation time, never
+	 * backfilled or upgraded later.
+	 */
+	private function step_21_add_conversation_ai_ack_column(): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::CONVERSATIONS_TABLE;
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( ! $this->table_has_columns( $table, array( 'ai_ack_policy_version' ) ) ) {
+			$wpdb->query( "ALTER TABLE {$table} ADD COLUMN ai_ack_policy_version VARCHAR(32) NULL" );
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_21(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::CONVERSATIONS_TABLE,
+			array( 'ai_ack_policy_version' )
+		);
+	}
+
+	/**
+	 * Makes `requested_by_user_id` nullable, so it can be anonymized on
+	 * operator account deletion (docs/adr/0028 §4 retention table) without
+	 * deleting the draft row itself — mirroring
+	 * ConversationNote.operator_user_id's identical, already-nullable
+	 * anonymization precedent (ADR-0026 decision 12b). Column was created
+	 * NOT NULL in step 20; this widens it, a safe operation with no
+	 * existing NULL values to migrate.
+	 */
+	private function step_22_make_ai_draft_requester_nullable(): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::AI_DRAFTS_TABLE;
+
+		if ( 'YES' !== $this->column_is_nullable( $table, 'requested_by_user_id' ) ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->query( "ALTER TABLE {$table} MODIFY COLUMN requested_by_user_id BIGINT UNSIGNED NULL" );
+		}
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_22(): bool {
+		global $wpdb;
+
+		return 'YES' === $this->column_is_nullable( $wpdb->prefix . self::AI_DRAFTS_TABLE, 'requested_by_user_id' );
+	}
+
+	/**
+	 * Whether a column currently permits NULL.
+	 *
+	 * @param string $table  The fully-prefixed table name.
+	 * @param string $column The column name.
+	 *
+	 * @return string 'YES' or 'NO' (INFORMATION_SCHEMA's own literal values), or '' if not found.
+	 */
+	private function column_is_nullable( string $table, string $column ): string {
+		global $wpdb;
+
+		$value = $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+				$wpdb->dbname,
+				$table,
+				$column
+			)
+		);
+
+		return null === $value ? '' : (string) $value;
 	}
 }

@@ -67,6 +67,29 @@ final class MessageRepositoryTest extends WP_UnitTestCase {
 		$this->assertSame( $second->id(), $after_first[0]->id() );
 	}
 
+	public function test_latest_visitor_message_returns_the_most_recent_visitor_direction_row(): void {
+		$repo            = $this->repository();
+		$conversation_id = $this->conversation_id();
+
+		$repo->create( $conversation_id, 'visitor', 'first visitor message' );
+		$repo->create( $conversation_id, 'operator', 'an operator reply' );
+		$latest = $repo->create( $conversation_id, 'visitor', 'second visitor message' );
+
+		$found = $repo->latest_visitor_message( $conversation_id );
+
+		$this->assertNotNull( $found );
+		$this->assertSame( $latest->id(), $found->id() );
+	}
+
+	public function test_latest_visitor_message_returns_null_when_none_exists(): void {
+		$repo            = $this->repository();
+		$conversation_id = $this->conversation_id();
+
+		$repo->create( $conversation_id, 'operator', 'only an operator message' );
+
+		$this->assertNull( $repo->latest_visitor_message( $conversation_id ) );
+	}
+
 	public function test_messages_since_never_returns_another_conversations_messages(): void {
 		$repo = $this->repository();
 

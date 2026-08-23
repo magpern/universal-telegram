@@ -31,7 +31,7 @@ final class MigratorEventsSchemaTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 18, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
 
 		foreach ( $tables as $table_name ) {
 			$table = $wpdb->prefix . $table_name;
@@ -40,7 +40,7 @@ final class MigratorEventsSchemaTest extends WP_UnitTestCase {
 
 		// Re-running an already up-to-date schema is a safe no-op.
 		$migrator->maybe_migrate();
-		$this->assertSame( 18, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 
 	public function test_event_history_table_has_the_documented_unique_event_id_key(): void {

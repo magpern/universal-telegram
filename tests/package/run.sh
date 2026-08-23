@@ -173,13 +173,13 @@ if [ -z "$(m06_column_exists "conversations" "owner_active_slot")" ]; then
 fi
 echo "OK: universal_telegram_conversations.owner_user_id and owner_active_slot columns exist."
 
-echo "== Verifying db_version reached 18 =="
+echo "== Verifying db_version reached 22 =="
 DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "18" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=18, got ${DB_VERSION}" >&2
+if [ "22" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=22, got ${DB_VERSION}" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 18."
+echo "OK: universal_telegram_db_version is 22."
 
 echo "== Verifying M07 operator-workflow tables and columns exist =="
 for TABLE in operator_identities conversation_notes operator_availability; do
@@ -199,6 +199,48 @@ if [ -z "$(m06_column_exists conversation_messages telegram_sender_user_id)" ]; 
 	exit 1
 fi
 echo "OK: universal_telegram_conversations.assignee_last_seen_message_id and universal_telegram_conversation_messages.telegram_sender_user_id columns exist."
+
+echo "== Verifying M09 AI draft assistant tables and columns exist (docs/adr/0028) =="
+for TABLE in ai_config ai_drafts; do
+	if [ -z "$(m02_table_exists "$TABLE")" ]; then
+		echo "FAIL: expected table universal_telegram_${TABLE} to exist" >&2
+		exit 1
+	fi
+done
+echo "OK: universal_telegram_ai_config and universal_telegram_ai_drafts tables exist."
+
+AI_CONFIG_ROW_COUNT="$(wp db query "SELECT COUNT(*) FROM ${TABLE_PREFIX}universal_telegram_ai_config WHERE id = 1" --path="$WP_DIR" --allow-root --skip-column-names)"
+if [ "1" != "$AI_CONFIG_ROW_COUNT" ]; then
+	echo "FAIL: expected exactly one seeded universal_telegram_ai_config row (id=1), got ${AI_CONFIG_ROW_COUNT}" >&2
+	exit 1
+fi
+AI_CONFIG_ENABLED="$(wp db query "SELECT enabled FROM ${TABLE_PREFIX}universal_telegram_ai_config WHERE id = 1" --path="$WP_DIR" --allow-root --skip-column-names)"
+if [ "0" != "$AI_CONFIG_ENABLED" ]; then
+	echo "FAIL: expected AI to be disabled by default (enabled=0), got enabled=${AI_CONFIG_ENABLED}" >&2
+	exit 1
+fi
+echo "OK: universal_telegram_ai_config singleton row is seeded and disabled by default."
+
+if [ -z "$(m06_column_exists conversations ai_ack_policy_version)" ]; then
+	echo "FAIL: expected universal_telegram_conversations.ai_ack_policy_version column to exist" >&2
+	exit 1
+fi
+echo "OK: universal_telegram_conversations.ai_ack_policy_version column exists."
+
+for COLUMN in lease_token generation_lease_expires_at claimed_at attempt_count; do
+	if [ -z "$(m06_column_exists ai_drafts "$COLUMN")" ]; then
+		echo "FAIL: expected universal_telegram_ai_drafts.${COLUMN} column to exist" >&2
+		exit 1
+	fi
+done
+echo "OK: universal_telegram_ai_drafts lease/claim columns exist."
+
+REQUESTER_NULLABLE="$(wp db query "SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${TABLE_PREFIX}universal_telegram_ai_drafts' AND COLUMN_NAME = 'requested_by_user_id'" --path="$WP_DIR" --allow-root --skip-column-names)"
+if [ "YES" != "$REQUESTER_NULLABLE" ]; then
+	echo "FAIL: expected universal_telegram_ai_drafts.requested_by_user_id to be nullable (account-deletion anonymization), got IS_NULLABLE=${REQUESTER_NULLABLE}" >&2
+	exit 1
+fi
+echo "OK: universal_telegram_ai_drafts.requested_by_user_id is nullable."
 
 echo "== Verifying M02 event emission projects only PUBLIC fields into event_history =="
 wp eval '
@@ -417,9 +459,9 @@ wp eval '
 	echo "OK: the Settings action link is present and points at the Settings tab.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
-echo "== Verifying the administration hub registers exactly the eleven expected tabs, in order =="
+echo "== Verifying the administration hub registers exactly the thirteen expected tabs, in order =="
 wp eval '
-	$expected_tabs = array( "overview", "bots", "events", "rules", "simulator", "event-history", "visitor-tracking", "settings", "operator-identities", "operator-inbox", "diagnostics" );
+	$expected_tabs = array( "overview", "bots", "events", "rules", "simulator", "event-history", "visitor-tracking", "settings", "operator-identities", "operator-inbox", "ai", "ai-content", "diagnostics" );
 
 	$plugin   = UniversalTelegram\Core\Plugin::instance();
 	$registry = $plugin->hub_tab_registry();
@@ -434,7 +476,7 @@ wp eval '
 		fwrite( STDERR, "FAIL: hub tab set/order was " . implode( ",", $ids ) . ", expected " . implode( ",", $expected_tabs ) . "\n" );
 		exit( 1 );
 	}
-	echo "OK: the administration hub registers exactly the eleven expected tabs, in order.\n";
+	echo "OK: the administration hub registers exactly the thirteen expected tabs, in order.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
 echo "== Verifying the hub shell renders the requested tab content and the full tab nav =="
@@ -550,7 +592,13 @@ for m07_table in operator_identities conversation_notes operator_availability; d
 		exit 1
 	fi
 done
-echo "OK: default-retention uninstall kept the plugin's own data, including the bots table, all four M02 tables, both M05 tables, and all three M07 tables."
+for m09_table in ai_config ai_drafts; do
+	if [ -z "$(m02_table_exists "$m09_table")" ]; then
+		echo "FAIL: default-retention uninstall removed universal_telegram_${m09_table} despite remove_data_on_uninstall defaulting to false" >&2
+		exit 1
+	fi
+done
+echo "OK: default-retention uninstall kept the plugin's own data, including the bots table, all four M02 tables, both M05 tables, all three M07 tables, and both M09 tables."
 
 echo "== Reinstalling to verify uninstall with retention explicitly enabled removes data =="
 wp plugin install "$ZIP_PATH" --activate --path="$WP_DIR" --allow-root
@@ -591,6 +639,12 @@ for m07_table in operator_identities conversation_notes operator_availability; d
 		exit 1
 	fi
 done
-echo "OK: opt-in uninstall removed the plugin's own data, including all six M01 tables, all four M02 tables, both M05 tables, and all three M07 tables."
+for m09_table in ai_config ai_drafts; do
+	if [ -n "$(m02_table_exists "$m09_table")" ]; then
+		echo "FAIL: opt-in uninstall did not remove universal_telegram_${m09_table}" >&2
+		exit 1
+	fi
+done
+echo "OK: opt-in uninstall removed the plugin's own data, including all six M01 tables, all four M02 tables, both M05 tables, all three M07 tables, and both M09 tables."
 
 echo "== PACKAGE TEST PASSED for WordPress ${WP_VERSION}${WC_VERSION:+, WooCommerce ${WC_VERSION}} =="

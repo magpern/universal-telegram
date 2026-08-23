@@ -85,10 +85,41 @@ final class RetentionCleanupHandler {
 
 		foreach ( $this->conversations->archived_older_than( $this->message_retention_days ) as $conversation ) {
 			$this->messages->null_bodies_for_conversation( $conversation->id() );
+			$this->null_ai_draft_bodies_for_conversation( $conversation->id() );
 		}
 
 		foreach ( $this->conversations->archived_older_than( $this->conversation_retention_days ) as $conversation ) {
 			$this->purge_service->purge( $conversation->id(), $conversation->destination_id() );
 		}
+	}
+
+	/**
+	 * Nulls AI draft body ciphertext for a conversation's terminal-status
+	 * drafts (M09, docs/adr/0028 §4 retention table) — a direct, raw query
+	 * against the drafts table rather than a AI\Draft\AiDraftRepository
+	 * dependency, mirroring AI\Config\AIProviderRepository's identical
+	 * cross-cutting pattern; that class's own fixed six-class access
+	 * allow-list (decision 6) deliberately does not include this handler.
+	 * Keeps metadata/traceability, matching the message-body-nulling
+	 * precedent immediately above.
+	 *
+	 * @param int $conversation_id The archived conversation.
+	 */
+	private function null_ai_draft_bodies_for_conversation( int $conversation_id ): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'universal_telegram_ai_drafts';
+
+		if ( $table !== $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) ) {
+			return;
+		}
+
+		$wpdb->update(
+			$table,
+			array( 'body_ciphertext' => null ),
+			array( 'conversation_id' => $conversation_id ),
+			array( '%s' ),
+			array( '%d' )
+		);
 	}
 }

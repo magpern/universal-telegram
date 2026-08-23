@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Conversations;
 
+use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 
 /**
@@ -20,6 +21,15 @@ use UniversalTelegram\Telegram\Configuration\DestinationRepository;
  * DestinationRepository::delete()'s existing behavior, this never calls
  * the Telegram Bot API: no Telegram-side message or forum topic is ever
  * touched by this class.
+ *
+ * Also deletes any AI draft rows for the conversation (M09, docs/adr/0028
+ * §4 retention table) via a direct, raw query against the drafts table
+ * rather than a AI\Draft\AiDraftRepository dependency — that class's own
+ * fixed six-class access allow-list (decision 6) deliberately does not
+ * include this service, mirroring the identical raw-table-access pattern
+ * AI\Config\AIProviderRepository already uses for its own cross-cutting
+ * in-flight-cancellation need. An active (`queued`/`generating`) draft is
+ * never left referencing a conversation that no longer exists.
  */
 final class ConversationPurgeService {
 
@@ -37,19 +47,51 @@ final class ConversationPurgeService {
 	) {}
 
 	/**
-	 * Permanently deletes a conversation, all its message rows, and its own
-	 * destination row (if any). Never contacts the Telegram Bot API.
+	 * Permanently deletes a conversation, all its message rows, any AI
+	 * draft rows, and its own destination row (if any). Never contacts the
+	 * Telegram Bot API.
 	 *
 	 * @param int      $conversation_id The conversation to purge.
 	 * @param int|null $destination_id  The conversation's own destination row id, or null.
 	 */
 	public function purge( int $conversation_id, ?int $destination_id ): void {
 		$this->messages->delete_for_conversation( $conversation_id );
+		$this->delete_ai_drafts_for_conversation( $conversation_id );
 
 		if ( null !== $destination_id ) {
 			$this->destinations->delete( $destination_id );
 		}
 
 		$this->conversations->delete( $conversation_id );
+	}
+
+	/**
+	 * Deletes every AI draft row for a conversation, whatever its status —
+	 * an active one is never left orphaned against a deleted conversation.
+	 *
+	 * @param int $conversation_id The conversation being purged.
+	 */
+	private function delete_ai_drafts_for_conversation( int $conversation_id ): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::AI_DRAFTS_TABLE;
+
+		if ( ! $this->table_exists( $table ) ) {
+			return;
+		}
+
+		$wpdb->delete( $table, array( 'conversation_id' => $conversation_id ), array( '%d' ) );
+	}
+
+	/**
+	 * Whether a table exists — guards the AI-drafts delete for any test or
+	 * environment that has not yet migrated to db_version 20+.
+	 *
+	 * @param string $table The fully-prefixed table name.
+	 */
+	private function table_exists( string $table ): bool {
+		global $wpdb;
+
+		return $table === $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
 	}
 }

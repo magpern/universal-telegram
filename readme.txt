@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.10.0
+Stable tag: 0.11.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -27,8 +27,12 @@ tracking explicitly enabled and delivered through the same event/rule/queue pipe
 fingerprinting, persistent visitor identity, or raw IP/user-agent transmission. This release also
 adds the conversation backend: persistent, encrypted-at-rest conversations with a bearer-secret
 visitor credential, a minimal public REST contract, and Telegram forum-topic-scoped bidirectional
-routing. The chat widget UI, operator workflow, and AI assistance are not part of this release; they
-arrive in later milestones.
+routing. This release adds an operator-assist-only AI draft assistant (M09, ADR-0028): an authorized
+operator may explicitly request an AI-generated draft reply for a conversation, grounded only in
+administrator-approved published content, with a visitor acknowledgement gate, race-safe bounded
+concurrency, and a structural guarantee that a draft can never be sent to a visitor or Telegram
+automatically. AI-first/automatic customer response is not part of this release; it arrives in a
+later milestone (M10), gated on this one's own safety and quality record.
 
 == Delivery guarantees ==
 
@@ -41,6 +45,32 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.11.0 =
+* AI draft assistant (M09, ADR-0028): operator-assist only — no AI-first or automated customer
+  response, and no code path can ever send a draft to a visitor or Telegram. An administrator
+  configures the OpenAI provider (server-side API only, disabled by default until a non-empty
+  credential and bounded model identifier are both set), a visitor-disclosure text/version, and
+  explicitly approves the published, non-password-protected posts/pages a draft may be grounded in;
+  editing an approved post excludes it again until re-approved. A visitor is shown an unchecked,
+  optional acknowledgement checkbox before their first message, only while AI is enabled; only an
+  explicit `ai_ack=true` on that exact request records eligibility, identically for anonymous and
+  logged-in chat, with no new tracking identifier — declined, omitted, malformed, pre-enablement, and
+  stale-disclosure-version conversations are permanently ineligible, never backfilled or re-prompted.
+  An authorized operator may request a draft from the existing conversation-detail screen; the
+  request is queued, retrieval is always source-only (zero-match is a fixed terminal outcome with no
+  provider call), and the fixed prompt policy delimits approved-source and conversation content as
+  data, never instructions. Draft generation uses a race-safe locking design (a conversation-row
+  lock enforces one active draft per conversation and doubles as request idempotency; a
+  migration-seeded singleton config-row lock enforces a site-wide cap of two concurrent generations),
+  a 90-second generation lease with compare-and-set completion so a crashed worker's row is never
+  stranded, and a bounded, idempotent recurring sweep that recovers or dead-letters a stale lease
+  within a fixed time and a shared five-attempt budget — provider invocation is at-least-once, not
+  exactly-once, an explicit and bounded limitation. A generated draft is always labelled "NOT SENT"
+  and requires the operator to copy, edit, and send manually; approving a draft is an audit-trail
+  action only. `AiDraftRepository` is referenced only by a fixed six-class allow-list, enforced by a
+  structural test — no visitor-facing, widget, webhook, or Telegram-outbound code can reference it.
+  Adds two tables and one additive conversation column (`db_version` `18` -> `22`).
 
 = 0.10.0 =
 * Administrative bot commands (M08, ADR-0027): a fixed, allow-listed set of Telegram bot commands

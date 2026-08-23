@@ -51,8 +51,18 @@ final class BotCommandDispatcherFamilyBCTest extends WP_UnitTestCase {
 		// WP_UnitTestCase's per-test transaction rollback — mirroring
 		// DiagnosticsReportQueueTest's own precedent, purge pending
 		// actions explicitly so this class's queue-count assertions are
-		// never polluted by another test in the same process.
-		$ids = ActionScheduler::store()->query_actions( array( 'group' => WorkerRunner::GROUP ) );
+		// never polluted by another test in the same process. Explicit
+		// per_page=-1 (M09, docs/adr/0028): query_actions()'s own default
+		// page size (5) silently left rows undeleted once the whole
+		// suite's accumulated stray-action count exceeded it — including
+		// AiDraftLeaseSweep's own permanent recurring baseline action,
+		// registered once for the entire test run.
+		$ids = ActionScheduler::store()->query_actions(
+			array(
+				'group'    => WorkerRunner::GROUP,
+				'per_page' => -1,
+			)
+		);
 
 		foreach ( (array) $ids as $id ) {
 			ActionScheduler::store()->delete_action( (int) $id );

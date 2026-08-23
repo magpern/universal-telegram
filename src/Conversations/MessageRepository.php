@@ -309,6 +309,35 @@ class MessageRepository {
 	}
 
 	/**
+	 * The most recent visitor-direction message for a conversation. Used
+	 * only by AI\Draft\Draft retrieval (M09, docs/adr/0028 decision 2) to
+	 * derive its bounded, internal-only source-retrieval query — never
+	 * exposed as a free-text search parameter to any caller.
+	 *
+	 * @param int $conversation_id The owning conversation.
+	 *
+	 * @return ConversationMessage|null
+	 */
+	public function latest_visitor_message( int $conversation_id ): ?ConversationMessage {
+		if ( ! $this->schema_health->is_available() ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
+		$row   = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT * FROM {$table} WHERE conversation_id = %d AND direction = 'visitor' ORDER BY id DESC LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$conversation_id
+			),
+			ARRAY_A
+		);
+
+		return null === $row ? null : $this->hydrate( $row );
+	}
+
+	/**
 	 * The keyset-cursor page of messages for a conversation: every message
 	 * with id > since_id, ascending by id (M05 plan §4).
 	 *

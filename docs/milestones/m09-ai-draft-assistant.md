@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+In Progress — implementation plan frozen at `docs/plans/m09-ai-draft-assistant-plan-v1.md` (ADR-0028)
 
 ## Dependencies
 
