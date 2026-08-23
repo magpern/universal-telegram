@@ -2,7 +2,8 @@
 
 ## Status
 
-Implementation (plan frozen, ADR-0026 committed, work packages WP1-WP10 implemented on `feature/m07-operator-workflow`; pending technical verification and closure)
+Technical verification PASS, merged to `main` (`c0b45b0`). Product Owner acceptance pending manual
+Telegram/topic operator-workflow testing — see `docs/closure/m07-operator-workflow-closure.md`.
 
 ## Dependencies
 
