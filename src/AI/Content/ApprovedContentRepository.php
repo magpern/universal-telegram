@@ -152,35 +152,62 @@ final class ApprovedContentRepository {
 			return array();
 		}
 
-		$search_terms = $this->normalize_to_search_string( $plaintext );
+		$tokens = $this->tokenize( $plaintext );
 
-		if ( '' === $search_terms ) {
+		if ( array() === $tokens ) {
 			return array();
 		}
 
+		// A plain, in-PHP keyword-overlap score against the bounded
+		// approved-and-currently-valid candidate set — deliberately not
+		// WP_Query's own 's' parameter, whose default multi-word matching
+		// ANDs every term together and would make any but the shortest
+		// visitor message fail to match. This stays "plain LIKE/keyword
+		// matching," not a search engine or ranking service (docs/adr/0028
+		// decision 2) — just applied by this class in PHP rather than in SQL.
 		$query = new \WP_Query(
 			array(
 				'post_type'      => array( 'post', 'page' ),
 				'post_status'    => 'publish',
 				'has_password'   => false,
-				's'              => $search_terms,
 				'meta_key'       => self::APPROVED_META_KEY, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
 				'meta_value'     => '1', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
-				'posts_per_page' => self::MAX_SOURCES * 4,
+				'posts_per_page' => 100,
 				'no_found_rows'  => true,
 			)
 		);
 
-		$sources = array();
+		$scored = array();
 
 		foreach ( $query->posts as $post ) {
+			if ( ! $this->is_currently_approved( $post->ID ) ) {
+				continue;
+			}
+
+			$haystack = strtolower( $post->post_title . ' ' . wp_strip_all_tags( $post->post_content ) );
+			$score    = 0;
+
+			foreach ( $tokens as $token ) {
+				if ( false !== strpos( $haystack, $token ) ) {
+					++$score;
+				}
+			}
+
+			if ( $score > 0 ) {
+				$scored[] = array( 'post' => $post, 'score' => $score );
+			}
+		}
+
+		usort( $scored, static fn( array $a, array $b ): int => $b['score'] <=> $a['score'] );
+
+		$sources = array();
+
+		foreach ( $scored as $candidate ) {
 			if ( count( $sources ) >= self::MAX_SOURCES ) {
 				break;
 			}
 
-			if ( ! $this->is_currently_approved( $post->ID ) ) {
-				continue;
-			}
+			$post = $candidate['post'];
 
 			$sources[] = new ApprovedSource(
 				$post->ID,
@@ -222,14 +249,16 @@ final class ApprovedContentRepository {
 
 	/**
 	 * Lowercases, strips punctuation, and drops a small fixed stopword
-	 * list from free text, producing a bounded space-separated search
-	 * string for WP_Query's own 's' parameter. This is the only place
+	 * list from free text, producing a bounded set of keyword tokens for
+	 * top_matches()'s in-PHP relevance score. This is the only place
 	 * conversation content is ever turned into a query — never exposed as
 	 * a parameter any caller can influence directly.
 	 *
 	 * @param string $text The visitor message plaintext.
+	 *
+	 * @return array<int, string>
 	 */
-	private function normalize_to_search_string( string $text ): string {
+	private function tokenize( string $text ): array {
 		static $stopwords = array( 'the', 'a', 'an', 'is', 'are', 'to', 'of', 'and', 'or', 'i', 'you', 'it', 'in', 'on', 'for', 'my', 'me', 'do', 'does', 'how', 'can', 'what' );
 
 		$lower  = strtolower( $text );
@@ -239,9 +268,8 @@ final class ApprovedContentRepository {
 			static fn( string $token ): bool => strlen( $token ) > 2 && ! in_array( $token, $stopwords, true )
 		);
 
-		// WP_Query's default 's' matching is bounded regardless of input
-		// length, but this is capped defensively to keep the derived query
-		// itself small and predictable.
-		return implode( ' ', array_slice( array_values( $tokens ), 0, 12 ) );
+		// Capped defensively to keep the derived token set itself small and
+		// predictable, independent of visitor message length.
+		return array_slice( array_values( $tokens ), 0, 12 );
 	}
 }

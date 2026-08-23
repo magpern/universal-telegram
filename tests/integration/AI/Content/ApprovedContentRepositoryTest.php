@@ -92,7 +92,7 @@ final class ApprovedContentRepositoryTest extends WP_UnitTestCase {
 			array(
 				'post_status'  => 'publish',
 				'post_title'   => 'Refund Policy',
-				'post_content' => 'Our refund policy allows returns within thirty days of purchase for a full refund.',
+				'post_content' => 'Our refund policy allows refunds and returns within thirty days of purchase for a full refund.',
 			)
 		);
 
