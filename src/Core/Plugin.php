@@ -91,6 +91,7 @@ use UniversalTelegram\Integrations\WooCommerce\Events\StockEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Visitor\VisitorCommerceEventCatalog;
 use UniversalTelegram\Events\Registry;
 use UniversalTelegram\Events\RetentionCleanup;
+use UniversalTelegram\Integrations\WooCommerce\WooCommerceCommandQueryService;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Persistence\MigrationFailedException;
 use UniversalTelegram\Persistence\MigrationLock;
@@ -670,6 +671,8 @@ final class Plugin {
 			$this->operator_availability_repository,
 			$this->queue_health,
 			$this->event_history_repository,
+			$this->woocommerce_support,
+			new WooCommerceCommandQueryService(),
 			$this->message_dispatcher,
 			$this->audit_logger
 		);

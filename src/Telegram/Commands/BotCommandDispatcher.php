@@ -22,6 +22,8 @@ use UniversalTelegram\Conversations\OperatorIdentityRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Events\EventHistoryRepository;
 use UniversalTelegram\Events\EventSource;
+use UniversalTelegram\Integrations\WooCommerce\WooCommerceCommandQueryService;
+use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Privacy\Classification;
 use UniversalTelegram\Queue\QueueHealth;
 use UniversalTelegram\Telegram\Configuration\BotProfile;
@@ -52,6 +54,8 @@ final class BotCommandDispatcher {
 	 * @param OperatorAvailabilityRepository  $availability        Resolves an operator's current availability state (for `/whoami`).
 	 * @param QueueHealth                     $queue_health        Bounded queue-depth aggregates (for `/status`, `/errors`).
 	 * @param EventHistoryRepository          $event_history       Bounded 24h event-count aggregates (for `/status`, `/errors`, `/visitors`).
+	 * @param WooCommerceSupport              $woocommerce_support Whether WooCommerce is active (for the Family D WooCommerce-inactive gate).
+	 * @param WooCommerceCommandQueryService  $woocommerce_queries Bounded, read-only WooCommerce queries (for `/orders`, `/order`, `/stock`, `/sales`).
 	 * @param MessageDispatcher               $message_dispatcher  The existing, sole outbound Telegram-send path.
 	 * @param AuditLogger                     $audit               Records rejection and (later work packages) success entries.
 	 */
@@ -62,6 +66,8 @@ final class BotCommandDispatcher {
 		private readonly OperatorAvailabilityRepository $availability,
 		private readonly QueueHealth $queue_health,
 		private readonly EventHistoryRepository $event_history,
+		private readonly WooCommerceSupport $woocommerce_support,
+		private readonly WooCommerceCommandQueryService $woocommerce_queries,
 		private readonly MessageDispatcher $message_dispatcher,
 		private readonly AuditLogger $audit
 	) {}
@@ -209,9 +215,21 @@ final class BotCommandDispatcher {
 			case 'visitors':
 				$this->handle_visitors( $bot, $destination_id );
 				break;
+			case 'orders':
+				$this->handle_orders( $bot, $destination_id );
+				break;
+			case 'order':
+				$this->handle_order( $bot, $destination_id, $parsed );
+				break;
+			case 'stock':
+				$this->handle_stock( $bot, $destination_id, $parsed );
+				break;
+			case 'sales':
+				$this->handle_sales( $bot, $destination_id, $parsed );
+				break;
 			default:
-				// Populated by WP5 (orders/order/stock/sales) and WP6
-				// (here/presence/claim/release/resolve/reopen/confirm).
+				// Populated by WP6 (here/presence/claim/release/resolve/
+				// reopen/confirm).
 				break;
 		}
 	}
@@ -332,6 +350,137 @@ final class BotCommandDispatcher {
 	 */
 	private function handle_visitors( BotProfile $bot, ?int $destination_id ): void {
 		$text = sprintf( 'Visitor events (24h): %d', $this->event_history->count_24h_by_source( EventSource::VISITOR->value ) );
+
+		$this->reply( $bot->id(), $destination_id, $text );
+	}
+
+	/**
+	 * `/orders` — the exact trailing-24h order count (any status), or the
+	 * fixed cap-exceeded acknowledgement past 500 matching orders.
+	 *
+	 * @param BotProfile $bot            The receiving bot.
+	 * @param int|null   $destination_id Where to send the reply.
+	 */
+	private function handle_orders( BotProfile $bot, ?int $destination_id ): void {
+		if ( ! $this->woocommerce_support->is_active() ) {
+			$this->reply( $bot->id(), $destination_id, CommandAcknowledgements::WOOCOMMERCE_INACTIVE );
+
+			return;
+		}
+
+		$count = $this->woocommerce_queries->recent_order_count();
+
+		if ( null === $count ) {
+			$this->reply( $bot->id(), $destination_id, CommandAcknowledgements::TOO_MANY_ORDERS );
+
+			return;
+		}
+
+		$this->reply( $bot->id(), $destination_id, sprintf( 'Orders (24h): %d', $count ) );
+	}
+
+	/**
+	 * `/order <id>` — status, site-timezone date, currency, total, item
+	 * count only. Never customer, payment, shipping, coupon, note, or
+	 * line-item product-name data.
+	 *
+	 * @param BotProfile    $bot            The receiving bot.
+	 * @param int|null      $destination_id Where to send the reply.
+	 * @param ParsedCommand $parsed         Carries the validated numeric order id.
+	 */
+	private function handle_order( BotProfile $bot, ?int $destination_id, ParsedCommand $parsed ): void {
+		if ( ! $this->woocommerce_support->is_active() ) {
+			$this->reply( $bot->id(), $destination_id, CommandAcknowledgements::WOOCOMMERCE_INACTIVE );
+
+			return;
+		}
+
+		$summary = $this->woocommerce_queries->order_summary( (int) $parsed->raw_argument() );
+
+		if ( null === $summary ) {
+			$this->reply( $bot->id(), $destination_id, CommandAcknowledgements::NOT_FOUND );
+
+			return;
+		}
+
+		$text = sprintf(
+			"Status: %s\nDate: %s\nCurrency: %s\nTotal: %s\nItems: %d",
+			$summary['status'],
+			$summary['date_created'],
+			$summary['currency'],
+			$summary['total'],
+			$summary['item_count']
+		);
+
+		$this->reply( $bot->id(), $destination_id, $text );
+	}
+
+	/**
+	 * `/stock <sku>` — product name, stock-managed state, quantity (only
+	 * when managed), and stock status only. The submitted SKU is never
+	 * echoed back.
+	 *
+	 * @param BotProfile    $bot            The receiving bot.
+	 * @param int|null      $destination_id Where to send the reply.
+	 * @param ParsedCommand $parsed         Carries the validated SKU token.
+	 */
+	private function handle_stock( BotProfile $bot, ?int $destination_id, ParsedCommand $parsed ): void {
+		if ( ! $this->woocommerce_support->is_active() ) {
+			$this->reply( $bot->id(), $destination_id, CommandAcknowledgements::WOOCOMMERCE_INACTIVE );
+
+			return;
+		}
+
+		$summary = $this->woocommerce_queries->stock_summary( $parsed->raw_argument() );
+
+		if ( null === $summary ) {
+			$this->reply( $bot->id(), $destination_id, CommandAcknowledgements::NOT_FOUND );
+
+			return;
+		}
+
+		$text = sprintf(
+			"Product: %s\nStock managed: %s\nQuantity: %s\nStatus: %s",
+			$summary['name'],
+			$summary['manages_stock'] ? 'yes' : 'no',
+			null === $summary['stock_quantity'] ? 'n/a' : (string) $summary['stock_quantity'],
+			$summary['stock_status']
+		);
+
+		$this->reply( $bot->id(), $destination_id, $text );
+	}
+
+	/**
+	 * `/sales today|week|month` — order count and gross total for
+	 * completed+processing orders in the fixed window, or the fixed
+	 * cap-exceeded acknowledgement past 500 matching orders. No customer
+	 * or order identifiers.
+	 *
+	 * @param BotProfile    $bot            The receiving bot.
+	 * @param int|null      $destination_id Where to send the reply.
+	 * @param ParsedCommand $parsed         Carries the validated window literal.
+	 */
+	private function handle_sales( BotProfile $bot, ?int $destination_id, ParsedCommand $parsed ): void {
+		if ( ! $this->woocommerce_support->is_active() ) {
+			$this->reply( $bot->id(), $destination_id, CommandAcknowledgements::WOOCOMMERCE_INACTIVE );
+
+			return;
+		}
+
+		$summary = $this->woocommerce_queries->sales_summary( $parsed->raw_argument() );
+
+		if ( null === $summary ) {
+			$this->reply( $bot->id(), $destination_id, CommandAcknowledgements::TOO_MANY_ORDERS );
+
+			return;
+		}
+
+		$text = sprintf(
+			"Sales (%s): %d orders, total %s",
+			$parsed->raw_argument(),
+			$summary['count'],
+			number_format( $summary['gross_total'], 2 )
+		);
 
 		$this->reply( $bot->id(), $destination_id, $text );
 	}

@@ -65,6 +65,8 @@ final class BotCommandDispatcherFamilyBCTest extends WP_UnitTestCase {
 			$availability,
 			new QueueHealth(),
 			new EventHistoryRepository( $this->schema_health, new Registry(), new Redactor() ),
+			new \UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport(),
+			new \UniversalTelegram\Integrations\WooCommerce\WooCommerceCommandQueryService(),
 			$message_dispatcher,
 			$audit
 		);
