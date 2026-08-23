@@ -95,8 +95,9 @@ class SettingsPage {
 		// absence must be treated as an explicit false here — otherwise the
 		// array_merge below would fall back to the old stored value and an
 		// unchecked box could never actually be saved as off.
-		$input['remove_data_on_uninstall'] = isset( $input['remove_data_on_uninstall'] );
-		$input['chat_widget_enabled']      = isset( $input['chat_widget_enabled'] );
+		$input['remove_data_on_uninstall']    = isset( $input['remove_data_on_uninstall'] );
+		$input['chat_widget_enabled']         = isset( $input['chat_widget_enabled'] );
+		$input['chat_widget_allow_anonymous'] = isset( $input['chat_widget_allow_anonymous'] );
 
 		$sanitized = $this->settings->sanitize( array_merge( $this->settings->get(), $input ) );
 		update_option( Settings::OPTION_NAME, $sanitized );

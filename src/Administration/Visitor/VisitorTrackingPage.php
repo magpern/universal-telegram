@@ -32,6 +32,24 @@ class VisitorTrackingPage {
 	public const NONCE_ACTION      = 'universal_telegram_visitor_tracking_save';
 
 	/**
+	 * Every boolean field this page's form submits, mirrored against
+	 * Settings::sanitize()'s own $boolean_fields list for the
+	 * visitor_* subset.
+	 *
+	 * @var string[]
+	 */
+	private const BOOLEAN_FIELDS = array(
+		'visitor_tracking_enabled',
+		'visitor_family_page_views',
+		'visitor_family_navigation',
+		'visitor_family_search',
+		'visitor_family_clicks',
+		'visitor_family_errors',
+		'visitor_family_commerce',
+		'visitor_exclude_administrators',
+	);
+
+	/**
 	 * Constructor.
 	 *
 	 * @param Settings $settings Reads/writes the current visitor tracking configuration.
@@ -51,6 +69,15 @@ class VisitorTrackingPage {
 		$input = isset( $_POST['visitor_settings'] ) && is_array( $_POST['visitor_settings'] )
 			? wp_unslash( $_POST['visitor_settings'] ) // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 			: array();
+
+		// Unchecked checkboxes are omitted from $_POST entirely, so their
+		// absence must be treated as an explicit false here — otherwise the
+		// array_merge below would fall back to the old stored value and an
+		// unchecked box could never actually be saved as off (matches
+		// SettingsPage's exact existing pattern for the same problem).
+		foreach ( self::BOOLEAN_FIELDS as $field ) {
+			$input[ $field ] = isset( $input[ $field ] );
+		}
 
 		if ( isset( $input['visitor_click_target_allowlist'] ) && is_string( $input['visitor_click_target_allowlist'] ) ) {
 			$input['visitor_click_target_allowlist'] = array_filter( array_map( 'trim', explode( "\n", $input['visitor_click_target_allowlist'] ) ) );
@@ -104,10 +131,18 @@ class VisitorTrackingPage {
 		echo '<p><label>' . esc_html__( 'Sampling percent', 'universal-telegram' ) . ' ';
 		echo '<input type="number" min="1" max="100" name="visitor_settings[visitor_sampling_percent]" value="' . esc_attr( (string) $values['visitor_sampling_percent'] ) . '" />';
 		echo '</label></p>';
+		echo '<p class="description">' . esc_html__(
+			'The percentage of visitor sessions to record, chosen once per session. 100 records every session; a lower value reduces stored event volume on high-traffic sites but means some sessions are not tracked at all.',
+			'universal-telegram'
+		) . '</p>';
 
 		echo '<p><label>' . esc_html__( 'Click target allowlist (one key per line, max 8)', 'universal-telegram' ) . '<br />';
 		echo '<textarea name="visitor_settings[visitor_click_target_allowlist]" rows="4" cols="40">' . esc_textarea( implode( "\n", $values['visitor_click_target_allowlist'] ) ) . '</textarea>';
 		echo '</label></p>';
+		echo '<p class="description">' . esc_html__(
+			'Only used when "Clicks" tracking is enabled above. Each line is one identifying key; a click event must carry a key from this list (exact, case-sensitive match) to be recorded, and any click with an unlisted or missing key is discarded and never stored. Leave blank to record no click events even with "Clicks" enabled.',
+			'universal-telegram'
+		) . '</p>';
 
 		submit_button();
 		echo '</form>';
