@@ -8,6 +8,7 @@
 namespace UniversalTelegram\Core;
 
 use UniversalTelegram\Administration\AI\AISettingsPage;
+use UniversalTelegram\Administration\AI\ApprovedContentPage;
 use UniversalTelegram\Administration\Automations\EventCatalogPage;
 use UniversalTelegram\Administration\Automations\EventHistoryPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderPage;
@@ -35,6 +36,7 @@ use UniversalTelegram\Administration\Telegram\BotSetupWizardState;
 use UniversalTelegram\Administration\Telegram\TelegramFormFields;
 use UniversalTelegram\Administration\Visitor\VisitorTrackingPage;
 use UniversalTelegram\AI\Config\AIProviderRepository;
+use UniversalTelegram\AI\Content\ApprovedContentRepository;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Automations\DispatchLogRepository;
@@ -260,6 +262,20 @@ final class Plugin {
 	 * @var AISettingsPage|null
 	 */
 	private ?AISettingsPage $ai_settings_page = null;
+
+	/**
+	 * Approved AI source-content persistence (M09), constructed by init().
+	 *
+	 * @var ApprovedContentRepository|null
+	 */
+	private ?ApprovedContentRepository $approved_content_repository = null;
+
+	/**
+	 * The AI Content tab page (M09), constructed by init().
+	 *
+	 * @var ApprovedContentPage|null
+	 */
+	private ?ApprovedContentPage $approved_content_page = null;
 
 	/**
 	 * The bounded diagnostic self-test, constructed by init().
@@ -1240,6 +1256,13 @@ final class Plugin {
 		add_action( 'admin_post_' . AISettingsPage::ACTION_SET_CREDENTIAL, array( $this->ai_settings_page, 'handle_set_credential' ) );
 		add_action( 'admin_post_' . AISettingsPage::ACTION_DELETE_CREDENTIAL, array( $this->ai_settings_page, 'handle_delete_credential' ) );
 		add_action( 'admin_post_' . AISettingsPage::ACTION_BUMP_ACK, array( $this->ai_settings_page, 'handle_bump_ack' ) );
+
+		$this->approved_content_repository = new ApprovedContentRepository( $this->message_repository );
+		$this->approved_content_page       = new ApprovedContentPage( $this->approved_content_repository );
+		$this->hub_tab_registry->register(
+			new Tab( ApprovedContentPage::TAB_ID, __( 'AI Content', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->approved_content_page, 'render_tab_content' ) )
+		);
+		add_action( 'admin_post_' . ApprovedContentPage::ADMIN_POST_ACTION, array( $this->approved_content_page, 'handle_request' ) );
 
 		$this->hub_tab_registry->register(
 			new Tab( 'diagnostics', __( 'Diagnostics', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->diagnostics_page, 'render_tab_content' ) )
