@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.11.0
+Stable tag: 0.11.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,18 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.11.1 =
+* Corrective fix: unchecking a Visitor Tracking checkbox (most visibly "Exclude administrators")
+  and saving did not persist the uncheck, because the save handler merged submitted fields over the
+  currently-stored settings before sanitizing, and an unchecked HTML checkbox is never present in
+  the submitted request. The same latent bug on the plugin-wide Settings page's "Allow anonymous
+  chat" checkbox is fixed identically. Also removes the "Clicks" family toggle and "Click target
+  allowlist" field from the ordinary Visitor Tracking settings screen: both required a
+  developer-supplied identifier that an ordinary WordPress administrator cannot configure safely or
+  meaningfully. Custom click tracking is now inactive unconditionally, including for any value
+  already stored from before this release — no replacement developer-facing control is offered in
+  this release. No schema or database-version change.
 
 = 0.11.0 =
 * AI draft assistant (M09, ADR-0028): operator-assist only — no AI-first or automated customer

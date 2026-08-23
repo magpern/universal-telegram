@@ -53,12 +53,17 @@ final class IngestController {
 	 *
 	 * @var array<string, string>
 	 */
+	// visitor.click is deliberately absent (bug-fix authorization,
+	// corrective removal): it requires a developer-supplied target key
+	// that ordinary administrators cannot configure meaningfully, so it
+	// is unconditionally dropped by maybe_emit() below regardless of any
+	// stored visitor_family_clicks/visitor_click_target_allowlist value —
+	// legacy persisted configuration has no effect at runtime.
 	private const EVENT_TYPE_FAMILY = array(
 		'visitor.session_started'         => 'visitor_family_page_views',
 		'visitor.page_viewed'             => 'visitor_family_page_views',
 		'visitor.navigation'              => 'visitor_family_navigation',
 		'visitor.search_performed'        => 'visitor_family_search',
-		'visitor.click'                   => 'visitor_family_clicks',
 		'visitor.javascript_error'        => 'visitor_family_errors',
 		'visitor.product_viewed'          => 'visitor_family_commerce',
 		'visitor.add_to_cart_intent'      => 'visitor_family_commerce',
@@ -243,13 +248,6 @@ final class IngestController {
 
 		if ( ! $this->sampler->admits( $event_type, $event['uuid'], (int) $settings['visitor_sampling_percent'] ) ) {
 			return;
-		}
-
-		if ( VisitorEventCatalog::CLICK === $event_type ) {
-			$allowlist = $settings['visitor_click_target_allowlist'];
-			if ( ! in_array( $event['fields']['target_key'], $allowlist, true ) ) {
-				return;
-			}
 		}
 
 		$data = array(
