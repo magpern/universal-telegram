@@ -210,6 +210,32 @@ final class AiDraftRepository {
 	}
 
 	/**
+	 * The site-wide count of drafts currently in a given status — the
+	 * Diagnostics tab's own AI panel (Administration\AI\AIDiagnosticsPanel),
+	 * never draft content itself.
+	 *
+	 * @param string $status One of the fixed lifecycle states.
+	 *
+	 * @return int
+	 */
+	public function count_by_status( string $status ): int {
+		if ( ! $this->schema_health->is_available() ) {
+			return 0;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::AI_DRAFTS_TABLE;
+
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$table} WHERE status = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$status
+			)
+		);
+	}
+
+	/**
 	 * Decrypts a draft's body, for the operator review UI only.
 	 *
 	 * @param AiDraft $draft The draft to decrypt.

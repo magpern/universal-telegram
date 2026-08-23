@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Conversations;
 
+use UniversalTelegram\Administration\AI\ConversationDraftPanel;
 use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Conversations\ConversationNoteRepository;
 use UniversalTelegram\Conversations\ConversationRepository;
@@ -34,12 +35,14 @@ final class ConversationDetailPage {
 	 * @param MessageRepository          $messages      Conversation message persistence.
 	 * @param ConversationNoteRepository $notes         Internal note persistence.
 	 * @param OperatorIdentityRepository $identities    Operator identity mappings, for reply attribution.
+	 * @param ConversationDraftPanel|null $draft_panel  AI draft request/review controls (M09, docs/adr/0028); null in contexts (e.g. some tests) that do not need it.
 	 */
 	public function __construct(
 		private readonly ConversationRepository $conversations,
 		private readonly MessageRepository $messages,
 		private readonly ConversationNoteRepository $notes,
-		private readonly OperatorIdentityRepository $identities
+		private readonly OperatorIdentityRepository $identities,
+		private readonly ?ConversationDraftPanel $draft_panel = null
 	) {}
 
 	/**
@@ -72,6 +75,7 @@ final class ConversationDetailPage {
 
 		$this->render_messages( $conversation );
 		$this->render_notes( $conversation );
+		$this->draft_panel?->render( $conversation );
 
 		$this->maybe_mark_seen( $conversation );
 	}

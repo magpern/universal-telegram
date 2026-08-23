@@ -7,8 +7,10 @@
 
 namespace UniversalTelegram\Core;
 
+use UniversalTelegram\Administration\AI\AIDiagnosticsPanel;
 use UniversalTelegram\Administration\AI\AISettingsPage;
 use UniversalTelegram\Administration\AI\ApprovedContentPage;
+use UniversalTelegram\Administration\AI\ConversationDraftPanel;
 use UniversalTelegram\Administration\Automations\EventCatalogPage;
 use UniversalTelegram\Administration\Automations\EventHistoryPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderPage;
@@ -261,6 +263,13 @@ final class Plugin {
 	 * @var AIProviderRepository|null
 	 */
 	private ?AIProviderRepository $ai_provider_repository = null;
+
+	/**
+	 * AI draft persistence (M09), constructed by init().
+	 *
+	 * @var AiDraftRepository|null
+	 */
+	private ?AiDraftRepository $ai_draft_repository = null;
 
 	/**
 	 * The AI tab page (M09), constructed by init().
@@ -639,6 +648,7 @@ final class Plugin {
 		// acknowledgement gate, well before the Hub's own AI tab is
 		// registered later in this method.
 		$this->ai_provider_repository = new AIProviderRepository( $this->schema_health, $this->credential_vault );
+		$this->ai_draft_repository    = new AiDraftRepository( $this->schema_health, $this->credential_vault );
 
 		$this->capability_registrar = new CapabilityRegistrar();
 
@@ -968,7 +978,8 @@ final class Plugin {
 			$this->self_test,
 			$this->queue_health_alert,
 			(int) $settings_values['telegram_stale_pending_alert_seconds'],
-			(int) $settings_values['telegram_webhook_rotation_max_pending_hours']
+			(int) $settings_values['telegram_webhook_rotation_max_pending_hours'],
+			new AIDiagnosticsPanel( $this->ai_draft_repository, $this->circuit_breaker )
 		);
 		add_action( 'admin_notices', array( $this->diagnostics_page, 'render_admin_notice' ) );
 
@@ -1239,6 +1250,14 @@ final class Plugin {
 		);
 		add_action( 'admin_post_' . ConversationActionHandler::ADMIN_POST_ACTION, array( $this->conversation_action_handler, 'handle_request' ) );
 
+		// Conversation-detail draft review panel (M09, docs/adr/0028
+		// decision 6): the only Administration\AI\* class permitted to
+		// write reviewed/approved/discarded. Constructed here, before
+		// ConversationDetailPage, since it is composed directly into that
+		// page's render.
+		$ai_conversation_draft_panel = new ConversationDraftPanel( $this->ai_draft_repository, $this->ai_provider_repository );
+		add_action( 'admin_post_' . ConversationDraftPanel::ADMIN_POST_ACTION, array( $ai_conversation_draft_panel, 'handle_request' ) );
+
 		// Operator inbox + detail view (M07, docs/adr/0026): unread badge,
 		// own-availability control, status-filtered/paginated list, and the
 		// message/note detail view with mark-seen-on-view.
@@ -1246,7 +1265,8 @@ final class Plugin {
 			$this->conversation_repository,
 			$this->message_repository,
 			$this->conversation_note_repository,
-			$this->operator_identity_repository
+			$this->operator_identity_repository,
+			$ai_conversation_draft_panel
 		);
 		$this->conversation_inbox_page  = new ConversationInboxPage(
 			$this->conversation_repository,
@@ -1280,10 +1300,9 @@ final class Plugin {
 		// AI draft generation queue worker + stale-lease recovery sweep
 		// (M09, docs/adr/0028 decisions 4–5). No Hub tab of its own — reached
 		// only via the queue and the recurring sweep action.
-		$ai_drafts        = new AiDraftRepository( $this->schema_health, $this->credential_vault );
 		$prompt_builder   = new PromptBuilder( $this->message_repository, $this->approved_content_repository );
 		$ai_draft_handler = new AIDraftGenerationHandler(
-			$ai_drafts,
+			$this->ai_draft_repository,
 			$this->ai_provider_repository,
 			$prompt_builder,
 			$this->circuit_breaker,
@@ -1292,14 +1311,14 @@ final class Plugin {
 		);
 		$this->handler_registry->register( AIDraftGenerationHandler::JOB_TYPE, array( $ai_draft_handler, 'handle_job' ) );
 
-		$ai_lease_sweep = new AiDraftLeaseSweep( $ai_drafts );
+		$ai_lease_sweep = new AiDraftLeaseSweep( $this->ai_draft_repository );
 		add_action( AiDraftLeaseSweep::JOB_TYPE, array( $ai_lease_sweep, 'run' ) );
 		add_action( 'init', array( $ai_lease_sweep, 'register' ) );
 
 		// Operator draft-request endpoint (M09, docs/adr/0028 decisions 1
 		// and 5): the only path that ever enqueues an ai_draft_generate job.
 		$ai_draft_request_handler = new DraftRequestHandler(
-			$ai_drafts,
+			$this->ai_draft_repository,
 			$this->ai_provider_repository,
 			$this->conversation_repository,
 			$this->dispatcher
