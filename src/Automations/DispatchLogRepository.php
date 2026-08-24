@@ -21,7 +21,7 @@ use UniversalTelegram\Persistence\SchemaHealth;
  * kind (M02 plan §7.5, docs/adr/0016).
  *
  * Not declared final: tests/unit/Automations/RuleEvaluatorTest.php and
- * RuleSimulatorTest.php double this class via PHPUnit's createMock(),
+ * NotificationTesterTest.php double this class via PHPUnit's createMock(),
  * which cannot double a final class.
  */
 class DispatchLogRepository {

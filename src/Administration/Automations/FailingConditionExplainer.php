@@ -100,21 +100,25 @@ final class FailingConditionExplainer {
 	 *
 	 * @return string
 	 */
-	private static function operator_label( string $operator ): string {
+	public static function operator_label( string $operator ): string {
 		return ConditionRowRenderer::operator_labels()[ $operator ] ?? $operator;
 	}
 
 	/**
 	 * The friendly display value for one field's value, translating a
 	 * choice/boolean field's stored raw value into its own catalogued
-	 * label rather than showing the raw stored string.
+	 * label rather than showing the raw stored string. Exposed for reuse
+	 * by NotificationTesterPage's own static "About this notification"
+	 * condition summary (M08.2) — the same value-formatting need as a
+	 * failing-condition sentence, just for a condition that isn't
+	 * currently failing.
 	 *
 	 * @param string $field The field path.
 	 * @param mixed  $value The raw stored or actual value.
 	 *
 	 * @return string
 	 */
-	private static function format_value( string $field, mixed $value ): string {
+	public static function format_value( string $field, mixed $value ): string {
 		if ( null === $value ) {
 			return '';
 		}

@@ -77,9 +77,8 @@ class RuleEvaluator {
 			foreach ( $rules as $rule ) {
 				// Routed through the same on_rejected() extension point every
 				// other rejection cause already uses (not a direct
-				// dispatch_log call), so RuleSimulator's own no-op override
-				// applies here too — a simulated preview never writes to
-				// notification_dispatch_log, suppression included.
+				// dispatch_log call), so any subclass overriding
+				// on_rejected() — e.g. a no-op test double — sees this too.
 				$this->on_rejected( $rule, $event, self::SUPPRESSED_BY_DIGEST_REASON_CODE );
 			}
 			return;

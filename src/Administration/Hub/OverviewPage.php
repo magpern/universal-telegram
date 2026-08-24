@@ -30,7 +30,7 @@ final class OverviewPage {
 		array( 'bots', 'Bots' ),
 		array( 'events', 'Events' ),
 		array( 'rules', 'Notifications' ),
-		array( 'simulator', 'Simulator' ),
+		array( 'test-notifications', 'Test notifications' ),
 		array( 'event-history', 'Event History' ),
 		array( 'visitor-tracking', 'Visitor Tracking' ),
 		array( 'settings', 'Settings' ),

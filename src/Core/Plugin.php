@@ -16,7 +16,9 @@ use UniversalTelegram\Administration\Automations\EventHistoryPage;
 use UniversalTelegram\Administration\Automations\IntelligencePanel;
 use UniversalTelegram\Administration\Automations\RuleBuilderPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderRequestHandler;
-use UniversalTelegram\Administration\Automations\RuleSimulatorPage;
+use UniversalTelegram\Administration\Automations\NotificationTester;
+use UniversalTelegram\Administration\Automations\NotificationTesterPage;
+use UniversalTelegram\Administration\Automations\PreviewRenderer;
 use UniversalTelegram\Administration\Conversations\ConversationActionHandler;
 use UniversalTelegram\Administration\Conversations\ConversationDetailPage;
 use UniversalTelegram\Administration\Conversations\ConversationInboxPage;
@@ -71,7 +73,6 @@ use UniversalTelegram\Automations\DispatchLogRepository;
 use UniversalTelegram\Automations\NotificationDispatcher;
 use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Automations\RuleEvaluator;
-use UniversalTelegram\Automations\RuleSimulator;
 use UniversalTelegram\Automations\TemplateRenderer;
 use UniversalTelegram\ChatWidget\AccountUrlResolver;
 use UniversalTelegram\ChatWidget\ChatWidgetAssets;
@@ -624,11 +625,11 @@ final class Plugin {
 	private ?RuleBuilderRequestHandler $rule_builder_request_handler = null;
 
 	/**
-	 * The rule simulator admin page, constructed by init().
+	 * The notification tester admin page, constructed by init().
 	 *
-	 * @var RuleSimulatorPage|null
+	 * @var NotificationTesterPage|null
 	 */
-	private ?RuleSimulatorPage $rule_simulator_page = null;
+	private ?NotificationTesterPage $notification_tester_page = null;
 
 	/**
 	 * The event history browser admin page, constructed by init().
@@ -1106,7 +1107,7 @@ final class Plugin {
 		);
 		// 'diagnostics' is registered last of all (see below), so display
 		// order matches the plan's mapping (M04.1 plan §3): Overview,
-		// Bots, Events, Rules, Simulator, Event History, Visitor
+		// Bots, Events, Rules, Test notifications, Event History, Visitor
 		// Tracking, Settings, Diagnostics.
 		$this->hub_page = new HubPage( $this->hub_tab_registry );
 		add_action( 'admin_menu', array( $this->hub_page, 'register_menu' ) );
@@ -1319,11 +1320,25 @@ final class Plugin {
 			( new PluginActionLinks( plugin_basename( UNIVERSAL_TELEGRAM_PLUGIN_FILE ) ) )->register();
 		}
 
-		$rule_simulator = new RuleSimulator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher, $this->digest_eligibility );
+		$notification_tester = new NotificationTester(
+			$rule_evaluator,
+			$this->notification_rule_repository,
+			$this->bot_profile_repository,
+			$this->destination_repository,
+			$this->event_registry,
+			new PreviewRenderer( $this->event_registry )
+		);
 
-		$this->rule_simulator_page = new RuleSimulatorPage( $rule_simulator, $this->event_registry );
+		$this->notification_tester_page = new NotificationTesterPage(
+			$notification_tester,
+			$this->notification_rule_repository,
+			$this->event_registry,
+			$this->bot_profile_repository,
+			$this->destination_repository,
+			$this->woocommerce_support
+		);
 		$this->hub_tab_registry->register(
-			new Tab( RuleSimulatorPage::TAB_ID, __( 'Simulator', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_simulator_page, 'render_tab_content' ) )
+			new Tab( NotificationTesterPage::TAB_ID, __( 'Test notifications', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->notification_tester_page, 'render_tab_content' ) )
 		);
 
 		$this->event_history_page = new EventHistoryPage( $this->schema_health );
@@ -1957,10 +1972,11 @@ final class Plugin {
 	}
 
 	/**
-	 * The rule simulator admin page. Available only after init() has run.
+	 * The notification tester admin page. Available only after init() has
+	 * run.
 	 */
-	public function rule_simulator_page(): ?RuleSimulatorPage {
-		return $this->rule_simulator_page;
+	public function notification_tester_page(): ?NotificationTesterPage {
+		return $this->notification_tester_page;
 	}
 
 	/**

@@ -30,7 +30,7 @@ use UniversalTelegram\Telegram\Configuration\DestinationRepository;
  * two triggers can observe.
  *
  * Not declared final: tests/unit/Automations/RuleEvaluatorTest.php,
- * RuleSimulatorTest.php, and their integration-test counterparts double
+ * NotificationTesterTest.php, and their integration-test counterparts double
  * this class via PHPUnit's createMock(), which cannot double a final class
  * (the same precedent Automations\NotificationDispatcher already
  * documents).
