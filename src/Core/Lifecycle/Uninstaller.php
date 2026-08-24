@@ -74,6 +74,11 @@ final class Uninstaller {
 		Migrator::AI_DRAFTS_TABLE,
 	);
 
+	private const M11A_TABLES = array(
+		Migrator::VISITOR_DIGEST_COUNTERS_TABLE,
+		Migrator::VISITOR_DIGEST_STATE_TABLE,
+	);
+
 	/**
 	 * Runs the uninstall routine.
 	 */
@@ -102,6 +107,7 @@ final class Uninstaller {
 		$this->drop_m05_tables();
 		$this->drop_m07_tables();
 		$this->drop_m09_tables();
+		$this->drop_m11a_tables();
 		delete_option( Settings::OPTION_NAME );
 		delete_option( 'universal_telegram_db_version' );
 
@@ -212,6 +218,22 @@ final class Uninstaller {
 		global $wpdb;
 
 		foreach ( self::M09_TABLES as $table_name ) {
+			$table = $wpdb->prefix . $table_name;
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
+			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
+		}
+	}
+
+	/**
+	 * Drops the two tables M11A added
+	 * (docs/plans/m11a-visitor-activity-digests-plan-v1.md §5). Aggregate-
+	 * only, no visitor-identifying data — dropped unconditionally, the same
+	 * as every other plugin-owned table.
+	 */
+	private function drop_m11a_tables(): void {
+		global $wpdb;
+
+		foreach ( self::M11A_TABLES as $table_name ) {
 			$table = $wpdb->prefix . $table_name;
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
 			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );

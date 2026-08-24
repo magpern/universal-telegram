@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.11.1
+Stable tag: 0.12.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,20 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.12.0 =
+* Visitor Activity Digest (M11A, ADR-0029, first non-AI slice of M11): routine visitor activity —
+  page views, navigation, search, product views, and cart/checkout intent — is batched into a single
+  periodic aggregate Telegram summary instead of one message per event, once an administrator
+  explicitly enables it and selects a bot and destination on the Visitor Tracking settings screen. A
+  digest sends as soon as either an administrator-configured event threshold (default 50, range
+  10-500) or a maximum wait (default 15 minutes, range 5-60) is reached. Digest content is aggregate
+  counts by fixed category and page type only — never a URL, path, search term, or any
+  visitor-identifying value. Batching is opt-in and self-healing: while disabled, or if the selected
+  bot/destination becomes invalid (including a website-chat conversation topic, which can never be
+  selected as a target), affected notification rules keep sending individually exactly as before,
+  with the condition surfaced in Diagnostics rather than failing silently. Adds two new database
+  tables (db_version 22 -> 24).
 
 = 0.11.1 =
 * Corrective fix: unchecking a Visitor Tracking checkbox (most visibly "Exclude administrators")

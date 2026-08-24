@@ -60,6 +60,11 @@ final class UninstallTest extends WP_UnitTestCase {
 		Migrator::OPERATOR_AVAILABILITY_TABLE,
 	);
 
+	private const M11A_TABLES = array(
+		Migrator::VISITOR_DIGEST_COUNTERS_TABLE,
+		Migrator::VISITOR_DIGEST_STATE_TABLE,
+	);
+
 	protected function setUp(): void {
 		parent::setUp();
 		( new CapabilityRegistrar() )->grant_to_administrator();
@@ -181,7 +186,7 @@ final class UninstallTest extends WP_UnitTestCase {
 			$table = $wpdb->prefix . Migrator::AUDIT_LOG_TABLE;
 			$this->assertFalse( $this->table_exists( $table ) );
 
-			foreach ( array_merge( self::M01_TABLES, self::M02_TABLES, self::M05_TABLES, self::M07_TABLES ) as $table_name ) {
+			foreach ( array_merge( self::M01_TABLES, self::M02_TABLES, self::M05_TABLES, self::M07_TABLES, self::M11A_TABLES ) as $table_name ) {
 				$this->assertFalse( $this->table_exists( $wpdb->prefix . $table_name ), "Expected {$table_name} to have been dropped." );
 			}
 
