@@ -17,10 +17,14 @@ use UniversalTelegram\Telegram\Configuration\DestinationRepository;
  * everything it owns, extracted out of RetentionCleanupHandler's own
  * 90-day purge step so both the scheduled handler and M07's manual
  * "delete archived conversation" admin action (docs/adr/0026) call the
- * exact same code, never duplicated inline. Matching
- * DestinationRepository::delete()'s existing behavior, this never calls
- * the Telegram Bot API: no Telegram-side message or forum topic is ever
- * touched by this class.
+ * exact same code, never duplicated inline.
+ *
+ * When a destination id is supplied, any forum topic on that destination is
+ * best-effort deleted on Telegram first (ForumTopicRemoteDeleter), then the
+ * local destination row is removed. Callers that lack exclusive destination
+ * ownership must pass null so a shared destination row is retained
+ * (M07.1, docs/adr/0031). TopicDeletionHandler remains the strict
+ * eligibility / chat-not-found gate for confirmation-queued deletes.
  *
  * Also deletes any AI draft rows for the conversation (M09, docs/adr/0028
  * §4 retention table) via a direct, raw query against the drafts table
@@ -36,24 +40,24 @@ final class ConversationPurgeService {
 	/**
 	 * Constructor.
 	 *
-	 * @param ConversationRepository     $conversations Conversation persistence.
-	 * @param MessageRepository          $messages      Conversation message persistence.
-	 * @param DestinationRepository      $destinations  Deletes a conversation's own destination row.
-	 * @param ConversationNoteRepository $notes         Internal notes; deleted with the conversation.
+	 * @param ConversationRepository       $conversations Conversation persistence.
+	 * @param MessageRepository            $messages      Conversation message persistence.
+	 * @param DestinationRepository        $destinations  Deletes a conversation's own destination row.
+	 * @param ConversationNoteRepository   $notes         Internal notes; deleted with the conversation.
+	 * @param ForumTopicRemoteDeleter|null $remote_topics Best-effort Telegram topic delete before local dest delete.
 	 */
 	public function __construct(
 		private readonly ConversationRepository $conversations,
 		private readonly MessageRepository $messages,
 		private readonly DestinationRepository $destinations,
-		private readonly ?ConversationNoteRepository $notes = null
+		private readonly ?ConversationNoteRepository $notes = null,
+		private readonly ?ForumTopicRemoteDeleter $remote_topics = null
 	) {}
 
 	/**
 	 * Permanently deletes a conversation, all its message rows, any notes,
 	 * any AI draft rows, and — only when `$destination_id` is non-null —
-	 * its own destination row. Never contacts the Telegram Bot API. Callers
-	 * that lack exclusive destination ownership must pass null so a shared
-	 * destination row is retained (M07.1, docs/adr/0031).
+	 * its own destination row (Telegram forum topic first when present).
 	 *
 	 * @param int      $conversation_id The conversation to purge.
 	 * @param int|null $destination_id  The conversation's own destination row id, or null.
@@ -64,6 +68,7 @@ final class ConversationPurgeService {
 		$this->delete_ai_drafts_for_conversation( $conversation_id );
 
 		if ( null !== $destination_id ) {
+			$this->remote_topics?->try_delete_for_destination_id( $destination_id );
 			$this->destinations->delete( $destination_id );
 		}
 

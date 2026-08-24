@@ -83,6 +83,7 @@ use UniversalTelegram\Conversations\ConversationOutboundHandler;
 use UniversalTelegram\Conversations\ConversationPurgeService;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\ConversationTopicEligibility;
+use UniversalTelegram\Conversations\ForumTopicRemoteDeleter;
 use UniversalTelegram\Conversations\ImmediateDeliveryAttempt;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\OperatorAvailabilityRepository;
@@ -808,11 +809,17 @@ final class Plugin {
 			$this->conversation_repository,
 			$this->destination_repository
 		);
+		$forum_topic_remote_deleter           = new ForumTopicRemoteDeleter(
+			$this->bot_profile_repository,
+			$this->destination_repository,
+			$this->telegram_api_client
+		);
 		$this->conversation_purge_service     = new ConversationPurgeService(
 			$this->conversation_repository,
 			$this->message_repository,
 			$this->destination_repository,
-			$this->conversation_note_repository
+			$this->conversation_note_repository,
+			$forum_topic_remote_deleter
 		);
 		$this->topic_deletion_dispatcher      = new TopicDeletionDispatcher( $this->conversation_repository, $this->dispatcher );
 		$topic_deletion_handler               = new TopicDeletionHandler(
@@ -994,7 +1001,8 @@ final class Plugin {
 			$this->dispatcher,
 			new TelegramApiClient( 8 ),
 			new TelegramFailureClassifier(),
-			$this->audit_logger
+			$this->audit_logger,
+			$forum_topic_remote_deleter
 		);
 		add_action( 'admin_post_' . BotManagementController::ADMIN_POST_ACTION, array( $this->bot_management_controller, 'handle_request' ) );
 

@@ -346,6 +346,13 @@ final class BotManagementPage {
 				),
 				__( 'Send test message', 'universal-telegram' )
 			);
+			$this->forms->op_button_form(
+				'delete_destination',
+				array(
+					'destination_id' => $destination->id(),
+				),
+				__( 'Delete', 'universal-telegram' )
+			);
 			echo '</td>';
 			echo '</tr>';
 		}

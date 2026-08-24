@@ -11,6 +11,7 @@ namespace UniversalTelegram\Administration\Telegram;
 
 use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Audit\AuditLogger;
+use UniversalTelegram\Conversations\ForumTopicRemoteDeleter;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Security\CredentialState;
 use UniversalTelegram\Privacy\Classification;
@@ -56,6 +57,7 @@ class BotManagementController {
 	 * @param TelegramApiClient              $test_message_client Bounded (≤8s) synchronous client for the Test Message diagnostic action only (docs/adr/0023).
 	 * @param TelegramFailureClassifier      $failure_classifier  Classifies a failed Test Message send, mirroring SendMessageHandler's own classification.
 	 * @param AuditLogger                    $audit_logger        Records the Test Message outcome, same audit posture as a queued send.
+	 * @param ForumTopicRemoteDeleter        $remote_topics       Best-effort deleteForumTopic when a destination row is removed.
 	 */
 	public function __construct(
 		private readonly BotProfileRepository $bots,
@@ -66,7 +68,8 @@ class BotManagementController {
 		private readonly Dispatcher $dispatcher,
 		private readonly TelegramApiClient $test_message_client,
 		private readonly TelegramFailureClassifier $failure_classifier,
-		private readonly AuditLogger $audit_logger
+		private readonly AuditLogger $audit_logger,
+		private readonly ForumTopicRemoteDeleter $remote_topics
 	) {}
 
 	/**
@@ -207,6 +210,10 @@ class BotManagementController {
 			return;
 		}
 
+		foreach ( $this->destinations->for_bot( $bot_id ) as $destination ) {
+			$this->remote_topics->try_delete_for_destination( $destination );
+		}
+
 		$this->destinations->delete_for_bot( $bot_id );
 		$this->bots->delete( $bot_id );
 	}
@@ -246,6 +253,7 @@ class BotManagementController {
 			return;
 		}
 
+		$this->remote_topics->try_delete_for_destination_id( $destination_id );
 		$this->destinations->delete( $destination_id );
 	}
 

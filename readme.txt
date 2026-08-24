@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.14.0
+Stable tag: 0.14.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,11 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.14.1 =
+* When WordPress deletes a destination (or purges a conversation that exclusively
+  owns a forum-topic destination), best-effort `deleteForumTopic` runs first so
+  Telegram is not left with orphan topics. Destinations list exposes Delete again.
 
 = 0.14.0 =
 * Conversation topic lifecycle and repair (M07.1, ADR-0031): local Archive (secret

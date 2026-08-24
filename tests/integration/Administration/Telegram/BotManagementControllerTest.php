@@ -7,6 +7,7 @@ namespace UniversalTelegram\Tests\Integration\Administration\Telegram;
 
 use UniversalTelegram\Administration\Telegram\BotManagementController;
 use UniversalTelegram\Audit\AuditLogger;
+use UniversalTelegram\Conversations\ForumTopicRemoteDeleter;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
@@ -162,7 +163,8 @@ final class BotManagementControllerTest extends WP_UnitTestCase {
 			new Dispatcher( $this->schema_health ),
 			new TelegramApiClient( 8 ),
 			new TelegramFailureClassifier(),
-			new AuditLogger( $this->schema_health, new Redactor() )
+			new AuditLogger( $this->schema_health, new Redactor() ),
+			new ForumTopicRemoteDeleter( $this->bots, $destinations, $client )
 		) extends BotManagementController {
 			public ?string $last_redirect_url = null;
 
@@ -333,10 +335,11 @@ final class BotManagementControllerTest extends WP_UnitTestCase {
 
 		$messages = new OutboundMessageRepository( $this->schema_health, new CredentialVault() );
 		$client   = new TelegramApiClient();
+		$destinations = new DestinationRepository( $this->schema_health );
 
 		$controller = new class(
 			$this->bots,
-			new DestinationRepository( $this->schema_health ),
+			$destinations,
 			$messages,
 			$client,
 			new WebhookRegistrationCoordinator(
@@ -350,7 +353,8 @@ final class BotManagementControllerTest extends WP_UnitTestCase {
 			$dispatcher,
 			new TelegramApiClient( 8 ),
 			new TelegramFailureClassifier(),
-			new AuditLogger( $this->schema_health, new Redactor() )
+			new AuditLogger( $this->schema_health, new Redactor() ),
+			new ForumTopicRemoteDeleter( $this->bots, $destinations, $client )
 		) extends BotManagementController {
 			protected function redirect_and_exit( string $url ): void {}
 		};
