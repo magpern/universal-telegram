@@ -46,6 +46,7 @@ final class OperationalSummarySweep {
 	 * @param OperationalSummaryRenderer     $renderer             Fixed message rendering.
 	 * @param MessageDispatcher              $message_dispatcher  M01's own, unchanged outbound transport.
 	 * @param WooCommerceSupport             $woocommerce_support Governs whether commerce fields render.
+	 * @param AlertEvaluator|null            $alert_evaluator     Evaluates the three fixed threshold alerts on the same tick (§2.2). Null only for pre-WP3 callers.
 	 */
 	public function __construct(
 		private readonly IntelligenceSettings $settings,
@@ -54,7 +55,8 @@ final class OperationalSummarySweep {
 		private readonly IntelligenceStateRepository $state,
 		private readonly OperationalSummaryRenderer $renderer,
 		private readonly MessageDispatcher $message_dispatcher,
-		private readonly WooCommerceSupport $woocommerce_support
+		private readonly WooCommerceSupport $woocommerce_support,
+		private readonly ?AlertEvaluator $alert_evaluator = null
 	) {}
 
 	/**
@@ -78,6 +80,10 @@ final class OperationalSummarySweep {
 	 */
 	public function run(): void {
 		$this->run_operational_summary();
+
+		if ( null !== $this->alert_evaluator ) {
+			$this->alert_evaluator->evaluate();
+		}
 	}
 
 	/**

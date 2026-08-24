@@ -254,4 +254,49 @@ final class OperationalSummaryRepository {
 			)
 		);
 	}
+
+	/**
+	 * A bounded count of visitor.javascript_error rows, since a given
+	 * timestamp, whose payload.error_category matches the given fixed
+	 * category — M04's own bounded enum (runtime|promise_rejection|
+	 * resource_load), never raw error text. The category is not an indexed
+	 * column of its own (it lives inside projected_fields_json), so this
+	 * fetches the bounded-window row set and filters in PHP rather than in
+	 * SQL — still a bounded query, filtered first by event_type and the
+	 * occurred_at range.
+	 *
+	 * @param string $category One of runtime|promise_rejection|resource_load.
+	 * @param string $since    The inclusive lower bound, 'Y-m-d H:i:s' UTC.
+	 *
+	 * @return int
+	 */
+	public function count_error_category_since( string $category, string $since ): int {
+		if ( ! $this->schema_health->is_available() ) {
+			return 0;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE;
+
+		$rows = $wpdb->get_col(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT projected_fields_json FROM {$table} WHERE event_type = %s AND occurred_at >= %s",
+				'visitor.javascript_error',
+				$since
+			)
+		);
+
+		$count = 0;
+		foreach ( $rows as $json ) {
+			$decoded = json_decode( (string) $json, true );
+
+			if ( is_array( $decoded ) && ( $decoded['payload']['error_category'] ?? null ) === $category ) {
+				++$count;
+			}
+		}
+
+		return $count;
+	}
 }

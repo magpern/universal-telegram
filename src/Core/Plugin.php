@@ -48,6 +48,8 @@ use UniversalTelegram\AI\Provider\AiFailureClassifier;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Automations\Digest\DigestEligibility;
+use UniversalTelegram\Automations\Intelligence\AlertEvaluator;
+use UniversalTelegram\Automations\Intelligence\AlertRepository;
 use UniversalTelegram\Automations\Intelligence\IntelligenceSettings;
 use UniversalTelegram\Automations\Intelligence\IntelligenceStateRepository;
 use UniversalTelegram\Automations\Intelligence\OperationalSummaryRenderer;
@@ -1372,14 +1374,24 @@ final class Plugin {
 		// (docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md §2.1/§6) —
 		// a wholly independent recurring action from VisitorDigestSweep above
 		// (different job type, table, state row); no shared lock.
+		$operational_summary_repository = new OperationalSummaryRepository( $this->schema_health );
+		$alert_evaluator                = new AlertEvaluator(
+			$intelligence_settings,
+			$this->digest_eligibility,
+			$operational_summary_repository,
+			new AlertRepository( $this->schema_health ),
+			$this->message_dispatcher,
+			$this->woocommerce_support
+		);
 		$operational_summary_sweep = new OperationalSummarySweep(
 			$intelligence_settings,
 			$this->digest_eligibility,
-			new OperationalSummaryRepository( $this->schema_health ),
+			$operational_summary_repository,
 			new IntelligenceStateRepository( $this->schema_health ),
 			new OperationalSummaryRenderer(),
 			$this->message_dispatcher,
-			$this->woocommerce_support
+			$this->woocommerce_support,
+			$alert_evaluator
 		);
 		add_action( OperationalSummarySweep::JOB_TYPE, array( $operational_summary_sweep, 'run' ) );
 		add_action( 'init', array( $operational_summary_sweep, 'register' ) );

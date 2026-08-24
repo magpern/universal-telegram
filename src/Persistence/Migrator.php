@@ -72,7 +72,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 26;
+		return 27;
 	}
 
 	/**
@@ -167,6 +167,7 @@ class Migrator {
 			24 => array( array( $this, 'step_24_create_visitor_digest_state_table' ), array( $this, 'verify_step_24' ) ),
 			25 => array( array( $this, 'step_25_create_operational_summary_runs_table' ), array( $this, 'verify_step_25' ) ),
 			26 => array( array( $this, 'step_26_create_intelligence_settings_state_table' ), array( $this, 'verify_step_26' ) ),
+			27 => array( array( $this, 'step_27_create_operational_alert_state_table' ), array( $this, 'verify_step_27' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -1653,6 +1654,58 @@ class Migrator {
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		return null !== $wpdb->get_var( "SELECT id FROM {$table} WHERE id = 1" );
+	}
+
+	/**
+	 * Creates the fixed three-row threshold-alert cooldown/checkpoint table
+	 * (M11B plan §2.2/§4, step 27), seeded with the three fixed alert-type
+	 * rows during migration — the same "singleton-row(s) as checkpoint"
+	 * pattern step_24_create_visitor_digest_state_table already established,
+	 * here with a fixed cardinality of three rather than one.
+	 */
+	private function step_27_create_operational_alert_state_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::OPERATIONAL_ALERT_STATE_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				alert_type VARCHAR(32) NOT NULL,
+				last_fired_at DATETIME NULL,
+				last_evaluated_at DATETIME NULL,
+				PRIMARY KEY (alert_type)
+			) {$charset_collate}"
+		);
+
+		foreach ( array( 'checkout_failure_count', 'order_failure_spike', 'js_error_spike' ) as $alert_type ) {
+			$wpdb->query(
+				$wpdb->prepare(
+					"INSERT IGNORE INTO {$table} (alert_type) VALUES (%s)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					$alert_type
+				)
+			);
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_27(): bool {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::OPERATIONAL_ALERT_STATE_TABLE;
+
+		if ( ! $this->table_has_columns( $table, array( 'alert_type', 'last_fired_at', 'last_evaluated_at' ) ) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return 3 === (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
 	}
 
 	/**
