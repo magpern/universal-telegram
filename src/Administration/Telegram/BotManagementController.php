@@ -23,8 +23,12 @@ use UniversalTelegram\Telegram\Configuration\InvalidDestinationException;
 use UniversalTelegram\Telegram\Configuration\WebhookRegistrationCoordinator;
 use UniversalTelegram\Telegram\Client\TelegramApiClient;
 use UniversalTelegram\Telegram\Client\TelegramFailureClassifier;
+use UniversalTelegram\Telegram\Outbound\DeadLetterDismisser;
 use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
+use UniversalTelegram\Telegram\Outbound\OutboundMessageStatus;
+use UniversalTelegram\Telegram\Outbound\UnresolvedOutboundAbandoner;
+use UniversalTelegram\Telegram\Reliability\QueueHealthAlert;
 use UniversalTelegram\Queue\Dispatcher;
 
 /**
@@ -58,6 +62,8 @@ class BotManagementController {
 	 * @param TelegramFailureClassifier      $failure_classifier  Classifies a failed Test Message send, mirroring SendMessageHandler's own classification.
 	 * @param AuditLogger                    $audit_logger        Records the Test Message outcome, same audit posture as a queued send.
 	 * @param ForumTopicRemoteDeleter        $remote_topics       Best-effort deleteForumTopic when a destination row is removed.
+	 * @param UnresolvedOutboundAbandoner    $unresolved_abandoner Drops pending rows when a destination or bot is removed.
+	 * @param DeadLetterDismisser            $dead_letter_dismisser Removes operator-reviewed dead-letter rows.
 	 */
 	public function __construct(
 		private readonly BotProfileRepository $bots,
@@ -69,7 +75,9 @@ class BotManagementController {
 		private readonly TelegramApiClient $test_message_client,
 		private readonly TelegramFailureClassifier $failure_classifier,
 		private readonly AuditLogger $audit_logger,
-		private readonly ForumTopicRemoteDeleter $remote_topics
+		private readonly ForumTopicRemoteDeleter $remote_topics,
+		private readonly UnresolvedOutboundAbandoner $unresolved_abandoner,
+		private readonly DeadLetterDismisser $dead_letter_dismisser
 	) {}
 
 	/**
@@ -129,6 +137,9 @@ class BotManagementController {
 				break;
 			case 'requeue_message':
 				$this->requeue_message();
+				break;
+			case 'dismiss_dead_letter':
+				$this->dismiss_dead_letter();
 				break;
 		}
 
@@ -212,6 +223,7 @@ class BotManagementController {
 
 		foreach ( $this->destinations->for_bot( $bot_id ) as $destination ) {
 			$this->remote_topics->try_delete_for_destination( $destination );
+			$this->unresolved_abandoner->abandon_for_destination( $destination->id() );
 		}
 
 		$this->destinations->delete_for_bot( $bot_id );
@@ -254,6 +266,7 @@ class BotManagementController {
 		}
 
 		$this->remote_topics->try_delete_for_destination_id( $destination_id );
+		$this->unresolved_abandoner->abandon_for_destination( $destination_id );
 		$this->destinations->delete( $destination_id );
 	}
 
@@ -388,13 +401,15 @@ class BotManagementController {
 
 		$message = $this->messages->find( $message_id );
 
-		if ( null === $message ) {
+		if ( null === $message || OutboundMessageStatus::DEAD_LETTER !== $message->status() ) {
 			return;
 		}
 
 		if ( ! $this->messages->requeue( $message_id ) ) {
 			return;
 		}
+
+		QueueHealthAlert::bust_alert_cache();
 
 		$envelope = new JobEnvelope(
 			MessageDispatcher::JOB_TYPE,
@@ -411,6 +426,19 @@ class BotManagementController {
 		);
 
 		$this->dispatcher->enqueue( $envelope );
+	}
+
+	/**
+	 * Handles the dismiss_dead_letter operation.
+	 */
+	private function dismiss_dead_letter(): void {
+		$message_id = isset( $_POST['message_id'] ) ? (int) $_POST['message_id'] : 0;
+
+		if ( 0 === $message_id ) {
+			return;
+		}
+
+		$this->dead_letter_dismisser->dismiss( $message_id );
 	}
 
 	/**

@@ -10,11 +10,11 @@ declare( strict_types=1 );
 namespace UniversalTelegram\Administration\Visitor;
 
 use UniversalTelegram\Administration\Hub\HubPage;
+use UniversalTelegram\Administration\Shared\BotDestinationPairFields;
 use UniversalTelegram\Automations\Digest\DigestEligibility;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
-use UniversalTelegram\Telegram\Configuration\BotStatus;
 
 /**
  * Gated on the existing CapabilityRegistrar::MANAGE capability (ADR-0010)
@@ -194,43 +194,12 @@ class VisitorTrackingPage {
 
 		$this->checkbox( $values, 'visitor_digest_enabled', __( 'Enable Visitor Activity Digest', 'universal-telegram' ) );
 
-		$selected_bot_id = null === $values['visitor_digest_bot_id'] ? 0 : (int) $values['visitor_digest_bot_id'];
-
-		echo '<p><label>' . esc_html__( 'Bot', 'universal-telegram' ) . ' ';
-		echo '<select name="visitor_settings[visitor_digest_bot_id]">';
-		echo '<option value="">' . esc_html__( '— Select a bot —', 'universal-telegram' ) . '</option>';
-		foreach ( $this->bots->all() as $bot ) {
-			if ( BotStatus::ACTIVE !== $bot->status() ) {
-				continue;
-			}
-			printf(
-				'<option value="%1$s" %2$s>%3$s</option>',
-				esc_attr( (string) $bot->id() ),
-				selected( $selected_bot_id, $bot->id(), false ),
-				esc_html( $bot->name() )
-			);
-		}
-		echo '</select></label></p>';
-
-		$selected_destination_id = null === $values['visitor_digest_destination_id'] ? 0 : (int) $values['visitor_digest_destination_id'];
-		$eligible_destinations   = $selected_bot_id > 0 ? $this->digest_eligibility->eligible_destinations_for_bot( $selected_bot_id ) : array();
-
-		echo '<p><label>' . esc_html__( 'Destination', 'universal-telegram' ) . ' ';
-		echo '<select name="visitor_settings[visitor_digest_destination_id]">';
-		echo '<option value="">' . esc_html__( '— Select a destination —', 'universal-telegram' ) . '</option>';
-		foreach ( $eligible_destinations as $destination ) {
-			printf(
-				'<option value="%1$s" %2$s>%3$s</option>',
-				esc_attr( (string) $destination->id() ),
-				selected( $selected_destination_id, $destination->id(), false ),
-				esc_html( $destination->label() )
-			);
-		}
-		echo '</select></label></p>';
-		echo '<p class="description">' . esc_html__(
-			'Only enabled, manually configured destinations belonging to the selected bot appear here — a destination created automatically for a website chat conversation can never be selected.',
-			'universal-telegram'
-		) . '</p>';
+		( new BotDestinationPairFields( $this->bots, $this->digest_eligibility ) )->render(
+			'visitor_settings',
+			'visitor_digest_bot_id',
+			'visitor_digest_destination_id',
+			$values
+		);
 
 		echo '<p><label>' . esc_html__( 'Event threshold', 'universal-telegram' ) . ' ';
 		echo '<input type="number" min="10" max="500" name="visitor_settings[visitor_digest_threshold]" value="' . esc_attr( (string) $values['visitor_digest_threshold'] ) . '" />';

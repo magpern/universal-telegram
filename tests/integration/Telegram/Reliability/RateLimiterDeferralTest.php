@@ -20,6 +20,7 @@ use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageStatus;
 use UniversalTelegram\Telegram\Outbound\SendMessageHandler;
+use UniversalTelegram\Telegram\Outbound\UnresolvedOutboundAbandoner;
 use UniversalTelegram\Telegram\Reliability\CircuitBreaker;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
 use WP_UnitTestCase;
@@ -51,7 +52,8 @@ final class RateLimiterDeferralTest extends WP_UnitTestCase {
 			$rate_limiter,
 			new CircuitBreaker( $schema_health, new RetryPolicy() ),
 			new AuditLogger( $schema_health, new Redactor() ),
-			new RetryPolicy()
+			new RetryPolicy(),
+			new UnresolvedOutboundAbandoner( $messages )
 		);
 
 		// No pre_http_request fake is installed at all — a real Telegram

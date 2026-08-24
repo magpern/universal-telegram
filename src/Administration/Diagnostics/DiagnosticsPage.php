@@ -34,7 +34,7 @@ final class DiagnosticsPage {
 
 	public const SLUG = 'universal-telegram-diagnostics';
 
-	private const ALERT_CACHE_KEY = 'universal_telegram_queue_health_alert_active';
+	private const ALERT_CACHE_KEY = QueueHealthAlert::ALERT_CACHE_TRANSIENT;
 
 	/**
 	 * Constructor.

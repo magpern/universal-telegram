@@ -17,6 +17,7 @@ use UniversalTelegram\Telegram\Configuration\DestinationKind;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
 use UniversalTelegram\Telegram\Outbound\SendMessageHandler;
+use UniversalTelegram\Telegram\Outbound\UnresolvedOutboundAbandoner;
 use UniversalTelegram\Telegram\Reliability\CircuitBreaker;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
 use WP_Error;
@@ -74,7 +75,8 @@ final class DuplicateDeliverySignalTest extends WP_UnitTestCase {
 			new RateLimiter( $schema_health ),
 			new CircuitBreaker( $schema_health, new RetryPolicy() ),
 			new AuditLogger( $schema_health, new Redactor() ),
-			new RetryPolicy()
+			new RetryPolicy(),
+			new UnresolvedOutboundAbandoner( $messages )
 		);
 
 		return array( $bots, $destinations, $messages, $handler );

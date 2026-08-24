@@ -81,7 +81,7 @@ final class TelegramFormFields {
 	/**
 	 * Renders one single-button admin-post form for any existing op
 	 * (register_webhook, rotate_webhook, test_connection, send_test_message,
-	 * requeue_message, delete_bot, delete_destination, ...), with whichever
+	 * requeue_message, dismiss_dead_letter, delete_bot, delete_destination, ...), with whichever
 	 * hidden fields that op requires.
 	 *
 	 * @param string            $op            The 'op' field value.

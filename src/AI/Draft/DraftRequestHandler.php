@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace UniversalTelegram\AI\Draft;
 
 use UniversalTelegram\AI\Config\AIProviderRepository;
+use UniversalTelegram\Administration\Conversations\ConversationInboxPage;
 use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
@@ -70,7 +71,7 @@ class DraftRequestHandler {
 			add_query_arg(
 				'ai_draft_notice',
 				$outcome,
-				admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=conversations&conversation_id=' . $conversation_id )
+				admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . ConversationInboxPage::TAB_ID . '&conversation_id=' . $conversation_id )
 			)
 		);
 	}

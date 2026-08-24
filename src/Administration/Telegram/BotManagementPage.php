@@ -404,16 +404,27 @@ final class BotManagementPage {
 	}
 
 	/**
-	 * Renders the dead-lettered message list with a Requeue action per row.
+	 * Renders the dead-lettered message list with Requeue and Dismiss actions.
 	 */
 	private function render_dead_letter_list(): void {
 		$dead_letters = $this->messages->recent_dead_letters( 50 );
 
 		echo '<h2>' . esc_html__( 'Dead-lettered messages', 'universal-telegram' ) . '</h2>';
+		echo '<p>' . esc_html__(
+			'Requeue retries the same stored message after you fix the bot, destination, or Telegram-side problem. Dismiss removes a message that cannot succeed or that you accept as lost — for example bad message formatting that would fail again unchanged.',
+			'universal-telegram'
+		) . '</p>';
+
+		if ( array() === $dead_letters ) {
+			echo '<p>' . esc_html__( 'No dead-lettered messages.', 'universal-telegram' ) . '</p>';
+			return;
+		}
+
 		echo '<table class="widefat striped"><thead><tr><th>' .
 			esc_html__( 'ID', 'universal-telegram' ) . '</th><th>' .
 			esc_html__( 'Reason', 'universal-telegram' ) . '</th><th>' .
-			esc_html__( 'Dead-lettered at', 'universal-telegram' ) . '</th><th></th></tr></thead><tbody>';
+			esc_html__( 'Dead-lettered at', 'universal-telegram' ) . '</th><th>' .
+			esc_html__( 'Actions', 'universal-telegram' ) . '</th></tr></thead><tbody>';
 
 		foreach ( $dead_letters as $message ) {
 			echo '<tr>';
@@ -422,6 +433,7 @@ final class BotManagementPage {
 			printf( '<td>%s</td>', esc_html( (string) $message->dead_lettered_at() ) );
 			echo '<td>';
 			$this->forms->op_button_form( 'requeue_message', array( 'message_id' => $message->id() ), __( 'Requeue', 'universal-telegram' ) );
+			$this->forms->op_button_form( 'dismiss_dead_letter', array( 'message_id' => $message->id() ), __( 'Dismiss', 'universal-telegram' ) );
 			echo '</td>';
 			echo '</tr>';
 		}

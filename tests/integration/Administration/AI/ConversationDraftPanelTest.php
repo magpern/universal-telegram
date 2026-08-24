@@ -113,4 +113,17 @@ final class ConversationDraftPanelTest extends WP_UnitTestCase {
 		$this->assertSame( 'approved', $approved->status() );
 		$this->assertSame( 7, $approved->reviewed_by_user_id() );
 	}
+
+	public function test_discard_works_from_an_approved_draft(): void {
+		$conversation = $this->conversation_with_ack();
+		$drafts       = $this->drafts();
+		$draft        = $drafts->create( $conversation->id(), 1, 'openai', 'gpt-4o-mini', 'v1' );
+		$claim        = $drafts->claim_for_generation( $draft->draft_uuid(), 90, 5 );
+		$drafts->complete_generation( $claim['draft_id'], $draft->draft_uuid(), $claim['lease_token'], 'body', '[]', str_repeat( 'a', 64 ), 'v1' );
+		$drafts->mark_approved( $draft->id(), 7 );
+
+		$this->assertTrue( $drafts->mark_discarded( $draft->id(), 7 ) );
+		$this->assertSame( 'discarded', $drafts->find( $draft->id() )->status() );
+		$this->assertNull( $drafts->find_retained_for_conversation( $conversation->id() ) );
+	}
 }

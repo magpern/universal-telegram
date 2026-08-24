@@ -69,9 +69,10 @@ class SendMessageHandler {
 	 * @param RateLimiter               $rate_limiter                 Per-bot/per-destination token buckets.
 	 * @param CircuitBreaker            $circuit_breaker              Per-bot/per-destination breakers.
 	 * @param AuditLogger               $audit_logger                 Records Telegram-specific delivery events.
-	 * @param RetryPolicy               $retry_policy                 Consulted only for its own max_attempts().
-	 * @param int                       $rate_limit_fallback_wait_seconds Used only when a 429's retry_after is absent/invalid.
-	 * @param int                       $max_pending_seconds           The unbounded-deferral safety ceiling.
+	 * @param RetryPolicy                  $retry_policy                 Consulted only for its own max_attempts().
+	 * @param UnresolvedOutboundAbandoner  $unresolved_abandoner         Drops rows whose target no longer exists.
+	 * @param int                          $rate_limit_fallback_wait_seconds Used only when a 429's retry_after is absent/invalid.
+	 * @param int                          $max_pending_seconds           The unbounded-deferral safety ceiling.
 	 */
 	public function __construct(
 		private readonly OutboundMessageRepository $messages,
@@ -83,6 +84,7 @@ class SendMessageHandler {
 		private readonly CircuitBreaker $circuit_breaker,
 		private readonly AuditLogger $audit_logger,
 		private readonly RetryPolicy $retry_policy,
+		private readonly UnresolvedOutboundAbandoner $unresolved_abandoner,
 		private readonly int $rate_limit_fallback_wait_seconds = 30,
 		private readonly int $max_pending_seconds = 86400
 	) {}
@@ -110,15 +112,24 @@ class SendMessageHandler {
 			throw new RuntimeException( 'telegram_outbound_message_not_found' );
 		}
 
+		if ( $this->is_past_pending_ceiling( $message ) ) {
+			$bot         = $this->bots->find( $bot_id );
+			$destination = $this->destinations->find( $destination_id );
+
+			if ( null === $bot || null === $destination ) {
+				$this->unresolved_abandoner->abandon( $message, 'telegram_destination_removed' );
+				return;
+			}
+
+			$this->dead_letter( $message->id(), $bot_id, $destination_id, 'telegram_pending_ceiling_exceeded' );
+			return;
+		}
+
 		$bot         = $this->bots->find( $bot_id );
 		$destination = $this->destinations->find( $destination_id );
 
 		if ( null === $bot || null === $destination ) {
-			throw new RuntimeException( 'telegram_send_missing_bot_or_destination' );
-		}
-
-		if ( $this->is_past_pending_ceiling( $message ) ) {
-			$this->dead_letter( $message->id(), $bot_id, $destination_id, 'telegram_pending_ceiling_exceeded' );
+			$this->unresolved_abandoner->abandon( $message, 'telegram_destination_removed' );
 			return;
 		}
 

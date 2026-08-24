@@ -9,16 +9,16 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Automations\Digest;
 
+use UniversalTelegram\Automations\MarkdownV2Escaper;
+
 /**
  * Renders the fixed-structure digest message
  * (docs/plans/m11a-visitor-activity-digests-plan-v1.md §6) from a window's
  * own VisitorDigestCounterRepository::for_window() rows. Every value placed
  * into the message is either a fixed label or a bounded non-negative
  * integer — never a raw field, URL, path, search term, or any other
- * variable content — so no MarkdownV2 escaping is required: the fixed
- * `*`/`•` characters here are deliberate formatting, not escaped user
- * content, unlike Automations\TemplateRenderer's own token-substitution
- * escaping, which this class has no need to reuse.
+ * variable content — timestamps and punctuation in the window line are
+ * escaped via Automations\MarkdownV2Escaper before send (M11A plan §6).
  */
 final class VisitorDigestRenderer {
 
@@ -42,7 +42,12 @@ final class VisitorDigestRenderer {
 
 		$lines   = array();
 		$lines[] = '📊 *Visitor Activity Digest*';
-		$lines[] = sprintf( 'Window: %s – %s (%d min)', $window_started_at, $sent_at, $duration );
+		$lines[] = sprintf(
+			'Window: %s – %s %s',
+			MarkdownV2Escaper::escape( $window_started_at ),
+			MarkdownV2Escaper::escape( $sent_at ),
+			MarkdownV2Escaper::escape( '(' . $duration . ' min)' )
+		);
 		$lines[] = '';
 		$lines[] = sprintf( 'Page views: %d', $totals['page_views'] );
 

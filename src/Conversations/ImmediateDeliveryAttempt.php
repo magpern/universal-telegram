@@ -20,6 +20,7 @@ use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Outbound\OutboundMessage;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
 use UniversalTelegram\Telegram\Outbound\SendMessageHandler;
+use UniversalTelegram\Telegram\Outbound\UnresolvedOutboundAbandoner;
 use UniversalTelegram\Telegram\Reliability\CircuitBreaker;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
 
@@ -223,7 +224,8 @@ final class ImmediateDeliveryAttempt {
 			$this->rate_limiter,
 			$this->circuit_breaker,
 			$this->audit_logger,
-			$this->retry_policy
+			$this->retry_policy,
+			new UnresolvedOutboundAbandoner( $this->outbound_messages )
 		);
 
 		$send_outcome = $send_handler->try_once( $outbound, $bot, $destination, 1 );

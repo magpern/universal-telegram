@@ -37,7 +37,10 @@ final class VisitorDigestRendererTest extends TestCase {
 		);
 
 		$this->assertStringContainsString( '📊 *Visitor Activity Digest*', $text );
-		$this->assertStringContainsString( 'Window: 2026-01-01 00:00:00 – 2026-01-01 00:15:00 (15 min)', $text );
+		$this->assertStringContainsString(
+			'Window: 2026\\-01\\-01 00:00:00 – 2026\\-01\\-01 00:15:00 \\(15 min\\)',
+			$text
+		);
 		$this->assertStringContainsString( 'Page views: 10', $text );
 		$this->assertStringContainsString( '• Home: 4', $text );
 		$this->assertStringContainsString( '• Product/post: 6', $text );

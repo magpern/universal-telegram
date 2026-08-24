@@ -19,7 +19,11 @@ use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationKind;
 use UniversalTelegram\Telegram\Configuration\WebhookRegistrationCoordinator;
+use UniversalTelegram\Telegram\Outbound\DeadLetterDismisser;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
+use UniversalTelegram\Telegram\Outbound\OutboundMessageStatus;
+use UniversalTelegram\Telegram\Outbound\UnresolvedOutboundAbandoner;
+use UniversalTelegram\Telegram\Reliability\QueueHealthAlert;
 use WP_UnitTestCase;
 
 final class BotManagementControllerTest extends WP_UnitTestCase {
@@ -164,7 +168,9 @@ final class BotManagementControllerTest extends WP_UnitTestCase {
 			new TelegramApiClient( 8 ),
 			new TelegramFailureClassifier(),
 			new AuditLogger( $this->schema_health, new Redactor() ),
-			new ForumTopicRemoteDeleter( $this->bots, $destinations, $client )
+			new ForumTopicRemoteDeleter( $this->bots, $destinations, $client ),
+			new UnresolvedOutboundAbandoner( $messages ),
+			new DeadLetterDismisser( $messages, new AuditLogger( $this->schema_health, new Redactor() ) )
 		) extends BotManagementController {
 			public ?string $last_redirect_url = null;
 
@@ -354,7 +360,9 @@ final class BotManagementControllerTest extends WP_UnitTestCase {
 			new TelegramApiClient( 8 ),
 			new TelegramFailureClassifier(),
 			new AuditLogger( $this->schema_health, new Redactor() ),
-			new ForumTopicRemoteDeleter( $this->bots, $destinations, $client )
+			new ForumTopicRemoteDeleter( $this->bots, $destinations, $client ),
+			new UnresolvedOutboundAbandoner( $messages ),
+			new DeadLetterDismisser( $messages, new AuditLogger( $this->schema_health, new Redactor() ) )
 		) extends BotManagementController {
 			protected function redirect_and_exit( string $url ): void {}
 		};
@@ -402,5 +410,48 @@ final class BotManagementControllerTest extends WP_UnitTestCase {
 		$controller->handle_request();
 
 		$this->assertStringNotContainsString( 'view=wizard', (string) $controller->last_redirect_url );
+	}
+
+	public function test_dismiss_dead_letter_removes_the_row_and_busts_the_queue_health_alert_cache(): void {
+		list( $bot, $destination ) = $this->bot_with_destination();
+
+		$messages = new OutboundMessageRepository( $this->schema_health, new CredentialVault() );
+		$message  = $messages->create( $bot->id(), $destination->id(), 'hello', null );
+		$messages->mark_dead_letter( $message->id(), 'telegram_terminal_rejection' );
+
+		set_transient( QueueHealthAlert::ALERT_CACHE_TRANSIENT, true, 60 );
+
+		$nonce                = wp_create_nonce( BotManagementController::NONCE_ACTION );
+		$_POST                = array(
+			'op'         => 'dismiss_dead_letter',
+			'message_id' => $message->id(),
+			'_wpnonce'   => $nonce,
+		);
+		$_REQUEST['_wpnonce'] = $nonce;
+
+		$this->controller()->handle_request();
+
+		$this->assertNull( $messages->find( $message->id() ) );
+		$this->assertFalse( get_transient( QueueHealthAlert::ALERT_CACHE_TRANSIENT ) );
+	}
+
+	public function test_requeue_message_is_ignored_unless_the_message_is_dead_lettered(): void {
+		list( $bot, $destination ) = $this->bot_with_destination();
+
+		$messages = new OutboundMessageRepository( $this->schema_health, new CredentialVault() );
+		$message  = $messages->create( $bot->id(), $destination->id(), 'hello', null );
+
+		$nonce                = wp_create_nonce( BotManagementController::NONCE_ACTION );
+		$_POST                = array(
+			'op'         => 'requeue_message',
+			'message_id' => $message->id(),
+			'_wpnonce'   => $nonce,
+		);
+		$_REQUEST['_wpnonce'] = $nonce;
+
+		$this->controller()->handle_request();
+
+		$after = $messages->find( $message->id() );
+		$this->assertSame( OutboundMessageStatus::PENDING, $after->status() );
 	}
 }

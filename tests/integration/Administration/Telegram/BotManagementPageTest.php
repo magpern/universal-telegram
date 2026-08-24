@@ -496,4 +496,32 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		$this->expectException( \WPDieException::class );
 		$page->render_tab_content();
 	}
+
+	public function test_dead_letter_section_shows_help_text_and_dismiss_action(): void {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+		$bots          = new BotProfileRepository( $schema_health, $vault );
+		$destinations  = new DestinationRepository( $schema_health );
+		$messages      = new OutboundMessageRepository( $schema_health, $vault );
+
+		$bot = $bots->create( 'Bot', 'token' );
+		$this->complete_setup_for( $bots, $destinations, $bot->id(), '-100123' );
+		$settings = new Settings();
+		update_option( Settings::OPTION_NAME, $settings->sanitize( array_merge( $settings->get(), array( 'chat_widget_enabled' => true ) ) ) );
+
+		$destination = $destinations->for_bot( $bot->id() )[0];
+		$message       = $messages->create( $bot->id(), $destination->id(), 'digest body', 'MarkdownV2' );
+		$messages->mark_dead_letter( $message->id(), 'telegram_terminal_rejection' );
+
+		$page = $this->make_page( $bots, $destinations );
+
+		ob_start();
+		$page->render_tab_content();
+		$html = ob_get_clean();
+
+		$this->assertStringContainsString( 'Dead-lettered messages', $html );
+		$this->assertStringContainsString( 'Requeue retries the same stored message', $html );
+		$this->assertStringContainsString( 'value="dismiss_dead_letter"', $html );
+		$this->assertStringContainsString( 'telegram_terminal_rejection', $html );
+	}
 }

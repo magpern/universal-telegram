@@ -18,6 +18,7 @@ use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageStatus;
 use UniversalTelegram\Telegram\Outbound\SendMessageHandler;
+use UniversalTelegram\Telegram\Outbound\UnresolvedOutboundAbandoner;
 use UniversalTelegram\Telegram\Reliability\CircuitBreaker;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
 use WP_UnitTestCase;
@@ -90,7 +91,8 @@ final class SendMessageHandlerTest extends WP_UnitTestCase {
 			new RateLimiter( $this->schema_health ),
 			new CircuitBreaker( $this->schema_health, new RetryPolicy() ),
 			new AuditLogger( $this->schema_health, new Redactor() ),
-			new RetryPolicy()
+			new RetryPolicy(),
+			new UnresolvedOutboundAbandoner( $this->messages )
 		);
 	}
 
@@ -280,5 +282,28 @@ final class SendMessageHandlerTest extends WP_UnitTestCase {
 		$after = $this->messages->find( $message->id() );
 		$this->assertSame( OutboundMessageStatus::SENT, $after->status() );
 		$this->assertSame( 555, $after->telegram_message_id() );
+	}
+
+	public function test_a_missing_destination_abandons_the_message_without_throwing(): void {
+		$bot         = $this->bots->create( 'Bot', 'fake-token' );
+		$destination = $this->destinations->create( $bot->id(), DestinationKind::PRIVATE, '12345', null, 'Chat' );
+		$message     = $this->messages->create( $bot->id(), $destination->id(), 'hello', null );
+		$resolved    = false;
+
+		add_action(
+			'universal_telegram_outbound_message_resolved',
+			static function ( string $uuid, string $outcome, ?string $failure_code ) use ( $message, &$resolved ): void {
+				$resolved = $message->message_uuid() === $uuid
+					&& 'failed' === $outcome
+					&& 'telegram_destination_removed' === $failure_code;
+			}
+		);
+
+		$this->destinations->delete( $destination->id() );
+
+		$this->handler()->handle_job( $this->job( $message->message_uuid(), $bot->id(), $destination->id() ) );
+
+		$this->assertTrue( $resolved );
+		$this->assertNull( $this->messages->find( $message->id() ) );
 	}
 }

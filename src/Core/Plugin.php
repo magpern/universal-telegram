@@ -155,6 +155,8 @@ use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
 use UniversalTelegram\Telegram\Outbound\RetentionCleanupHandler;
 use UniversalTelegram\Telegram\Outbound\SendMessageHandler;
+use UniversalTelegram\Telegram\Outbound\DeadLetterDismisser;
+use UniversalTelegram\Telegram\Outbound\UnresolvedOutboundAbandoner;
 use UniversalTelegram\Telegram\Configuration\WebhookRegistrationCoordinator;
 use UniversalTelegram\Telegram\Reliability\CircuitBreaker;
 use UniversalTelegram\Telegram\Reliability\QueueHealthAlert;
@@ -727,6 +729,8 @@ final class Plugin {
 		$this->destination_repository      = new DestinationRepository( $this->schema_health );
 		$this->telegram_api_client         = new TelegramApiClient();
 		$this->outbound_message_repository = new OutboundMessageRepository( $this->schema_health, $this->credential_vault );
+		$unresolved_outbound_abandoner     = new UnresolvedOutboundAbandoner( $this->outbound_message_repository );
+		$dead_letter_dismisser             = new DeadLetterDismisser( $this->outbound_message_repository, $this->audit_logger );
 		$this->message_dispatcher          = new MessageDispatcher( $this->outbound_message_repository, $this->dispatcher );
 		$this->rate_limiter                = new RateLimiter( $this->schema_health );
 		$this->circuit_breaker             = new CircuitBreaker( $this->schema_health, new RetryPolicy() );
@@ -742,6 +746,7 @@ final class Plugin {
 			$this->circuit_breaker,
 			$this->audit_logger,
 			new RetryPolicy(),
+			$unresolved_outbound_abandoner,
 			(int) $settings_values['telegram_rate_limit_fallback_wait_seconds'],
 			(int) $settings_values['telegram_max_pending_seconds']
 		);
@@ -819,7 +824,8 @@ final class Plugin {
 			$this->message_repository,
 			$this->destination_repository,
 			$this->conversation_note_repository,
-			$forum_topic_remote_deleter
+			$forum_topic_remote_deleter,
+			$unresolved_outbound_abandoner
 		);
 		$this->topic_deletion_dispatcher      = new TopicDeletionDispatcher( $this->conversation_repository, $this->dispatcher );
 		$topic_deletion_handler               = new TopicDeletionHandler(
@@ -1002,7 +1008,9 @@ final class Plugin {
 			new TelegramApiClient( 8 ),
 			new TelegramFailureClassifier(),
 			$this->audit_logger,
-			$forum_topic_remote_deleter
+			$forum_topic_remote_deleter,
+			$unresolved_outbound_abandoner,
+			$dead_letter_dismisser
 		);
 		add_action( 'admin_post_' . BotManagementController::ADMIN_POST_ACTION, array( $this->bot_management_controller, 'handle_request' ) );
 

@@ -11,6 +11,7 @@ namespace UniversalTelegram\Conversations;
 
 use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
+use UniversalTelegram\Telegram\Outbound\UnresolvedOutboundAbandoner;
 
 /**
  * The single, shared permanent-deletion sequence for a conversation and
@@ -45,13 +46,15 @@ final class ConversationPurgeService {
 	 * @param DestinationRepository        $destinations  Deletes a conversation's own destination row.
 	 * @param ConversationNoteRepository   $notes         Internal notes; deleted with the conversation.
 	 * @param ForumTopicRemoteDeleter|null $remote_topics Best-effort Telegram topic delete before local dest delete.
+	 * @param UnresolvedOutboundAbandoner|null $unresolved_abandoner Drops pending outbound rows before dest delete.
 	 */
 	public function __construct(
 		private readonly ConversationRepository $conversations,
 		private readonly MessageRepository $messages,
 		private readonly DestinationRepository $destinations,
 		private readonly ?ConversationNoteRepository $notes = null,
-		private readonly ?ForumTopicRemoteDeleter $remote_topics = null
+		private readonly ?ForumTopicRemoteDeleter $remote_topics = null,
+		private readonly ?UnresolvedOutboundAbandoner $unresolved_abandoner = null
 	) {}
 
 	/**
@@ -69,6 +72,7 @@ final class ConversationPurgeService {
 
 		if ( null !== $destination_id ) {
 			$this->remote_topics?->try_delete_for_destination_id( $destination_id );
+			$this->unresolved_abandoner?->abandon_for_destination( $destination_id );
 			$this->destinations->delete( $destination_id );
 		}
 

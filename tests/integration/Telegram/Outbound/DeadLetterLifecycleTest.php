@@ -6,6 +6,7 @@
 namespace UniversalTelegram\Tests\Integration\Telegram\Outbound;
 
 use UniversalTelegram\Audit\AuditLogger;
+use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
@@ -15,9 +16,11 @@ use UniversalTelegram\Telegram\Client\TelegramFailureClassifier;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationKind;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
+use UniversalTelegram\Telegram\Outbound\DeadLetterDismisser;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
 use UniversalTelegram\Telegram\Outbound\OutboundMessageStatus;
 use UniversalTelegram\Telegram\Outbound\SendMessageHandler;
+use UniversalTelegram\Telegram\Outbound\UnresolvedOutboundAbandoner;
 use UniversalTelegram\Telegram\Reliability\CircuitBreaker;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
 use WP_UnitTestCase;
@@ -79,7 +82,8 @@ final class DeadLetterLifecycleTest extends WP_UnitTestCase {
 			new RateLimiter( $schema_health ),
 			new CircuitBreaker( $schema_health, new RetryPolicy() ),
 			new AuditLogger( $schema_health, new Redactor() ),
-			new RetryPolicy()
+			new RetryPolicy(),
+			new UnresolvedOutboundAbandoner( $messages )
 		);
 
 		$handler->handle_job(
@@ -128,5 +132,25 @@ final class DeadLetterLifecycleTest extends WP_UnitTestCase {
 
 		$decrypted = $messages->decrypt_body( $after );
 		$this->assertSame( 'original content', $decrypted->plaintext() );
+	}
+
+	public function test_dismiss_removes_a_dead_lettered_row_and_records_an_audit_entry(): void {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+		$messages      = new OutboundMessageRepository( $schema_health, $vault );
+		$audit         = new AuditLogger( $schema_health, new Redactor() );
+
+		$bots         = new BotProfileRepository( $schema_health, $vault );
+		$destinations = new DestinationRepository( $schema_health );
+		$bot          = $bots->create( 'Bot', 'token' );
+		$destination  = $destinations->create( $bot->id(), DestinationKind::PRIVATE, '12345', null, 'Chat' );
+		$message      = $messages->create( $bot->id(), $destination->id(), 'original content', null );
+
+		$messages->mark_dead_letter( $message->id(), 'telegram_terminal_rejection' );
+
+		$dismisser = new DeadLetterDismisser( $messages, $audit );
+		$this->assertTrue( $dismisser->dismiss( $message->id() ) );
+		$this->assertNull( $messages->find( $message->id() ) );
+		$this->assertFalse( $dismisser->dismiss( $message->id() ) );
 	}
 }

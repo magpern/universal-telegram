@@ -328,7 +328,7 @@ final class AiDraftRepository {
 	public function mark_discarded( int $id, int $reviewed_by_user_id ): bool {
 		return $this->transition_from(
 			$id,
-			array( 'generated', 'reviewed' ),
+			array( 'generated', 'reviewed', 'approved' ),
 			array(
 				'status'              => 'discarded',
 				'reviewed_by_user_id' => $reviewed_by_user_id,

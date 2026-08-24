@@ -9,13 +9,15 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Automations\Intelligence;
 
+use UniversalTelegram\Automations\MarkdownV2Escaper;
+
 /**
  * Renders the fixed-structure daily operational summary message
  * (docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md §2.1/§2.4/§2.5)
  * from one operational_summary_runs row. Every value placed into the
  * message is either a fixed label or a bounded non-negative integer —
- * never a raw field, order ID, URL, or any other variable content — so, as
- * with VisitorDigestRenderer, no MarkdownV2 escaping is required.
+ * never a raw field, order ID, URL, or any other variable content. Window
+ * timestamps are escaped via Automations\MarkdownV2Escaper before send.
  */
 final class OperationalSummaryRenderer {
 
@@ -30,7 +32,11 @@ final class OperationalSummaryRenderer {
 	public function render( array $row, bool $woocommerce_active ): string {
 		$lines   = array();
 		$lines[] = '📈 *Daily Operations Summary*';
-		$lines[] = sprintf( 'Window: %s – %s', $row['window_started_at'], $row['window_ended_at'] );
+		$lines[] = sprintf(
+			'Window: %s – %s',
+			MarkdownV2Escaper::escape( (string) $row['window_started_at'] ),
+			MarkdownV2Escaper::escape( (string) $row['window_ended_at'] )
+		);
 		$lines[] = '';
 
 		if ( $woocommerce_active ) {

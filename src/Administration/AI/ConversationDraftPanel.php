@@ -12,6 +12,7 @@ namespace UniversalTelegram\Administration\AI;
 use UniversalTelegram\AI\Config\AIProviderRepository;
 use UniversalTelegram\AI\Draft\AiDraftRepository;
 use UniversalTelegram\AI\Draft\DraftRequestHandler;
+use UniversalTelegram\Administration\Conversations\ConversationInboxPage;
 use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Conversations\Conversation;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
@@ -73,7 +74,7 @@ class ConversationDraftPanel {
 		}
 
 		$this->redirect_and_exit(
-			admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=conversations&conversation_id=' . $conversation_id )
+			admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . ConversationInboxPage::TAB_ID . '&conversation_id=' . $conversation_id )
 		);
 	}
 

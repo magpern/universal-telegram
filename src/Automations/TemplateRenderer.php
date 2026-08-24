@@ -24,13 +24,6 @@ final class TemplateRenderer {
 	private const TOKEN_PATTERN = '/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/';
 
 	/**
-	 * Telegram's own MarkdownV2 special-character set requiring escaping.
-	 *
-	 * @var array<int, string>
-	 */
-	private const ESCAPE_CHARS = array( '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!', '\\' );
-
-	/**
 	 * Renders a template against one event occurrence.
 	 *
 	 * @param string             $template       The message template.
@@ -75,7 +68,7 @@ final class TemplateRenderer {
 			$value = $value ? 'true' : 'false';
 		}
 
-		return $this->escape_markdown_v2( (string) $value );
+		return self::escape_markdown_v2( (string) $value );
 	}
 
 	/**
@@ -86,16 +79,6 @@ final class TemplateRenderer {
 	 * @return string
 	 */
 	private function escape_markdown_v2( string $value ): string {
-		$escaped = '';
-
-		foreach ( mb_str_split( $value ) as $char ) {
-			if ( in_array( $char, self::ESCAPE_CHARS, true ) ) {
-				$escaped .= '\\' . $char;
-			} else {
-				$escaped .= $char;
-			}
-		}
-
-		return $escaped;
+		return MarkdownV2Escaper::escape( $value );
 	}
 }

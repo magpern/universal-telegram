@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Automations;
 
+use UniversalTelegram\Administration\Shared\BotDestinationPairFields;
 use UniversalTelegram\Automations\Digest\DigestEligibility;
 use UniversalTelegram\Automations\Intelligence\IntelligenceSettings;
 use UniversalTelegram\Automations\NotificationRuleRepository;
@@ -16,7 +17,6 @@ use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Events\Registry;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
-use UniversalTelegram\Telegram\Configuration\BotStatus;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 
 /**
@@ -193,45 +193,16 @@ final class RuleBuilderPage {
 	 * @param array<string, mixed> $values             The current settings values.
 	 */
 	private function render_bot_destination_pair( string $bot_field, string $destination_field, array $values ): void {
-		$selected_bot_id = null === $values[ $bot_field ] ? 0 : (int) $values[ $bot_field ];
-
-		echo '<p><label>' . esc_html__( 'Bot', 'universal-telegram' ) . ' ';
-		echo '<select name="intelligence_settings[' . esc_attr( $bot_field ) . ']">';
-		echo '<option value="">' . esc_html__( '— Select a bot —', 'universal-telegram' ) . '</option>';
-		foreach ( $this->bots->all() as $bot ) {
-			if ( BotStatus::ACTIVE !== $bot->status() ) {
-				continue;
-			}
-			printf(
-				'<option value="%1$s" %2$s>%3$s</option>',
-				esc_attr( (string) $bot->id() ),
-				// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- selected() returns a safe attribute fragment.
-				selected( $selected_bot_id, $bot->id(), false ),
-				esc_html( $bot->name() )
-			);
+		if ( null === $this->digest_eligibility ) {
+			return;
 		}
-		echo '</select></label></p>';
 
-		$selected_destination_id = null === $values[ $destination_field ] ? 0 : (int) $values[ $destination_field ];
-		$eligible_destinations   = $selected_bot_id > 0 ? $this->digest_eligibility->eligible_destinations_for_bot( $selected_bot_id ) : array();
-
-		echo '<p><label>' . esc_html__( 'Destination', 'universal-telegram' ) . ' ';
-		echo '<select name="intelligence_settings[' . esc_attr( $destination_field ) . ']">';
-		echo '<option value="">' . esc_html__( '— Select a destination —', 'universal-telegram' ) . '</option>';
-		foreach ( $eligible_destinations as $destination ) {
-			printf(
-				'<option value="%1$s" %2$s>%3$s</option>',
-				esc_attr( (string) $destination->id() ),
-				// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- selected() returns a safe attribute fragment.
-				selected( $selected_destination_id, $destination->id(), false ),
-				esc_html( $destination->label() )
-			);
-		}
-		echo '</select></label></p>';
-		echo '<p class="description">' . esc_html__(
-			'Only enabled, manually configured destinations belonging to the selected bot appear here — a destination created automatically for a website chat conversation can never be selected.',
-			'universal-telegram'
-		) . '</p>';
+		( new BotDestinationPairFields( $this->bots, $this->digest_eligibility ) )->render(
+			'intelligence_settings',
+			$bot_field,
+			$destination_field,
+			$values
+		);
 	}
 
 	/**

@@ -26,6 +26,17 @@ use UniversalTelegram\Telegram\Outbound\OutboundMessageRepository;
  */
 final class QueueHealthAlert {
 
+	public const ALERT_CACHE_TRANSIENT = 'universal_telegram_queue_health_alert_active';
+
+	/**
+	 * Clears the cached admin-banner alert state so the next wp-admin
+	 * request recomputes it immediately after an operator changes the
+	 * dead-letter queue.
+	 */
+	public static function bust_alert_cache(): void {
+		delete_transient( self::ALERT_CACHE_TRANSIENT );
+	}
+
 	/**
 	 * Constructor.
 	 *

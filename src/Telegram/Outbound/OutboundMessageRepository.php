@@ -419,6 +419,55 @@ final class OutboundMessageRepository {
 	}
 
 	/**
+	 * Unresolved outbound rows for one destination — pending, retry_scheduled,
+	 * or sending — used when a destination is removed before delivery finishes.
+	 *
+	 * @param int $destination_id The destination's primary key.
+	 *
+	 * @return array<int, OutboundMessage>
+	 */
+	public function unresolved_for_destination( int $destination_id ): array {
+		return $this->unresolved_where( 'destination_id = %d', array( $destination_id ) );
+	}
+
+	/**
+	 * Unresolved outbound rows for one bot.
+	 *
+	 * @param int $bot_id The bot's primary key.
+	 *
+	 * @return array<int, OutboundMessage>
+	 */
+	public function unresolved_for_bot( int $bot_id ): array {
+		return $this->unresolved_where( 'bot_id = %d', array( $bot_id ) );
+	}
+
+	/**
+	 * @param string              $where_clause A single equality predicate with one placeholder.
+	 * @param array<int, int>     $values       The placeholder value(s).
+	 *
+	 * @return array<int, OutboundMessage>
+	 */
+	private function unresolved_where( string $where_clause, array $values ): array {
+		if ( ! $this->schema_health->is_available() ) {
+			return array();
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::OUTBOUND_MESSAGES_TABLE;
+		$sql   = $wpdb->prepare(
+			"SELECT * FROM {$table} WHERE status IN (%s, %s, %s) AND {$where_clause}", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			OutboundMessageStatus::PENDING->value,
+			OutboundMessageStatus::RETRY_SCHEDULED->value,
+			OutboundMessageStatus::SENDING->value,
+			...$values
+		);
+		$rows  = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+
+		return array_map( array( $this, 'hydrate' ), null === $rows ? array() : $rows );
+	}
+
+	/**
 	 * The current dead-letter count. Used by QueueHealthAlert (WP8).
 	 *
 	 * @return int
