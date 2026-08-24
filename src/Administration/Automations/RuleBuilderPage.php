@@ -155,9 +155,123 @@ final class RuleBuilderPage {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'universal-telegram' ) );
 		}
 
+		if ( isset( $_GET['view'] ) && 'starter_set' === $_GET['view'] ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a GET-only view switch, no mutation; the confirmation POST below re-verifies capability and nonce itself.
+			$this->render_starter_set_review();
+			return;
+		}
+
 		$this->render_rule_list();
+		$this->render_presets();
 		$this->render_rule_form();
 		$this->render_intelligence_settings();
+	}
+
+	/**
+	 * The URL for the Store-essentials two-step review screen (step one:
+	 * a plain GET, no mutation).
+	 *
+	 * @return string
+	 */
+	private function starter_set_review_url(): string {
+		return admin_url( 'admin.php?page=' . self::SLUG . '&tab=' . self::TAB_ID . '&view=starter_set' );
+	}
+
+	/**
+	 * The plain Rules tab URL, used as the "« Back to presets" link and as
+	 * the post-confirmation redirect target.
+	 *
+	 * @return string
+	 */
+	private function rules_tab_url(): string {
+		return admin_url( 'admin.php?page=' . self::SLUG . '&tab=' . self::TAB_ID );
+	}
+
+	/**
+	 * Renders "1. Start with a common notification": individual preset
+	 * cards (each a starting configuration only — selecting one fills the
+	 * builder below via JS, it never saves or enables a rule by itself),
+	 * the Store-essentials starter-set entry point (WooCommerce-active
+	 * only), and "Create a custom notification".
+	 */
+	private function render_presets(): void {
+		echo '<h2>' . esc_html__( 'Start with a common notification', 'universal-telegram' ) . '</h2>';
+
+		$presets = array();
+		foreach ( PresetCatalog::all() as $preset ) {
+			if ( $preset['requires_woocommerce'] && ! $this->woocommerce_active() ) {
+				continue;
+			}
+			$presets[] = $preset;
+		}
+
+		echo '<div id="ut-preset-cards" class="ut-preset-cards">';
+		foreach ( $presets as $preset ) {
+			echo '<div class="ut-preset-card" tabindex="0" role="button" data-preset-key="' . esc_attr( $preset['key'] ) . '">';
+			echo '<strong>' . esc_html( $preset['title'] ) . '</strong>';
+			echo '<p>' . esc_html( $preset['description'] ) . '</p>';
+			echo '</div>';
+		}
+		echo '</div>';
+
+		if ( $this->woocommerce_active() ) {
+			echo '<p><a class="button" href="' . esc_url( $this->starter_set_review_url() ) . '">' . esc_html__( 'Store essentials starter set', 'universal-telegram' ) . '</a></p>';
+		}
+
+		echo '<p><button type="button" id="ut-custom-notification" class="button">' . esc_html__( 'Create a custom notification', 'universal-telegram' ) . '</button></p>';
+
+		echo '<script type="application/json" id="ut-preset-data">' . wp_json_encode( array_values( $presets ) ) . '</script>';
+	}
+
+	/**
+	 * Renders the Store-essentials two-step review screen (step one):
+	 * lists all three draft rules and their full messages, and asks for a
+	 * single bot/destination applied to all three. Nothing is created
+	 * until the "Create draft rules" confirmation below is submitted
+	 * (M08.1 plan "Fix the starter-set flow").
+	 */
+	private function render_starter_set_review(): void {
+		echo '<h2>' . esc_html__( 'Store essentials starter set', 'universal-telegram' ) . '</h2>';
+		echo '<p><a href="' . esc_url( $this->rules_tab_url() ) . '">&laquo; ' . esc_html__( 'Back to presets', 'universal-telegram' ) . '</a></p>';
+
+		if ( ! $this->woocommerce_active() ) {
+			echo '<p class="description">' . esc_html__( 'Requires WooCommerce, which is not currently active on this site.', 'universal-telegram' ) . '</p>';
+			return;
+		}
+
+		if ( isset( $_GET['error'] ) && 'missing_destination' === $_GET['error'] ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only display of a prior POST's own outcome, not a mutation.
+			echo '<div class="notice notice-error"><p>' . esc_html__( 'Choose a bot and destination before creating the draft rules.', 'universal-telegram' ) . '</p></div>';
+		}
+
+		echo '<p>' . esc_html__( 'This creates three disabled draft rules you can review and enable individually:', 'universal-telegram' ) . '</p>';
+		echo '<ul>';
+		foreach ( PresetCatalog::starter_set() as $preset ) {
+			echo '<li><strong>' . esc_html( $preset['title'] ) . '</strong>: ' . esc_html( $preset['message'] ) . '</li>';
+		}
+		echo '</ul>';
+
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+		wp_nonce_field( RuleBuilderRequestHandler::NONCE_ACTION );
+		echo '<input type="hidden" name="action" value="' . esc_attr( RuleBuilderRequestHandler::ADMIN_POST_ACTION ) . '" />';
+		echo '<input type="hidden" name="op" value="create_starter_set" />';
+
+		echo '<table class="form-table"><tbody>';
+		echo '<tr><th><label for="ut-starter-bot">' . esc_html__( 'Bot', 'universal-telegram' ) . '</label></th><td><select id="ut-starter-bot" name="bot_id"><option value="0">' . esc_html__( 'Choose a bot…', 'universal-telegram' ) . '</option>';
+		foreach ( $this->bots->all() as $bot ) {
+			printf( '<option value="%d">%s</option>', (int) $bot->id(), esc_html( $bot->name() ) );
+		}
+		echo '</select></td></tr>';
+
+		echo '<tr><th><label for="ut-starter-destination">' . esc_html__( 'Destination', 'universal-telegram' ) . '</label></th><td><select id="ut-starter-destination" name="destination_id"><option value="0">' . esc_html__( 'Choose a destination…', 'universal-telegram' ) . '</option>';
+		foreach ( $this->bots->all() as $bot ) {
+			foreach ( $this->eligible_destinations( $bot->id() ) as $destination ) {
+				printf( '<option value="%d">%s</option>', (int) $destination->id(), esc_html( $bot->name() . ' / ' . $destination->label() ) );
+			}
+		}
+		echo '</select></td></tr>';
+		echo '</tbody></table>';
+
+		submit_button( __( 'Create draft rules', 'universal-telegram' ) );
+		echo '</form>';
 	}
 
 	/**
@@ -671,7 +785,7 @@ final class RuleBuilderPage {
 				rebuildOperatorAndValue( row );
 			}
 
-			function addRow() {
+			function addRow( clause ) {
 				var row = template.firstElementChild.cloneNode( true );
 				var html = row.outerHTML.replace( /conditions\[0\]/g, 'conditions[' + rowIndex + ']' );
 				var wrapperDiv = document.createElement( 'div' );
@@ -693,9 +807,18 @@ final class RuleBuilderPage {
 				rows.appendChild( row );
 				rebuildFieldOptions( row );
 				wrap.style.display = '';
+
+				if ( clause ) {
+					row.querySelector( '.ut-condition-field' ).value = clause.field;
+					rebuildOperatorAndValue( row );
+					row.querySelector( '.ut-condition-operator' ).value = clause.operator;
+					row.querySelector( '.ut-condition-value' ).value = clause.value;
+				}
+
+				return row;
 			}
 
-			addButton.addEventListener( 'click', addRow );
+			addButton.addEventListener( 'click', function () { addRow( null ); } );
 
 			function rebuildInsertFieldOptions() {
 				var eventType = eventSelect.value;
@@ -761,6 +884,67 @@ final class RuleBuilderPage {
 
 			rebuildInsertFieldOptions();
 			schedulePreview();
+
+			var presetDataEl = document.getElementById( 'ut-preset-data' );
+			var presets = presetDataEl ? JSON.parse( presetDataEl.textContent || '[]' ) : [];
+			var customButton = document.getElementById( 'ut-custom-notification' );
+			var nameInput = document.getElementById( 'ut-rule-name' );
+
+			function clearConditionRows() {
+				while ( rows.firstChild ) {
+					rows.removeChild( rows.firstChild );
+				}
+				wrap.style.display = 'none';
+			}
+
+			function applyPreset( preset ) {
+				eventSelect.value = preset.event_type;
+				eventSelect.dispatchEvent( new Event( 'change' ) );
+
+				clearConditionRows();
+				for ( var i = 0; i < preset.conditions.length; i++ ) {
+					addRow( preset.conditions[ i ] );
+				}
+
+				var matchModeInputs = document.getElementsByName( 'match_mode' );
+				for ( var m = 0; m < matchModeInputs.length; m++ ) {
+					matchModeInputs[ m ].checked = ( matchModeInputs[ m ].value === preset.match_mode );
+				}
+
+				templateTextarea.value = preset.message;
+				nameInput.value = preset.title;
+
+				schedulePreview();
+				nameInput.focus();
+			}
+
+			var presetCards = document.querySelectorAll( '.ut-preset-card' );
+			for ( var p = 0; p < presetCards.length; p++ ) {
+				presetCards[ p ].addEventListener( 'click', function () {
+					var key = this.getAttribute( 'data-preset-key' );
+					for ( var j = 0; j < presets.length; j++ ) {
+						if ( presets[ j ].key === key ) {
+							applyPreset( presets[ j ] );
+							break;
+						}
+					}
+				} );
+				presetCards[ p ].addEventListener( 'keydown', function ( event ) {
+					if ( event.key === 'Enter' || event.key === ' ' ) {
+						event.preventDefault();
+						this.click();
+					}
+				} );
+			}
+
+			if ( customButton ) {
+				customButton.addEventListener( 'click', function () {
+					nameInput.value = '';
+					templateTextarea.value = '';
+					clearConditionRows();
+					nameInput.focus();
+				} );
+			}
 		} )();
 		</script>
 		<?php

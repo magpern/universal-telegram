@@ -41,6 +41,9 @@ class RuleBuilderRequestHandler {
 
 	/**
 	 * The single admin-post request handler, dispatching on the 'op' field.
+	 * Each op decides its own redirect target — create_starter_set redirects
+	 * back to its own review screen with an error flag on validation
+	 * failure, every other op redirects to the plain Rules tab.
 	 */
 	public function handle_request(): void {
 		if ( ! current_user_can( CapabilityRegistrar::MANAGE_AUTOMATIONS ) ) {
@@ -54,13 +57,27 @@ class RuleBuilderRequestHandler {
 		switch ( $op ) {
 			case 'save_rule':
 				$this->save_rule();
-				break;
+				$this->redirect_and_exit( $this->rules_tab_url() );
+				return;
 			case 'delete_rule':
 				$this->delete_rule();
-				break;
+				$this->redirect_and_exit( $this->rules_tab_url() );
+				return;
+			case 'create_starter_set':
+				$this->redirect_and_exit( $this->create_starter_set() );
+				return;
 		}
 
-		$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . RuleBuilderPage::TAB_ID ) );
+		$this->redirect_and_exit( $this->rules_tab_url() );
+	}
+
+	/**
+	 * The plain Rules tab URL.
+	 *
+	 * @return string
+	 */
+	private function rules_tab_url(): string {
+		return admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . RuleBuilderPage::TAB_ID );
 	}
 
 	/**
@@ -127,6 +144,53 @@ class RuleBuilderRequestHandler {
 		}
 
 		return $conditions;
+	}
+
+	/**
+	 * Handles the create_starter_set operation (M08.1 plan "Fix the
+	 * starter-set flow"): the second, explicit confirmation step of the
+	 * Store-essentials review screen. Creates exactly three disabled draft
+	 * rules sharing one admin-chosen bot/destination — never a single
+	 * click producing an incomplete rule. A missing bot or destination
+	 * creates nothing and redirects back to the review screen with an
+	 * error flag instead.
+	 *
+	 * @return string The redirect target.
+	 */
+	private function create_starter_set(): string {
+		$bot_id         = isset( $_POST['bot_id'] ) ? (int) $_POST['bot_id'] : 0;
+		$destination_id = isset( $_POST['destination_id'] ) ? (int) $_POST['destination_id'] : 0;
+
+		if ( $bot_id <= 0 || $destination_id <= 0 ) {
+			return admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . RuleBuilderPage::TAB_ID . '&view=starter_set&error=missing_destination' );
+		}
+
+		foreach ( PresetCatalog::starter_set() as $preset ) {
+			try {
+				$this->rules->save(
+					null,
+					$preset['title'] . ' (draft)',
+					$preset['event_type'],
+					1,
+					$preset['conditions'],
+					$bot_id,
+					$destination_id,
+					$preset['message'],
+					false,
+					100,
+					0,
+					$preset['match_mode']
+				);
+			} catch ( InvalidConditionFieldException $exception ) {
+				// A starter-set preset's own conditions are covered by
+				// PresetCatalogTest's coverage assertions; this catch exists
+				// only so one unexpected failure never leaves the remaining
+				// draft rules uncreated.
+				continue;
+			}
+		}
+
+		return $this->rules_tab_url();
 	}
 
 	/**
