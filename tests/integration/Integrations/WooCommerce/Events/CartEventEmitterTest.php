@@ -60,11 +60,13 @@ final class CartEventEmitterTest extends WP_UnitTestCase {
 
 		$projected = json_decode( $rows[0]['projected_fields_json'], true );
 		$this->assertSame( $product->get_id(), $projected['subject']['product_id'] );
+		$this->assertSame( 'M03 cart test product', $projected['payload']['product_name'] );
 		$this->assertSame( 1, $projected['payload']['quantity'] );
 		$this->assertArrayHasKey( 'cart_total', $projected['payload'] );
 
 		$registry = Plugin::instance()->event_registry();
 		$this->assertContains( 'payload.cart_total', $registry->allowed_variable_fields_for( 'woocommerce.cart_item_added' ) );
+		$this->assertContains( 'payload.product_name', $registry->allowed_variable_fields_for( 'woocommerce.cart_item_added' ) );
 	}
 
 	public function test_repeated_additions_to_the_same_cart_line_coalesce_to_the_first_emission(): void {

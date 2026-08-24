@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.14.1
+Stable tag: 0.15.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,36 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.15.0 =
+* Friendly rule builder and notification presets (M08.1, ADR-0032): the Rules tab is now a
+  "Notifications" page — an active-notification list (name, event, destination, status), a
+  Store-essentials recommendation panel, three popular starting templates, and the full
+  template catalog behind per-family accordions, rather than one long page of equally-weighted
+  options. Creating or editing a notification opens a dedicated, plain-language builder: a
+  grouped event picker, a visual "Only when…" condition builder (typed operators, all/any
+  matching), a friendly message editor with a field-insert menu and an "Example notification
+  preview" — no JSON, schema field paths, technical event names, or template syntax required
+  anywhere. Existing rules keep working unchanged; a rule the visual builder cannot represent
+  stays editable with its conditions preserved exactly and a read-only compatibility notice,
+  never silently altered. Condition evaluation gains an explicit all/any match mode and three
+  additional comparison operators, defaulting to every existing rule's own current behavior.
+* Fixed: a notification's own literal message text (e.g. "Product #123 added (in stock).") was
+  never escaped for Telegram's MarkdownV2 parse mode, only the values it substituted — any literal
+  `.`, `#`, `(`, `)`, etc. caused Telegram to reject the message outright, dead-lettering it. Every
+  built-in preset was affected. Literal template text is now escaped exactly like a substituted
+  field value.
+* The "Added to cart" preset now names the product (a new `payload.product_name` field on the
+  `woocommerce.cart_item_added` event) instead of showing only its numeric product ID.
+* The "New user registered" preset and event now include the account's username, name, and email
+  address (new `subject.username`, `subject.name`, `subject.email` fields), not just its numeric
+  ID. These are usable in message templates and conditions but, like other personal data, are
+  never written to the durable event history.
+* `wordpress.user_registered` also gains `subject.country` and `subject.region`, resolved from
+  the Universal Geo Context plugin when it is active (silently absent otherwise) - never the raw
+  IP address itself.
+* The message editor's field-insert menu now has a companion "Insert emoji" menu, for admins who
+  want emoji in their own notification text. Built-in presets remain plain professional text.
 
 = 0.14.1 =
 * When WordPress deletes a destination (or purges a conversation that exclusively

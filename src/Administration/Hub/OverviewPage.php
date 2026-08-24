@@ -29,7 +29,7 @@ final class OverviewPage {
 	private const OTHER_TABS = array(
 		array( 'bots', 'Bots' ),
 		array( 'events', 'Events' ),
-		array( 'rules', 'Rules' ),
+		array( 'rules', 'Notifications' ),
 		array( 'simulator', 'Simulator' ),
 		array( 'event-history', 'Event History' ),
 		array( 'visitor-tracking', 'Visitor Tracking' ),

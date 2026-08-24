@@ -1303,15 +1303,17 @@ final class Plugin {
 			$this->digest_eligibility,
 			$settings,
 			$intelligence_settings,
-			$intelligence_panel
+			$intelligence_panel,
+			$this->woocommerce_support
 		);
 		$this->hub_tab_registry->register(
-			new Tab( 'rules', __( 'Rules', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_builder_page, 'render_tab_content' ) )
+			new Tab( 'rules', __( 'Notifications', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_builder_page, 'render_tab_content' ) )
 		);
 
 		$this->rule_builder_request_handler = new RuleBuilderRequestHandler( $this->notification_rule_repository );
 		add_action( 'admin_post_' . RuleBuilderRequestHandler::ADMIN_POST_ACTION, array( $this->rule_builder_request_handler, 'handle_request' ) );
 		add_action( 'admin_post_' . RuleBuilderPage::INTELLIGENCE_ADMIN_POST_ACTION, array( $this->rule_builder_page, 'handle_intelligence_settings_request' ) );
+		add_action( 'admin_post_' . RuleBuilderPage::PREVIEW_ADMIN_POST_ACTION, array( $this->rule_builder_page, 'handle_preview_request' ) );
 
 		if ( defined( 'UNIVERSAL_TELEGRAM_PLUGIN_FILE' ) ) {
 			( new PluginActionLinks( plugin_basename( UNIVERSAL_TELEGRAM_PLUGIN_FILE ) ) )->register();

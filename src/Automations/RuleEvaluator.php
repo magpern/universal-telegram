@@ -125,7 +125,16 @@ class RuleEvaluator {
 	 * Evaluates every clause; returns null if the rule matches, or a fixed
 	 * rejection reason code otherwise. An unknown field or operator makes
 	 * the rule evaluate to "rejected — invalid configuration" (M02 plan
-	 * §7.2, §7.3).
+	 * §7.2, §7.3), regardless of match_mode. An empty condition list always
+	 * matches. A clause whose field is absent from the event
+	 * (EventEnvelope::value_at() returns null) never matches, for every
+	 * operator without exception (ADR-0032) — absence is never conflated
+	 * with "the value differs." For match_mode='all' (the default, and
+	 * every legacy rule's behavior, unchanged from before ADR-0032), every
+	 * clause must have a present field and match. For match_mode='any', the
+	 * rule matches as soon as one clause with a present field matches; if
+	 * every clause's field is absent, or no present-field clause matches,
+	 * the rule does not match.
 	 *
 	 * @param NotificationRule $rule  The rule to evaluate.
 	 * @param EventEnvelope    $event The event occurrence.
@@ -133,9 +142,16 @@ class RuleEvaluator {
 	 * @return string|null
 	 */
 	private function rejection_reason( NotificationRule $rule, EventEnvelope $event ): ?string {
-		$allowed_fields = $this->registry->allowed_variable_fields_for( $event->event_type() );
+		$conditions = $rule->conditions();
 
-		foreach ( $rule->conditions() as $clause ) {
+		if ( array() === $conditions ) {
+			return null;
+		}
+
+		$allowed_fields = $this->registry->allowed_variable_fields_for( $event->event_type() );
+		$any_matched    = false;
+
+		foreach ( $conditions as $clause ) {
 			$field = $clause['field'] ?? null;
 
 			if ( ! is_string( $field ) || ! in_array( $field, $allowed_fields, true ) ) {
@@ -148,11 +164,23 @@ class RuleEvaluator {
 				return 'invalid_condition_operator';
 			}
 
-			$actual = $event->value_at( $field );
+			$actual         = $event->value_at( $field );
+			$clause_matched = null !== $actual && $operator->matches( $actual, $clause['value'] ?? null );
 
-			if ( ! $operator->matches( $actual, $clause['value'] ?? null ) ) {
+			if ( 'any' === $rule->match_mode() ) {
+				if ( $clause_matched ) {
+					$any_matched = true;
+				}
+				continue;
+			}
+
+			if ( ! $clause_matched ) {
 				return 'condition_not_matched';
 			}
+		}
+
+		if ( 'any' === $rule->match_mode() ) {
+			return $any_matched ? null : 'condition_not_matched';
 		}
 
 		return null;

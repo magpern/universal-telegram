@@ -6,7 +6,6 @@
 namespace UniversalTelegram\Tests\Integration\Telegram\Outbound;
 
 use UniversalTelegram\Audit\AuditLogger;
-use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;

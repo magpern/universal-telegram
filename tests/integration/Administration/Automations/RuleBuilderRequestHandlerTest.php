@@ -89,14 +89,12 @@ final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 		$_POST['template']           = 'x';
 		$_POST['priority']           = '100';
 		$_POST['cooldown_seconds']   = '0';
-		$_POST['conditions_json']    = wp_json_encode(
+		$_POST['conditions']         = array(
 			array(
-				array(
-					'field'    => 'subject.not_allowed',
-					'operator' => 'equals',
-					'value'    => 'x',
-				),
-			)
+				'field'    => 'subject.not_allowed',
+				'operator' => 'equals',
+				'value'    => 'x',
+			),
 		);
 
 		$registry = $this->registry();
@@ -125,14 +123,12 @@ final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 		$_POST['template']           = 'x';
 		$_POST['priority']           = '100';
 		$_POST['cooldown_seconds']   = '0';
-		$_POST['conditions_json']    = wp_json_encode(
+		$_POST['conditions']         = array(
 			array(
-				array(
-					'field'    => 'subject.user_id',
-					'operator' => 'equals',
-					'value'    => 1,
-				),
-			)
+				'field'    => 'subject.user_id',
+				'operator' => 'equals',
+				'value'    => '1',
+			),
 		);
 
 		$registry = $this->registry();
@@ -142,5 +138,286 @@ final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 		$handler->handle_request();
 
 		$this->assertCount( 1, $rules->all() );
+	}
+
+	public function test_match_mode_any_is_saved_and_an_incomplete_condition_row_is_dropped(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		$nonce                       = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$_POST['_wpnonce']           = $nonce;
+		$_REQUEST['_wpnonce']        = $nonce;
+		$_POST['op']                 = 'save_rule';
+		$_POST['name']               = 'Test';
+		$_POST['event_type']         = 'wordpress.user_registered';
+		$_POST['schema_version_min'] = '1';
+		$_POST['bot_id']             = '1';
+		$_POST['destination_id']     = '1';
+		$_POST['template']           = 'x';
+		$_POST['priority']           = '100';
+		$_POST['cooldown_seconds']   = '0';
+		$_POST['match_mode']         = 'any';
+		$_POST['conditions']         = array(
+			array(
+				'field'    => 'subject.user_id',
+				'operator' => 'equals',
+				'value'    => '1',
+			),
+			array(
+				'field'    => '',
+				'operator' => '',
+				'value'    => '',
+			),
+		);
+
+		$registry = $this->registry();
+		$rules    = new NotificationRuleRepository( new SchemaHealth(), $registry );
+		$handler  = $this->handler( $rules );
+
+		$handler->handle_request();
+
+		$saved = $rules->all();
+		$this->assertCount( 1, $saved );
+		$this->assertSame( 'any', $saved[0]->match_mode() );
+		$this->assertCount( 1, $saved[0]->conditions() );
+	}
+
+	/**
+	 * WooCommerce needn't be registered for this test's own Registry, since
+	 * PresetCatalog::starter_set()'s three presets only need their event
+	 * types and fields to exist for NotificationRuleRepository::save() to
+	 * accept them; this test's Registry registers exactly those.
+	 */
+	private function starter_set_registry(): Registry {
+		$registry = new Registry();
+		$registry->register(
+			'woocommerce.order_created',
+			1,
+			array(
+				'subject.order_id'     => Classification::PUBLIC,
+				'context.order_status' => Classification::PUBLIC,
+				'payload.order_total'  => Classification::PUBLIC,
+				'payload.currency'     => Classification::PUBLIC,
+				'payload.item_count'   => Classification::PUBLIC,
+			),
+			array( 'subject.order_id', 'context.order_status', 'payload.order_total', 'payload.currency', 'payload.item_count' ),
+			array( 'subject.order_id', 'context.order_status', 'payload.order_total', 'payload.currency', 'payload.item_count' )
+		);
+		$registry->register(
+			'woocommerce.order_failed',
+			1,
+			array(
+				'subject.order_id'    => Classification::PUBLIC,
+				'payload.order_total' => Classification::PUBLIC,
+				'payload.currency'    => Classification::PUBLIC,
+				'payload.status_from' => Classification::PUBLIC,
+			),
+			array( 'subject.order_id', 'payload.order_total', 'payload.currency', 'payload.status_from' ),
+			array( 'subject.order_id', 'payload.order_total', 'payload.currency', 'payload.status_from' )
+		);
+		$registry->register(
+			'woocommerce.stock_threshold_crossed',
+			1,
+			array(
+				'subject.product_id'     => Classification::PUBLIC,
+				'payload.status'         => Classification::PUBLIC,
+				'payload.stock_quantity' => Classification::PUBLIC,
+				'payload.product_sku'    => Classification::PUBLIC,
+			),
+			array( 'subject.product_id', 'payload.status', 'payload.stock_quantity', 'payload.product_sku' ),
+			array( 'subject.product_id', 'payload.status', 'payload.stock_quantity', 'payload.product_sku' )
+		);
+
+		return $registry;
+	}
+
+	public function test_starter_set_with_no_bot_or_destination_creates_nothing_and_redirects_to_review_with_an_error(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		$nonce                   = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$_POST['_wpnonce']       = $nonce;
+		$_REQUEST['_wpnonce']    = $nonce;
+		$_POST['op']             = 'create_starter_set';
+		$_POST['bot_id']         = '0';
+		$_POST['destination_id'] = '0';
+
+		$rules   = new NotificationRuleRepository( new SchemaHealth(), $this->starter_set_registry() );
+		$handler = $this->handler( $rules );
+
+		$handler->handle_request();
+
+		$this->assertSame( array(), $rules->all() );
+		$this->assertStringContainsString( 'view=starter_set', (string) $handler->redirected_to );
+		$this->assertStringContainsString( 'error=missing_destination', (string) $handler->redirected_to );
+	}
+
+	public function test_starter_set_confirmation_creates_exactly_three_disabled_draft_rules(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		$nonce                   = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$_POST['_wpnonce']       = $nonce;
+		$_REQUEST['_wpnonce']    = $nonce;
+		$_POST['op']             = 'create_starter_set';
+		$_POST['bot_id']         = '1';
+		$_POST['destination_id'] = '1';
+
+		$rules   = new NotificationRuleRepository( new SchemaHealth(), $this->starter_set_registry() );
+		$handler = $this->handler( $rules );
+
+		$handler->handle_request();
+
+		$saved = $rules->all();
+		$this->assertCount( 3, $saved );
+
+		foreach ( $saved as $rule ) {
+			$this->assertFalse( $rule->enabled() );
+			$this->assertStringEndsWith( '(draft)', $rule->name() );
+			$this->assertSame( 1, $rule->bot_id() );
+			$this->assertSame( 1, $rule->destination_id() );
+		}
+
+		$this->assertStringNotContainsString( 'view=starter_set', (string) $handler->redirected_to );
+	}
+
+	/**
+	 * Editing an unrepresentable legacy rule and only changing its message
+	 * must resubmit the exact original conditions/match_mode via the
+	 * hidden conditions_locked fields — never mutate them (M08.1 plan
+	 * "Existing-rule compatibility strategy").
+	 */
+	public function test_editing_an_unrepresentable_rule_preserves_its_conditions_byte_for_byte(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		$registry = $this->registry();
+		$rules    = new NotificationRuleRepository( new SchemaHealth(), $registry );
+
+		// 'contains' is not one of subject.user_id's own permitted friendly
+		// operators (a number field: equals/not_equals/greater_than/
+		// less_than/at_least/at_most) — engine-valid, builder-unrepresentable.
+		$original_conditions = array(
+			array(
+				'field'    => 'subject.user_id',
+				'operator' => 'contains',
+				'value'    => '5',
+			),
+		);
+
+		$saved = $rules->save( null, 'Legacy', 'wordpress.user_registered', 1, $original_conditions, 1, 1, 'old message', true, 100, 0, 'all' );
+
+		$nonce                              = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$_POST['_wpnonce']                  = $nonce;
+		$_REQUEST['_wpnonce']               = $nonce;
+		$_POST['op']                        = 'save_rule';
+		$_POST['id']                        = (string) $saved->id();
+		$_POST['name']                      = 'Legacy';
+		$_POST['event_type']                = 'wordpress.user_registered';
+		$_POST['schema_version_min']        = '1';
+		$_POST['bot_id']                    = '1';
+		$_POST['destination_id']            = '1';
+		$_POST['template']                  = 'new message';
+		$_POST['priority']                  = '100';
+		$_POST['cooldown_seconds']          = '0';
+		$_POST['match_mode']                = 'all';
+		$_POST['conditions_locked']         = '1';
+		$_POST['conditions_preserved_json'] = wp_json_encode( $original_conditions );
+
+		$handler = $this->handler( $rules );
+		$handler->handle_request();
+
+		$updated = $rules->find( $saved->id() );
+
+		$this->assertSame( 'new message', $updated->template() );
+		$this->assertSame( $original_conditions, $updated->conditions() );
+	}
+
+	/**
+	 * The friendly delivery-options disclosure submits minutes; the stored
+	 * rule still keeps its underlying seconds-based schema unchanged
+	 * (M08.1 plan "Delivery options").
+	 */
+	public function test_cooldown_minutes_is_converted_to_cooldown_seconds(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		$nonce                       = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$_POST['_wpnonce']           = $nonce;
+		$_REQUEST['_wpnonce']        = $nonce;
+		$_POST['op']                 = 'save_rule';
+		$_POST['name']               = 'Test';
+		$_POST['event_type']         = 'wordpress.user_registered';
+		$_POST['schema_version_min'] = '1';
+		$_POST['bot_id']             = '1';
+		$_POST['destination_id']     = '1';
+		$_POST['template']           = 'x';
+		$_POST['priority']           = '100';
+		$_POST['cooldown_minutes']   = '5';
+
+		$rules   = new NotificationRuleRepository( new SchemaHealth(), $this->registry() );
+		$handler = $this->handler( $rules );
+
+		$handler->handle_request();
+
+		$saved = $rules->all();
+		$this->assertCount( 1, $saved );
+		$this->assertSame( 300, $saved[0]->cooldown_seconds() );
+	}
+
+	/**
+	 * Package acceptance (WP7): composes the exact POST shape the friendly
+	 * builder produces for the "New WooCommerce order" preset — the
+	 * server-side outcome the manual Product Owner checklist's first item
+	 * exercises through the real browser UI.
+	 */
+	public function test_package_acceptance_saving_the_new_order_preset_end_to_end(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		$registry = new Registry();
+		$registry->register(
+			'woocommerce.order_created',
+			1,
+			array(
+				'subject.order_id'    => Classification::PUBLIC,
+				'payload.order_total' => Classification::PUBLIC,
+				'payload.currency'    => Classification::PUBLIC,
+			),
+			array( 'subject.order_id', 'payload.order_total', 'payload.currency' ),
+			array( 'subject.order_id', 'payload.order_total', 'payload.currency' )
+		);
+
+		$nonce                       = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$_POST['_wpnonce']           = $nonce;
+		$_REQUEST['_wpnonce']        = $nonce;
+		$_POST['op']                 = 'save_rule';
+		$_POST['name']               = 'New WooCommerce order';
+		$_POST['event_type']         = 'woocommerce.order_created';
+		$_POST['schema_version_min'] = '1';
+		$_POST['bot_id']             = '1';
+		$_POST['destination_id']     = '1';
+		$_POST['template']           = 'New order #{{subject.order_id}} — {{payload.order_total}} {{payload.currency}}.';
+		$_POST['priority']           = '100';
+		$_POST['enabled']            = '1';
+		$_POST['conditions']         = array();
+
+		$rules   = new NotificationRuleRepository( new SchemaHealth(), $registry );
+		$handler = $this->handler( $rules );
+
+		$handler->handle_request();
+
+		$saved = $rules->all();
+		$this->assertCount( 1, $saved );
+		$this->assertSame( 'woocommerce.order_created', $saved[0]->event_type() );
+		$this->assertTrue( $saved[0]->enabled() );
+		$this->assertSame( array(), $saved[0]->conditions() );
+		$this->assertStringContainsString( '{{subject.order_id}}', $saved[0]->template() );
 	}
 }

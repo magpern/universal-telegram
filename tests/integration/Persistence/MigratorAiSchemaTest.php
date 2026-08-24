@@ -31,7 +31,7 @@ final class MigratorAiSchemaTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 30, (int) get_option( 'universal_telegram_db_version' ) );
 
 		$config_table   = $wpdb->prefix . Migrator::AI_CONFIG_TABLE;
 		$config_columns = $wpdb->get_col(
@@ -76,7 +76,7 @@ final class MigratorAiSchemaTest extends WP_UnitTestCase {
 		// Re-running an already up-to-date schema must not error, must not
 		// change the recorded version, and must not duplicate the seeded row.
 		$migrator->maybe_migrate();
-		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 30, (int) get_option( 'universal_telegram_db_version' ) );
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
 		$row_count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$config_table}" );
@@ -100,6 +100,6 @@ final class MigratorAiSchemaTest extends WP_UnitTestCase {
 		update_option( 'universal_telegram_db_version', 18 );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 30, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 }

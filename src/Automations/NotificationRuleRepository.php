@@ -46,13 +46,14 @@ class NotificationRuleRepository {
 	 * @param string                           $name               Admin-facing name.
 	 * @param string                           $event_type         The triggering event type.
 	 * @param int                              $schema_version_min The minimum schema version this rule applies to.
-	 * @param array<int, array<string, mixed>> $conditions         Flat AND-only clause array.
+	 * @param array<int, array<string, mixed>> $conditions         Flat clause array.
 	 * @param int                              $bot_id             The Telegram bot to send through.
 	 * @param int                              $destination_id     The Telegram destination to send to.
 	 * @param string                           $template           The message template.
 	 * @param bool                             $enabled            Whether this rule is currently evaluated.
 	 * @param int                              $priority           Deterministic evaluation ordering (ascending).
 	 * @param int                              $cooldown_seconds   Minimum seconds between successful dispatches.
+	 * @param string                           $match_mode         'all' or 'any' (ADR-0032); defaults to 'all'.
 	 *
 	 * @return NotificationRule|null Null if the schema is unavailable or the write failed.
 	 *
@@ -69,8 +70,13 @@ class NotificationRuleRepository {
 		string $template,
 		bool $enabled,
 		int $priority,
-		int $cooldown_seconds
+		int $cooldown_seconds,
+		string $match_mode = 'all'
 	): ?NotificationRule {
+		if ( ! in_array( $match_mode, array( 'all', 'any' ), true ) ) {
+			$match_mode = 'all';
+		}
+
 		$allowed_fields = $this->registry->allowed_variable_fields_for( $event_type );
 
 		foreach ( $conditions as $clause ) {
@@ -97,6 +103,7 @@ class NotificationRuleRepository {
 			'event_type'         => $event_type,
 			'schema_version_min' => $schema_version_min,
 			'conditions_json'    => wp_json_encode( array_values( $conditions ) ),
+			'match_mode'         => $match_mode,
 			'bot_id'             => $bot_id,
 			'destination_id'     => $destination_id,
 			'template'           => $template,
@@ -105,7 +112,7 @@ class NotificationRuleRepository {
 			'cooldown_seconds'   => $cooldown_seconds,
 			'updated_at'         => $now,
 		);
-		$formats = array( '%s', '%s', '%d', '%s', '%d', '%d', '%s', '%d', '%d', '%d', '%s' );
+		$formats = array( '%s', '%s', '%d', '%s', '%s', '%d', '%d', '%s', '%d', '%d', '%d', '%s' );
 
 		if ( null === $id ) {
 			$row['created_at'] = $now;
@@ -267,6 +274,7 @@ class NotificationRuleRepository {
 	 */
 	private function hydrate( array $row ): NotificationRule {
 		$conditions = json_decode( (string) $row['conditions_json'], true );
+		$match_mode = isset( $row['match_mode'] ) && 'any' === (string) $row['match_mode'] ? 'any' : 'all';
 
 		return new NotificationRule(
 			(int) $row['id'],
@@ -274,6 +282,7 @@ class NotificationRuleRepository {
 			(string) $row['event_type'],
 			(int) $row['schema_version_min'],
 			is_array( $conditions ) ? $conditions : array(),
+			$match_mode,
 			(int) $row['bot_id'],
 			(int) $row['destination_id'],
 			(string) $row['template'],

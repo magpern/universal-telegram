@@ -23,16 +23,19 @@ final class RuleSimulatorTest extends TestCase {
 		$registry->register(
 			'wordpress.post_published',
 			1,
-			array( 'subject.post_id' => Classification::PUBLIC ),
-			array( 'subject.post_id' ),
-			array( 'subject.post_id' )
+			array(
+				'subject.post_id'   => Classification::PUBLIC,
+				'context.post_type' => Classification::PUBLIC,
+			),
+			array( 'subject.post_id', 'context.post_type' ),
+			array( 'subject.post_id', 'context.post_type' )
 		);
 
 		return $registry;
 	}
 
 	private function rule( int $id, array $conditions = array(), int $priority = 100 ): NotificationRule {
-		return new NotificationRule( $id, "Rule {$id}", 'wordpress.post_published', 1, $conditions, 1, 1, 'x', true, $priority, 0, 'now', 'now' );
+		return new NotificationRule( $id, "Rule {$id}", 'wordpress.post_published', 1, $conditions, 'all', 1, 1, 'x', true, $priority, 0, 'now', 'now' );
 	}
 
 	public function test_simulation_never_invokes_the_dispatcher_or_the_dispatch_log(): void {
@@ -114,7 +117,7 @@ final class RuleSimulatorTest extends TestCase {
 			array( 'subject.path' ),
 			array( 'subject.path' )
 		);
-		$rule = new NotificationRule( 1, 'Rule 1', 'visitor.page_viewed', 1, array(), 1, 1, 'x', true, 100, 0, 'now', 'now' );
+		$rule = new NotificationRule( 1, 'Rule 1', 'visitor.page_viewed', 1, array(), 'all', 1, 1, 'x', true, 100, 0, 'now', 'now' );
 
 		$rules_repo = $this->createMock( NotificationRuleRepository::class );
 		$rules_repo->method( 'for_event_type' )->willReturn( array( $rule ) );
@@ -138,6 +141,44 @@ final class RuleSimulatorTest extends TestCase {
 					'rule_name'   => 'Rule 1',
 					'outcome'     => 'rejected',
 					'reason_code' => RuleEvaluator::SUPPRESSED_BY_DIGEST_REASON_CODE,
+				),
+			),
+			$result->entries()
+		);
+	}
+
+	/**
+	 * ADR-0032: a simulated preview must not report "matched" for a
+	 * not-equals condition whose field the sample data simply omits — a
+	 * present-only-when-configured field is honestly evaluated as absent,
+	 * exactly like real evaluation via RuleEvaluator.
+	 */
+	public function test_simulating_a_not_equals_condition_on_an_absent_sample_field_reports_rejected(): void {
+		$registry = $this->registry();
+		$rule     = $this->rule(
+			1,
+			array(
+				array(
+					'field'    => 'context.post_type',
+					'operator' => 'not_equals',
+					'value'    => 'page',
+				),
+			)
+		);
+
+		$rules_repo = $this->createMock( NotificationRuleRepository::class );
+		$rules_repo->method( 'for_event_type' )->willReturn( array( $rule ) );
+
+		$simulator = new RuleSimulator( $rules_repo, $registry, $this->createMock( DispatchLogRepository::class ), $this->createMock( NotificationDispatcher::class ) );
+		$result    = $simulator->simulate( 'wordpress.post_published', array( 'subject' => array( 'post_id' => 5 ) ), 'sample-key' );
+
+		$this->assertSame(
+			array(
+				array(
+					'rule_id'     => 1,
+					'rule_name'   => 'Rule 1',
+					'outcome'     => 'rejected',
+					'reason_code' => 'condition_not_matched',
 				),
 			),
 			$result->entries()
