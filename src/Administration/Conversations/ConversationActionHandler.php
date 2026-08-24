@@ -109,6 +109,12 @@ class ConversationActionHandler {
 				// Legacy op name: require the same confirm flag as delete_permanently.
 				$this->delete_permanently();
 				return;
+			case 'confirm_bulk_archive_and_delete':
+				$this->confirm_bulk_archive_and_delete();
+				return;
+			case 'bulk_archive_and_delete_permanently':
+				$this->bulk_archive_and_delete_permanently();
+				return;
 		}
 
 		$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox' ) );
@@ -491,6 +497,158 @@ class ConversationActionHandler {
 		$this->redirect_and_exit(
 			admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox&ut_notice=conversation_removed' )
 		);
+	}
+
+	/**
+	 * First bulk step: redirect to the inbox confirm view with selected ids.
+	 * Never deletes or calls Telegram.
+	 */
+	private function confirm_bulk_archive_and_delete(): void {
+		if ( ! current_user_can( CapabilityRegistrar::MANAGE_CONVERSATIONS ) ) {
+			$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox' ) );
+			return;
+		}
+
+		$ids = $this->submitted_conversation_ids();
+
+		if ( array() === $ids ) {
+			$this->redirect_and_exit(
+				admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox&ut_notice=bulk_none_selected' )
+			);
+			return;
+		}
+
+		$this->redirect_and_exit(
+			admin_url(
+				'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox&bulk_confirm=1&ids=' . rawurlencode( implode( ',', $ids ) )
+			)
+		);
+	}
+
+	/**
+	 * Confirmed bulk archive + permanent delete. Archives when needed, then
+	 * uses the same eligibility / queued remote-delete / local-purge path as
+	 * single delete. Never calls Telegram synchronously.
+	 */
+	private function bulk_archive_and_delete_permanently(): void {
+		if ( ! current_user_can( CapabilityRegistrar::MANAGE_CONVERSATIONS ) ) {
+			$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox' ) );
+			return;
+		}
+
+		if ( empty( $_POST['confirm'] ) ) {
+			$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox' ) );
+			return;
+		}
+
+		$ids             = $this->submitted_conversation_ids();
+		$queued          = 0;
+		$removed         = 0;
+		$skipped         = 0;
+		$acting_user_id  = get_current_user_id();
+
+		foreach ( $ids as $conversation_id ) {
+			$conversation = $this->conversations->find( $conversation_id );
+
+			if ( null === $conversation ) {
+				++$skipped;
+				continue;
+			}
+
+			if ( TopicLifecycleState::DELETE_PENDING === $conversation->topic_lifecycle_state() ) {
+				++$skipped;
+				continue;
+			}
+
+			if ( ConversationStatus::ARCHIVED !== $conversation->status() ) {
+				if ( ! ConversationStatus::is_valid_transition( $conversation->status(), ConversationStatus::ARCHIVED ) ) {
+					++$skipped;
+					continue;
+				}
+
+				if ( ! $this->conversations->transition( $conversation_id, $conversation->status(), ConversationStatus::ARCHIVED ) ) {
+					++$skipped;
+					continue;
+				}
+
+				$this->conversations->revoke_secret( $conversation_id );
+				$this->audit->record(
+					'conversation.archived',
+					'operator',
+					$acting_user_id,
+					array( 'conversation_id' => $conversation_id ),
+					array( 'conversation_id' => Classification::INTERNAL ),
+					Classification::INTERNAL
+				);
+
+				$conversation = $this->conversations->find( $conversation_id );
+
+				if ( null === $conversation || ConversationStatus::ARCHIVED !== $conversation->status() ) {
+					++$skipped;
+					continue;
+				}
+			}
+
+			$this->audit->record(
+				'conversation.deleted_manually',
+				'operator',
+				$acting_user_id,
+				array( 'conversation_id' => $conversation_id ),
+				array( 'conversation_id' => Classification::INTERNAL ),
+				Classification::INTERNAL
+			);
+
+			if ( $this->eligibility->is_remote_deletable( $conversation ) ) {
+				$result = $this->topic_deletion->maybe_delete( $conversation );
+				if ( null !== $result ) {
+					++$queued;
+				} else {
+					++$skipped;
+				}
+				continue;
+			}
+
+			$this->purge_service->purge(
+				$conversation_id,
+				$this->eligibility->destination_id_for_purge( $conversation )
+			);
+			++$removed;
+		}
+
+		$this->redirect_and_exit(
+			admin_url(
+				'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox'
+				. '&ut_notice=bulk_archive_delete'
+				. '&bulk_queued=' . $queued
+				. '&bulk_removed=' . $removed
+				. '&bulk_skipped=' . $skipped
+			)
+		);
+	}
+
+	/**
+	 * Parses and bounds submitted conversation_ids[] (max 50).
+	 *
+	 * @return array<int, int>
+	 */
+	private function submitted_conversation_ids(): array {
+		$raw = isset( $_POST['conversation_ids'] ) && is_array( $_POST['conversation_ids'] )
+			? wp_unslash( $_POST['conversation_ids'] ) // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitized below as ints.
+			: array();
+
+		$ids = array();
+
+		foreach ( $raw as $value ) {
+			$id = (int) $value;
+			if ( $id > 0 ) {
+				$ids[] = $id;
+			}
+			if ( count( $ids ) >= 50 ) {
+				break;
+			}
+		}
+
+		return array_values( array_unique( $ids ) );
 	}
 
 	/**

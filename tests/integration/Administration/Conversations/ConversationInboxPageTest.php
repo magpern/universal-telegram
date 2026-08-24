@@ -57,7 +57,22 @@ final class ConversationInboxPageTest extends WP_UnitTestCase {
 	}
 
 	protected function tearDown(): void {
-		unset( $_GET['conversation_id'], $_GET['status'], $_GET['paged'], $_GET['q'], $_GET['bot_id'], $_GET['assigned_operator_id'], $_GET['created_from'], $_GET['created_to'] );
+		unset(
+			$_GET['conversation_id'],
+			$_GET['status'],
+			$_GET['paged'],
+			$_GET['q'],
+			$_GET['bot_id'],
+			$_GET['assigned_operator_id'],
+			$_GET['created_from'],
+			$_GET['created_to'],
+			$_GET['bulk_confirm'],
+			$_GET['ids'],
+			$_GET['ut_notice'],
+			$_GET['bulk_queued'],
+			$_GET['bulk_removed'],
+			$_GET['bulk_skipped']
+		);
 		parent::tearDown();
 	}
 
@@ -165,5 +180,43 @@ final class ConversationInboxPageTest extends WP_UnitTestCase {
 
 		$this->assertStringContainsString( 'conversation_id=', $output );
 		$this->assertStringNotContainsString( '999888777', $output );
+	}
+
+	public function test_inbox_list_offers_bulk_archive_and_delete_controls(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		list( $page, $conversations ) = $this->page();
+		$conversations->create( 'uuid-inbox-bulk-1', 'hash', 1, null );
+
+		ob_start();
+		$page->render_tab_content();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'name="op" value="confirm_bulk_archive_and_delete"', $output );
+		$this->assertStringContainsString( 'name="conversation_ids[]"', $output );
+		$this->assertStringContainsString( 'Archive and delete permanently…', $output );
+	}
+
+	public function test_bulk_confirm_view_requires_second_post(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		list( $page, $conversations ) = $this->page();
+		$conversation                 = $conversations->create( 'uuid-inbox-bulk-confirm', 'hash', 1, null );
+
+		$_GET['bulk_confirm'] = '1';
+		$_GET['ids']          = (string) $conversation->id();
+
+		ob_start();
+		$page->render_tab_content();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'name="op" value="bulk_archive_and_delete_permanently"', $output );
+		$this->assertStringContainsString( 'name="confirm" value="1"', $output );
+		$this->assertStringContainsString( 'Confirm archive and delete permanently', $output );
+		$this->assertStringContainsString( 'cannot be undone', $output );
 	}
 }
