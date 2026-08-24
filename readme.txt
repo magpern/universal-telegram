@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.13.0
+Stable tag: 0.14.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,17 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.14.0 =
+* Conversation topic lifecycle and repair (M07.1, ADR-0031): local Archive (secret
+  revoked, Telegram topic retained); permanent delete only from the archived Operator
+  Inbox detail with a second confirming POST; queued `deleteForumTopic` for eligible
+  plugin-created topics only (exclusive destination ownership); topic-unavailable
+  recognition via exact `(bot_id, chat_id, message_thread_id)` identity; truthful
+  visitor `delivery_state` (`routed` vs `sent`); open-but-unavailable POST returns
+  409 `conversation_unavailable`. Adds topic lifecycle columns and UNIQUE
+  `conversations.destination_id` (db_version 28 -> 29). Implemented on the combined
+  M11 feature branch; validation, PR, merge, and release remain deferred to that gate.
 
 = 0.13.0 =
 * Digests and Operational Intelligence, remainder (M11B, ADR-0030, completing M11 together with
