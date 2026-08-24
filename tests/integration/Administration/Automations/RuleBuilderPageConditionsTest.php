@@ -26,6 +26,16 @@ final class RuleBuilderPageConditionsTest extends WP_UnitTestCase {
 
 		( new CapabilityRegistrar() )->grant_to_administrator();
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+
+		// The builder is its own view now (UI-polish follow-up to M08.1) —
+		// the default landing page shows the Notifications overview, not
+		// this form.
+		$_GET['view'] = 'create';
+	}
+
+	protected function tearDown(): void {
+		unset( $_GET['view'] );
+		parent::tearDown();
 	}
 
 	/**

@@ -12,16 +12,17 @@ use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use WP_UnitTestCase;
 
 /**
- * Presets are starting configurations only (M08.1 plan "Presets are
- * starting configurations only"): this test asserts the preset cards
- * render without any auto-save/auto-enable side effect, and that the
- * Store-essentials review screen requires its own explicit second
- * confirmation before anything is created.
+ * The Notifications landing page shows only three popular templates and the
+ * Store-essentials panel up front; the rest of the catalog lives behind
+ * per-family accordions, and starting from any of them only ever reaches
+ * the builder pre-filled — nothing is created or enabled just by landing on
+ * this page (UI-polish follow-up to the M08.1 plan's "Presets are starting
+ * configurations only").
  */
 final class RuleBuilderPagePresetsTest extends WP_UnitTestCase {
 
 	protected function tearDown(): void {
-		unset( $_GET['view'], $_GET['error'] );
+		unset( $_GET['view'], $_GET['error'], $_GET['preset'] );
 		parent::tearDown();
 	}
 
@@ -49,41 +50,69 @@ final class RuleBuilderPagePresetsTest extends WP_UnitTestCase {
 		);
 	}
 
-	public function test_preset_cards_render_with_a_custom_notification_option(): void {
+	public function test_landing_page_shows_popular_templates_starter_set_panel_and_custom_option(): void {
 		ob_start();
 		$this->page( true )->render_tab_content();
 		$html = ob_get_clean();
 
-		$this->assertStringContainsString( 'ut-preset-card', $html );
-		$this->assertStringContainsString( 'New WooCommerce order', $html );
-		$this->assertStringContainsString( 'Create a custom notification', $html );
-		$this->assertStringContainsString( 'Store essentials starter set', $html );
+		$this->assertStringContainsString( '>Notifications<', $html );
+		$this->assertStringContainsString( 'Create custom notification', $html );
 
-		// Regression: the link must resolve to the real registered Hub page
+		// The three WooCommerce popular templates, as compact tiles.
+		$this->assertStringContainsString( 'ut-template-tile', $html );
+		$this->assertStringContainsString( 'New WooCommerce order', $html );
+		$this->assertStringContainsString( 'Order failed', $html );
+		$this->assertStringContainsString( 'Low-stock alert', $html );
+
+		// The Store-essentials panel is present and explains itself.
+		$this->assertStringContainsString( 'ut-starter-set-panel', $html );
+		$this->assertStringContainsString( 'Store essentials', $html );
+		$this->assertStringContainsString( 'Set up starter set', $html );
+		$this->assertStringContainsString( 'created as reviewable drafts', $html );
+
+		// The remaining templates live behind collapsed accordions, not as
+		// equally-weighted cards on the same screen.
+		$this->assertStringContainsString( 'ut-template-family', $html );
+		$this->assertStringContainsString( '<details', $html );
+
+		// Regression: links must resolve to the real registered Hub page
 		// (HubPage::SLUG, "universal-telegram"), never RuleBuilderPage::SLUG
 		// (the retired pre-Hub slug, "universal-telegram-rules") — a link
 		// built from the retired slug is silently caught by
-		// LegacyUrlRedirector and redirected to the plain Rules tab with the
-		// view=starter_set query arg dropped, which made the button appear
-		// to do nothing.
+		// LegacyUrlRedirector with every extra query arg dropped.
 		$this->assertStringContainsString( 'page=universal-telegram&#038;tab=rules&#038;view=starter_set', $html );
+		$this->assertStringContainsString( 'page=universal-telegram&#038;tab=rules&#038;view=create', $html );
 		$this->assertStringNotContainsString( 'page=universal-telegram-rules', $html );
 
-		// The button must also explain what it does.
-		$this->assertStringContainsString( 'Sets up three ready-to-review notifications at once', $html );
-
-		// Rendering the presets section must never itself write a rule.
+		// Rendering the landing page must never itself write a rule.
 		$this->assertCount( 0, Plugin::instance()->notification_rule_repository()->all() );
 	}
 
-	public function test_woocommerce_only_presets_and_starter_set_are_hidden_when_inactive(): void {
+	public function test_woocommerce_only_content_is_hidden_and_replaced_when_inactive(): void {
 		ob_start();
 		$this->page( false )->render_tab_content();
 		$html = ob_get_clean();
 
 		$this->assertStringNotContainsString( 'New WooCommerce order', $html );
-		$this->assertStringNotContainsString( 'Store essentials starter set', $html );
-		$this->assertStringContainsString( 'Successful administrator login', $html );
+		$this->assertStringNotContainsString( 'ut-starter-set-panel', $html );
+
+		// A non-WooCommerce popular set still appears — the section is
+		// never simply empty.
+		$this->assertStringContainsString( 'Failed login attempt', $html );
+	}
+
+	public function test_use_template_link_opens_the_builder_prefilled_without_creating_anything(): void {
+		$_GET['view']   = 'create';
+		$_GET['preset'] = 'low_stock';
+
+		ob_start();
+		$this->page( true )->render_tab_content();
+		$html = ob_get_clean();
+
+		$this->assertStringContainsString( 'Create notification', $html );
+		$this->assertStringContainsString( 'value="Low-stock alert"', $html );
+		$this->assertStringContainsString( 'Back to notifications', $html );
+		$this->assertCount( 0, Plugin::instance()->notification_rule_repository()->all() );
 	}
 
 	public function test_starter_set_review_screen_shows_all_three_rules_and_a_single_destination_pair(): void {
@@ -99,7 +128,7 @@ final class RuleBuilderPagePresetsTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'id="ut-starter-bot"', $html );
 		$this->assertStringContainsString( 'id="ut-starter-destination"', $html );
 		$this->assertStringContainsString( 'Create draft rules', $html );
-		$this->assertStringContainsString( 'Back to presets', $html );
+		$this->assertStringContainsString( 'Back to notifications', $html );
 
 		// The review screen itself is a GET render; it must never create a rule.
 		$this->assertCount( 0, Plugin::instance()->notification_rule_repository()->all() );

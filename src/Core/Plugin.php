@@ -1307,7 +1307,7 @@ final class Plugin {
 			$this->woocommerce_support
 		);
 		$this->hub_tab_registry->register(
-			new Tab( 'rules', __( 'Rules', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_builder_page, 'render_tab_content' ) )
+			new Tab( 'rules', __( 'Notifications', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_builder_page, 'render_tab_content' ) )
 		);
 
 		$this->rule_builder_request_handler = new RuleBuilderRequestHandler( $this->notification_rule_repository );

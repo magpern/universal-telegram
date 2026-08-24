@@ -87,7 +87,7 @@ final class RuleBuilderPageEditTest extends WP_UnitTestCase {
 		$this->page()->render_tab_content();
 		$html = ob_get_clean();
 
-		$this->assertStringContainsString( 'Edit rule', $html );
+		$this->assertStringContainsString( 'Edit notification', $html );
 		$this->assertStringContainsString( 'id="ut-conditions-wrap"', $html );
 		$this->assertStringNotContainsString( 'style="display:none"', substr( $html, (int) strpos( $html, 'id="ut-conditions-wrap"' ), 60 ) );
 		$this->assertStringContainsString( 'value="admin"', $html );
@@ -137,13 +137,13 @@ final class RuleBuilderPageEditTest extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( 'id="ut-add-condition"', $html );
 	}
 
-	public function test_editing_an_unknown_rule_id_falls_back_to_the_normal_add_rule_form(): void {
+	public function test_editing_an_unknown_rule_id_falls_back_to_the_normal_create_notification_form(): void {
 		$_GET['edit'] = '999999';
 
 		ob_start();
 		$this->page()->render_tab_content();
 		$html = ob_get_clean();
 
-		$this->assertStringContainsString( 'Add rule', $html );
+		$this->assertStringContainsString( 'Create notification', $html );
 	}
 }

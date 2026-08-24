@@ -163,11 +163,27 @@ final class RuleBuilderPage {
 			return;
 		}
 
-		$editing = null;
+		// The builder (Create/Edit notification) is its own view, reached
+		// only via ?edit=<id> or ?view=create[&preset=<key>] — the default
+		// landing page is the Notifications overview below, not a long
+		// scroll ending in a form (task: "make this a Notifications page,
+		// not a page that presents every possible option at once").
+		$show_builder = false;
+		$prefill      = null;
+
 		if ( isset( $_GET['edit'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a GET-only edit-mode switch, no mutation; the save POST below re-verifies capability and nonce itself.
-			$rule = $this->rules->find( (int) $_GET['edit'] );
+			$show_builder = true;
+			$rule         = $this->rules->find( (int) $_GET['edit'] );
 			if ( null !== $rule ) {
-				$editing = RuleEditor::from_existing( $rule );
+				$prefill = RuleEditor::from_existing( $rule );
+			}
+		} elseif ( isset( $_GET['view'] ) && 'create' === $_GET['view'] ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a GET-only view switch, no mutation; the save POST below re-verifies capability and nonce itself.
+			$show_builder = true;
+			if ( isset( $_GET['preset'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a GET-only prefill selector, no mutation.
+				$preset = PresetCatalog::find( sanitize_key( wp_unslash( $_GET['preset'] ) ) );
+				if ( null !== $preset && ( ! $preset['requires_woocommerce'] || $this->woocommerce_active() ) ) {
+					$prefill = RuleEditor::from_preset( $preset );
+				}
 			}
 		}
 
@@ -175,16 +191,39 @@ final class RuleBuilderPage {
 			$this->render_save_error_summary();
 		}
 
-		$this->render_rule_list();
-
-		if ( null === $editing ) {
-			$this->render_presets();
-		} else {
-			echo '<p><a href="' . esc_url( $this->rules_tab_url() ) . '">&laquo; ' . esc_html__( 'Back to presets', 'universal-telegram' ) . '</a></p>';
+		if ( ! $show_builder ) {
+			$this->render_notifications_landing();
+			$this->render_intelligence_settings();
+			return;
 		}
 
-		$this->render_rule_form( $editing );
+		echo '<p><a href="' . esc_url( $this->rules_tab_url() ) . '">&laquo; ' . esc_html__( 'Back to notifications', 'universal-telegram' ) . '</a></p>';
+		$this->render_rule_form( $prefill );
 		$this->render_intelligence_settings();
+	}
+
+	/**
+	 * The Notifications landing page: existing notifications, the
+	 * Store-essentials recommendation, three popular templates, and the
+	 * full template catalog behind per-family accordions — rather than one
+	 * long page of equally-weighted options (task: "make this a
+	 * Notifications page").
+	 */
+	private function render_notifications_landing(): void {
+		echo '<div class="ut-page-header"><h2>' . esc_html__( 'Notifications', 'universal-telegram' ) . '</h2>';
+		echo '<a class="button button-primary" href="' . esc_url( $this->rules_tab_url() . '&view=create' ) . '">' . esc_html__( 'Create custom notification', 'universal-telegram' ) . '</a></div>';
+
+		echo '<h3>' . esc_html__( 'Your active notifications', 'universal-telegram' ) . '</h3>';
+		$this->render_active_notifications();
+
+		if ( $this->woocommerce_active() ) {
+			$this->render_starter_set_panel();
+		}
+
+		$this->render_popular_notifications();
+		$this->render_more_templates();
+
+		echo '<p><a class="button button-primary" href="' . esc_url( $this->rules_tab_url() . '&view=create' ) . '">' . esc_html__( 'Create custom notification', 'universal-telegram' ) . '</a></p>';
 	}
 
 	/**
@@ -220,8 +259,11 @@ final class RuleBuilderPage {
 	}
 
 	/**
-	 * The plain Rules tab URL, used as the "« Back to presets" link, the
-	 * "Edit" row action, and the post-confirmation redirect target. See
+	 * The plain Notifications landing page URL, used as the "« Back to
+	 * notifications" link, the "Create custom notification" and "Use
+	 * template" links (with `&view=create[&preset=]` appended), the "Edit"
+	 * row action (with `&edit=` appended), and the post-confirmation
+	 * redirect target. See
 	 * starter_set_review_url()'s own note on why this must be HubPage::SLUG.
 	 *
 	 * @return string
@@ -231,64 +273,170 @@ final class RuleBuilderPage {
 	}
 
 	/**
-	 * Renders "1. Start with a common notification": individual preset
-	 * cards (each a starting configuration only — selecting one fills the
-	 * builder below via JS, it never saves or enables a rule by itself),
-	 * the Store-essentials starter-set entry point (WooCommerce-active
-	 * only), and "Create a custom notification".
-	 */
-	/**
 	 * A small inline stylesheet — no new build pipeline, no design system
-	 * (M08.1 plan "Strengthen the visual design specification"): visible
-	 * hover/focus/selected states for preset cards, a stacking condition-row
-	 * layout that wraps at a narrow admin viewport, and spacing consistent
-	 * with WordPress-native form-table/postbox conventions.
+	 * (M08.1 plan "Strengthen the visual design specification"; task
+	 * "UI polish"): the Notifications landing page's header row, compact
+	 * active-notifications list with a small row action menu, a large calm
+	 * Store-essentials panel, compact template tiles/rows (full weight only
+	 * on hover/focus, never by default), collapsed template-family
+	 * accordions, and the builder's own condition-row/preview/advanced-
+	 * delivery styling — all stacking to a single column at a narrow admin
+	 * viewport.
 	 */
 	private function render_styles(): void {
 		echo '<style>
-			.ut-preset-cards { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
-			.ut-preset-card { flex: 1 1 240px; max-width: 320px; border: 1px solid #c3c4c7; border-radius: 4px; padding: 12px 14px; background: #fff; cursor: pointer; }
-			.ut-preset-card:hover, .ut-preset-card:focus { border-color: #2271b1; box-shadow: 0 0 0 1px #2271b1; outline: none; }
-			.ut-preset-card.is-selected { border-color: #2271b1; background: #f0f6fc; }
-			.ut-preset-card p { margin: 4px 0 0; color: #50575e; }
+			.ut-page-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+			.ut-page-header h2 { margin: 0; }
+
+			.ut-notification-list { list-style: none; margin: 12px 0; padding: 0; }
+			.ut-notification-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 10px 14px; border: 1px solid #dcdcde; border-radius: 4px; background: #fff; margin-bottom: 8px; }
+			.ut-notification-row .ut-col-name { font-weight: 600; flex: 1 1 200px; }
+			.ut-notification-row .ut-col-when,
+			.ut-notification-row .ut-col-destination { flex: 1 1 160px; color: #50575e; }
+			.ut-status-pill { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+			.ut-status-pill.is-active { background: #edfaef; color: #1a7f37; }
+			.ut-status-pill.is-disabled { background: #f0f0f1; color: #646970; }
+			.ut-row-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+			.ut-row-menu { position: relative; }
+			.ut-row-menu summary { list-style: none; cursor: pointer; padding: 4px 8px; border: 1px solid #c3c4c7; border-radius: 4px; }
+			.ut-row-menu summary::-webkit-details-marker { display: none; }
+			.ut-row-menu[open] summary { background: #f0f0f1; }
+			.ut-row-menu-content { position: absolute; right: 0; top: 100%; z-index: 10; background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,.1); padding: 6px; margin-top: 4px; white-space: nowrap; }
+
+			.ut-starter-set-panel { border: 1px solid #c3c4c7; border-radius: 6px; padding: 20px 24px; background: linear-gradient(180deg,#f6f7f7,#fff); margin: 12px 0 24px; }
+			.ut-starter-set-panel h4 { margin: 0 0 6px; font-size: 16px; }
+			.ut-starter-set-panel p { max-width: 640px; color: #50575e; }
+
+			.ut-template-tiles, .ut-template-family-list { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+			.ut-template-tile { display: flex; flex-direction: column; flex: 1 1 220px; max-width: 280px; padding: 10px 12px; border: 1px solid #dcdcde; border-radius: 4px; background: #fff; text-decoration: none; color: inherit; }
+			.ut-template-tile:hover, .ut-template-tile:focus { border-color: #2271b1; outline: none; }
+			.ut-template-tile-title { font-weight: 600; }
+			.ut-template-tile-description { color: #50575e; font-size: 13px; margin-top: 2px; }
+			.ut-template-tile-action { margin-top: 8px; font-size: 13px; font-weight: 600; color: #2271b1; opacity: 0; }
+			.ut-template-tile:hover .ut-template-tile-action, .ut-template-tile:focus .ut-template-tile-action { opacity: 1; }
+
+			.ut-template-family { margin-bottom: 6px; }
+			.ut-template-family summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
+
 			.ut-condition-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
 			.ut-message-preview { padding: 8px 12px; background: #f6f7f7; border: 1px solid #dcdcde; border-radius: 4px; white-space: pre-wrap; min-height: 1.5em; }
 			#ut-advanced-delivery summary { cursor: pointer; font-weight: 600; margin: 12px 0; }
+
 			@media ( max-width: 782px ) {
-				.ut-preset-card { flex-basis: 100%; max-width: none; }
+				.ut-notification-row { flex-direction: column; align-items: stretch; }
+				.ut-row-actions { margin-left: 0; }
+				.ut-template-tile { flex-basis: 100%; max-width: none; }
 				.ut-condition-row { flex-direction: column; align-items: stretch; }
 			}
 		</style>';
 	}
 
-	private function render_presets(): void {
-		echo '<h2>' . esc_html__( 'Start with a common notification', 'universal-telegram' ) . '</h2>';
+	/**
+	 * The three presets shown as "Popular notifications" — a WooCommerce
+	 * set for the common case, a non-WooCommerce fallback set otherwise, so
+	 * this section is never empty. Picked once, by hand, not derived from
+	 * usage data this plugin doesn't collect.
+	 *
+	 * @return array<int, string> Preset keys.
+	 */
+	private function popular_preset_keys(): array {
+		return $this->woocommerce_active()
+			? array( 'new_order', 'order_failed', 'low_stock' )
+			: array( 'failed_login', 'new_user', 'fatal_error' );
+	}
 
-		$presets = array();
-		foreach ( PresetCatalog::all() as $preset ) {
-			if ( $preset['requires_woocommerce'] && ! $this->woocommerce_active() ) {
-				continue;
+	/**
+	 * "2. Recommended for your store": the Store-essentials starter set as
+	 * one large, calm panel — deliberately the most visually prominent
+	 * element on the page besides the notification list, since it is the
+	 * best default choice for most WooCommerce sites (task: "It is the
+	 * best choice for most WooCommerce sites, so it deserves a large, calm
+	 * panel").
+	 */
+	private function render_starter_set_panel(): void {
+		echo '<h3>' . esc_html__( 'Recommended for your store', 'universal-telegram' ) . '</h3>';
+		echo '<div class="ut-starter-set-panel">';
+		echo '<h4>' . esc_html__( 'Store essentials', 'universal-telegram' ) . '</h4>';
+		echo '<p>' . esc_html__( 'New orders, failed orders, and low stock — created as reviewable drafts you enable individually after checking the destination and message.', 'universal-telegram' ) . '</p>';
+		echo '<a class="button button-primary" href="' . esc_url( $this->starter_set_review_url() ) . '">' . esc_html__( 'Set up starter set', 'universal-telegram' ) . '</a>';
+		echo '</div>';
+	}
+
+	/**
+	 * "3. Popular notifications": three compact template tiles, not
+	 * competing visually with the starter-set panel above them (task:
+	 * "Show only three popular templates initially").
+	 */
+	private function render_popular_notifications(): void {
+		echo '<h3>' . esc_html__( 'Popular notifications', 'universal-telegram' ) . '</h3>';
+		echo '<div class="ut-template-tiles">';
+		foreach ( $this->popular_preset_keys() as $key ) {
+			$preset = PresetCatalog::find( $key );
+			if ( null !== $preset ) {
+				$this->render_template_tile( $preset );
 			}
-			$presets[] = $preset;
-		}
-
-		echo '<div id="ut-preset-cards" class="ut-preset-cards">';
-		foreach ( $presets as $preset ) {
-			echo '<div class="ut-preset-card" tabindex="0" role="button" data-preset-key="' . esc_attr( $preset['key'] ) . '">';
-			echo '<strong>' . esc_html( $preset['title'] ) . '</strong>';
-			echo '<p>' . esc_html( $preset['description'] ) . '</p>';
-			echo '</div>';
 		}
 		echo '</div>';
+	}
 
-		if ( $this->woocommerce_active() ) {
-			echo '<p><a class="button" href="' . esc_url( $this->starter_set_review_url() ) . '">' . esc_html__( 'Store essentials starter set', 'universal-telegram' ) . '</a><br />';
-			echo '<span class="description">' . esc_html__( 'Sets up three ready-to-review notifications at once — new order, order failed, and low stock — as disabled drafts you enable individually after checking the destination and message on the next screen.', 'universal-telegram' ) . '</span></p>';
+	/**
+	 * One compact template row/tile: title, one short sentence, and a
+	 * "Use template" link that only needs emphasis on hover/focus — not a
+	 * large bordered card competing for attention with everything else on
+	 * the page (task: "The current large bordered cards make every option
+	 * feel equally important and create visual noise").
+	 *
+	 * @param array{key: string, title: string, description: string} $preset One PresetCatalog entry.
+	 */
+	private function render_template_tile( array $preset ): void {
+		$url = $this->rules_tab_url() . '&view=create&preset=' . rawurlencode( $preset['key'] );
+
+		echo '<a class="ut-template-tile" href="' . esc_url( $url ) . '">';
+		echo '<span class="ut-template-tile-title">' . esc_html( $preset['title'] ) . '</span>';
+		echo '<span class="ut-template-tile-description">' . esc_html( $preset['description'] ) . '</span>';
+		echo '<span class="ut-template-tile-action">' . esc_html__( 'Use template', 'universal-telegram' ) . '</span>';
+		echo '</a>';
+	}
+
+	/**
+	 * "4. More notification templates": every remaining preset, grouped by
+	 * the same plain-language families the event picker itself uses,
+	 * behind collapsed-by-default accordions — so the full catalog stays
+	 * reachable without presenting sixteen-plus equally-weighted options
+	 * up front (task: "Put the rest inside category accordions").
+	 */
+	private function render_more_templates(): void {
+		echo '<h3>' . esc_html__( 'More notification templates', 'universal-telegram' ) . '</h3>';
+
+		foreach ( self::EVENT_FAMILIES as $family ) {
+			if ( $family['requires_woocommerce'] && ! $this->woocommerce_active() ) {
+				continue;
+			}
+
+			$family_presets = array();
+			foreach ( PresetCatalog::all() as $preset ) {
+				if ( in_array( $preset['event_type'], $family['event_types'], true ) ) {
+					$family_presets[] = $preset;
+				}
+			}
+
+			if ( array() === $family_presets ) {
+				continue;
+			}
+
+			echo '<details class="ut-template-family">';
+			printf(
+				'<summary>%s (%d)</summary>',
+				esc_html( $family['label'] ),
+				count( $family_presets )
+			);
+			echo '<div class="ut-template-family-list">';
+			foreach ( $family_presets as $preset ) {
+				$this->render_template_tile( $preset );
+			}
+			echo '</div>';
+			echo '</details>';
 		}
-
-		echo '<p><button type="button" id="ut-custom-notification" class="button">' . esc_html__( 'Create a custom notification', 'universal-telegram' ) . '</button></p>';
-
-		echo '<script type="application/json" id="ut-preset-data">' . wp_json_encode( array_values( $presets ) ) . '</script>';
 	}
 
 	/**
@@ -300,7 +448,7 @@ final class RuleBuilderPage {
 	 */
 	private function render_starter_set_review(): void {
 		echo '<h2>' . esc_html__( 'Store essentials starter set', 'universal-telegram' ) . '</h2>';
-		echo '<p><a href="' . esc_url( $this->rules_tab_url() ) . '">&laquo; ' . esc_html__( 'Back to presets', 'universal-telegram' ) . '</a></p>';
+		echo '<p><a href="' . esc_url( $this->rules_tab_url() ) . '">&laquo; ' . esc_html__( 'Back to notifications', 'universal-telegram' ) . '</a></p>';
 
 		if ( ! $this->woocommerce_active() ) {
 			echo '<p class="description">' . esc_html__( 'Requires WooCommerce, which is not currently active on this site.', 'universal-telegram' ) . '</p>';
@@ -513,41 +661,78 @@ final class RuleBuilderPage {
 	}
 
 	/**
-	 * Renders the existing-rule list with delete actions.
+	 * Renders the compact "Your active notifications" list: Name, When
+	 * (the friendly event label — never the raw event_type, and never the
+	 * technical `woocommerce.cart_item_added` form), Destination, and a
+	 * Status pill, with a visible Edit action and a small "⋯" menu for
+	 * Delete. Priority and cooldown are deliberately not shown here — they
+	 * remain reachable via Edit's own "Advanced delivery options"
+	 * disclosure (task: "Hide priority and cooldown unless an
+	 * administrator opens an 'Advanced details' view").
 	 */
-	private function render_rule_list(): void {
-		echo '<table class="widefat striped"><thead><tr><th>' .
-			esc_html__( 'Name', 'universal-telegram' ) . '</th><th>' .
-			esc_html__( 'Event type', 'universal-telegram' ) . '</th><th>' .
-			esc_html__( 'Enabled', 'universal-telegram' ) . '</th><th>' .
-			esc_html__( 'Priority', 'universal-telegram' ) . '</th><th>' .
-			esc_html__( 'Cooldown (s)', 'universal-telegram' ) . '</th><th></th></tr></thead><tbody>';
+	private function render_active_notifications(): void {
+		$rules = $this->rules->all();
 
-		foreach ( $this->rules->all() as $rule ) {
-			echo '<tr>';
-			printf(
-				'<td>%1$s</td><td>%2$s%3$s</td><td>%4$s</td><td>%5$s</td><td>%6$s</td>',
-				esc_html( $rule->name() ),
-				esc_html( $rule->event_type() ),
+		if ( array() === $rules ) {
+			echo '<p class="description">' . esc_html__( 'No notifications yet. Start from a template below, or create a custom one.', 'universal-telegram' ) . '</p>';
+			return;
+		}
+
+		echo '<ul class="ut-notification-list">';
+		foreach ( $rules as $rule ) {
+			echo '<li class="ut-notification-row">';
+			echo '<span class="ut-col-name">' . esc_html( $rule->name() ) . '</span>';
+			echo '<span class="ut-col-when">' . esc_html( EventCatalogLabels::event_type_label( $rule->event_type() ) ) .
 				// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- digest_badge() returns escaped HTML or ''.
-				$this->digest_badge( $rule->event_type() ),
-				$rule->enabled() ? esc_html__( 'Yes', 'universal-telegram' ) : esc_html__( 'No', 'universal-telegram' ),
-				esc_html( (string) $rule->priority() ),
-				esc_html( (string) $rule->cooldown_seconds() )
-			);
-			echo '<td>';
-			echo '<a class="button" href="' . esc_url( $this->rules_tab_url() . '&edit=' . $rule->id() ) . '">' . esc_html__( 'Edit', 'universal-telegram' ) . '</a> ';
-			echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" style="display:inline">';
+				$this->digest_badge( $rule->event_type() ) . '</span>';
+			echo '<span class="ut-col-destination">' . esc_html( $this->destination_label( $rule->bot_id(), $rule->destination_id() ) ) . '</span>';
+			echo '<span class="ut-status-pill ' . ( $rule->enabled() ? 'is-active' : 'is-disabled' ) . '">' .
+				( $rule->enabled() ? esc_html__( 'Active', 'universal-telegram' ) : esc_html__( 'Disabled', 'universal-telegram' ) ) . '</span>';
+
+			echo '<div class="ut-row-actions">';
+			echo '<a class="button" href="' . esc_url( $this->rules_tab_url() . '&edit=' . $rule->id() ) . '">' . esc_html__( 'Edit', 'universal-telegram' ) . '</a>';
+
+			echo '<details class="ut-row-menu"><summary aria-label="' . esc_attr__( 'More actions', 'universal-telegram' ) . '">&#8942;</summary>';
+			echo '<div class="ut-row-menu-content">';
+			echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 			wp_nonce_field( RuleBuilderRequestHandler::NONCE_ACTION );
 			echo '<input type="hidden" name="action" value="' . esc_attr( RuleBuilderRequestHandler::ADMIN_POST_ACTION ) . '" />';
 			echo '<input type="hidden" name="op" value="delete_rule" />';
 			echo '<input type="hidden" name="id" value="' . esc_attr( (string) $rule->id() ) . '" />';
 			submit_button( __( 'Delete', 'universal-telegram' ), 'delete', '', false );
 			echo '</form>';
-			echo '</td></tr>';
+			echo '</div></details>';
+			echo '</div>';
+
+			echo '</li>';
+		}
+		echo '</ul>';
+	}
+
+	/**
+	 * "<bot name> / <destination label>" for one rule's own bot/destination
+	 * pair, or a plain fallback if either was since deleted — the list must
+	 * never fatal on a dangling reference.
+	 *
+	 * @param int $bot_id         The rule's bot id.
+	 * @param int $destination_id The rule's destination id.
+	 *
+	 * @return string
+	 */
+	private function destination_label( int $bot_id, int $destination_id ): string {
+		$bot = $this->bots->find( $bot_id );
+
+		if ( null === $bot ) {
+			return __( 'Unknown destination', 'universal-telegram' );
 		}
 
-		echo '</tbody></table>';
+		foreach ( $this->destinations->for_bot( $bot_id ) as $destination ) {
+			if ( $destination->id() === $destination_id ) {
+				return $bot->name() . ' / ' . $destination->label();
+			}
+		}
+
+		return __( 'Unknown destination', 'universal-telegram' );
 	}
 
 	/**
@@ -593,17 +778,17 @@ final class RuleBuilderPage {
 	 * strategy"), the event type and conditions are locked and preserved
 	 * byte-for-byte via hidden fields instead of the editable controls.
 	 *
-	 * @param array{id: int, name: string, event_type: string, representable: bool, conditions: array<int, array<string, mixed>>, match_mode: string, conditions_json: string, bot_id: int, destination_id: int, template: string, enabled: bool, priority: int, cooldown_seconds: int}|null $editing The rule being edited, or null when creating.
+	 * @param array{id: int|null, name: string, event_type: string, representable: bool, conditions: array<int, array<string, mixed>>, match_mode: string, conditions_json: string, bot_id: int, destination_id: int, template: string, enabled: bool, priority: int, cooldown_seconds: int}|null $editing Prefill data — from an existing rule (id set) or a template (id null) — or null for a blank builder.
 	 */
 	private function render_rule_form( ?array $editing = null ): void {
 		$locked = null !== $editing && ! $editing['representable'];
 
-		echo '<h2>' . ( null === $editing ? esc_html__( 'Add rule', 'universal-telegram' ) : esc_html__( 'Edit rule', 'universal-telegram' ) ) . '</h2>';
+		echo '<h2>' . ( null === $editing || null === $editing['id'] ? esc_html__( 'Create notification', 'universal-telegram' ) : esc_html__( 'Edit notification', 'universal-telegram' ) ) . '</h2>';
 		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 		wp_nonce_field( RuleBuilderRequestHandler::NONCE_ACTION );
 		echo '<input type="hidden" name="action" value="' . esc_attr( RuleBuilderRequestHandler::ADMIN_POST_ACTION ) . '" />';
 		echo '<input type="hidden" name="op" value="save_rule" />';
-		if ( null !== $editing ) {
+		if ( null !== $editing && null !== $editing['id'] ) {
 			echo '<input type="hidden" name="id" value="' . esc_attr( (string) $editing['id'] ) . '" />';
 		}
 
@@ -654,13 +839,14 @@ final class RuleBuilderPage {
 		echo '</td></tr>';
 
 		$enabled_checked = null === $editing ? true : $editing['enabled'];
-		echo '<tr><th><label for="ut-rule-enabled">' . esc_html__( 'Enabled', 'universal-telegram' ) . '</label></th><td><input type="checkbox" id="ut-rule-enabled" name="enabled" value="1" ' . checked( $enabled_checked, true, false ) . ' /> <span class="description">' . esc_html__( 'Whether this rule is currently active.', 'universal-telegram' ) . '</span></td></tr>';
+		echo '<tr><th><label for="ut-rule-enabled">' . esc_html__( 'Status', 'universal-telegram' ) . '</label></th><td><label><input type="checkbox" id="ut-rule-enabled" name="enabled" value="1" ' . checked( $enabled_checked, true, false ) . ' /> ' . esc_html__( 'Active', 'universal-telegram' ) . '</label></td></tr>';
 
 		echo '</tbody></table>';
 
 		$this->render_advanced_delivery_options( $editing );
 
-		submit_button( null === $editing ? __( 'Save rule', 'universal-telegram' ) : __( 'Save changes', 'universal-telegram' ) );
+		$is_update = null !== $editing && null !== $editing['id'];
+		submit_button( $is_update ? __( 'Save changes', 'universal-telegram' ) : __( 'Create notification', 'universal-telegram' ) );
 		echo '</form>';
 
 		$this->render_builder_script();
@@ -745,7 +931,7 @@ final class RuleBuilderPage {
 	private function render_event_picker( string $selected_event_type = '', bool $locked = false ): void {
 		$woocommerce_active = $this->woocommerce_active();
 
-		echo '<p><label for="ut-rule-event-type" class="screen-reader-text">' . esc_html__( 'Event type', 'universal-telegram' ) . '</label>';
+		echo '<p><label for="ut-rule-event-type" class="screen-reader-text">' . esc_html__( 'When this happens', 'universal-telegram' ) . '</label>';
 		echo '<select id="ut-rule-event-type" name="' . ( $locked ? '' : 'event_type' ) . '"' . ( $locked ? ' disabled="disabled"' : '' ) . '>';
 
 		foreach ( self::EVENT_FAMILIES as $family ) {
@@ -1055,77 +1241,6 @@ final class RuleBuilderPage {
 
 			rebuildInsertFieldOptions();
 			schedulePreview();
-
-			var presetDataEl = document.getElementById( 'ut-preset-data' );
-			var presets = presetDataEl ? JSON.parse( presetDataEl.textContent || '[]' ) : [];
-			var customButton = document.getElementById( 'ut-custom-notification' );
-			var nameInput = document.getElementById( 'ut-rule-name' );
-
-			function clearConditionRows() {
-				while ( rows.firstChild ) {
-					rows.removeChild( rows.firstChild );
-				}
-				wrap.style.display = 'none';
-			}
-
-			function applyFields( data ) {
-				eventSelect.value = data.event_type;
-				eventSelect.dispatchEvent( new Event( 'change' ) );
-
-				clearConditionRows();
-				for ( var i = 0; i < data.conditions.length; i++ ) {
-					addRow( data.conditions[ i ] );
-				}
-
-				var matchModeInputs = document.getElementsByName( 'match_mode' );
-				for ( var m = 0; m < matchModeInputs.length; m++ ) {
-					matchModeInputs[ m ].checked = ( matchModeInputs[ m ].value === data.match_mode );
-				}
-
-				if ( typeof data.message !== 'undefined' ) {
-					templateTextarea.value = data.message;
-				}
-
-				schedulePreview();
-			}
-
-			function applyPreset( preset ) {
-				applyFields( preset );
-				nameInput.value = preset.title;
-				nameInput.focus();
-			}
-
-			var presetCards = document.querySelectorAll( '.ut-preset-card' );
-			for ( var p = 0; p < presetCards.length; p++ ) {
-				presetCards[ p ].addEventListener( 'click', function () {
-					var key = this.getAttribute( 'data-preset-key' );
-					for ( var c = 0; c < presetCards.length; c++ ) {
-						presetCards[ c ].classList.remove( 'is-selected' );
-					}
-					this.classList.add( 'is-selected' );
-					for ( var j = 0; j < presets.length; j++ ) {
-						if ( presets[ j ].key === key ) {
-							applyPreset( presets[ j ] );
-							break;
-						}
-					}
-				} );
-				presetCards[ p ].addEventListener( 'keydown', function ( event ) {
-					if ( event.key === 'Enter' || event.key === ' ' ) {
-						event.preventDefault();
-						this.click();
-					}
-				} );
-			}
-
-			if ( customButton ) {
-				customButton.addEventListener( 'click', function () {
-					nameInput.value = '';
-					templateTextarea.value = '';
-					clearConditionRows();
-					nameInput.focus();
-				} );
-			}
 		} )();
 		</script>
 		<?php

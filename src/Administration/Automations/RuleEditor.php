@@ -52,6 +52,38 @@ final class RuleEditor {
 	}
 
 	/**
+	 * Translates one PresetCatalog entry into the same prefill shape as
+	 * from_existing(), so a template's "Use template" link can reach the
+	 * builder via the exact same server-side rendering path editing an
+	 * existing rule already uses — no client-side JS field-filling is
+	 * needed. `id` is null (this is still a create, never an update), and
+	 * every preset's conditions are always representable by construction
+	 * (PresetCatalogTest enforces this), so the visual builder is never
+	 * locked for a template.
+	 *
+	 * @param array{event_type: string, conditions: array<int, array<string, mixed>>, match_mode: string, message: string, title: string} $preset One PresetCatalog entry.
+	 *
+	 * @return array{id: null, name: string, event_type: string, representable: bool, conditions: array<int, array<string, mixed>>, match_mode: string, conditions_json: string, bot_id: int, destination_id: int, template: string, enabled: bool, priority: int, cooldown_seconds: int}
+	 */
+	public static function from_preset( array $preset ): array {
+		return array(
+			'id'               => null,
+			'name'             => $preset['title'],
+			'event_type'       => $preset['event_type'],
+			'representable'    => true,
+			'conditions'       => $preset['conditions'],
+			'match_mode'       => $preset['match_mode'],
+			'conditions_json'  => (string) wp_json_encode( $preset['conditions'] ),
+			'bot_id'           => 0,
+			'destination_id'   => 0,
+			'template'         => $preset['message'],
+			'enabled'          => true,
+			'priority'         => 100,
+			'cooldown_seconds' => 0,
+		);
+	}
+
+	/**
 	 * Whether every condition clause of this rule is representable by the
 	 * visual builder: a catalogued field with one of its own permitted
 	 * friendly operators.

@@ -18,7 +18,7 @@ use WP_UnitTestCase;
 final class RuleBuilderPageAccessibilityTest extends WP_UnitTestCase {
 
 	protected function tearDown(): void {
-		unset( $_GET['save_error'] );
+		unset( $_GET['save_error'], $_GET['view'] );
 		parent::tearDown();
 	}
 
@@ -39,6 +39,8 @@ final class RuleBuilderPageAccessibilityTest extends WP_UnitTestCase {
 	}
 
 	public function test_priority_and_cooldown_are_collapsed_behind_advanced_delivery_options(): void {
+		$_GET['view'] = 'create';
+
 		ob_start();
 		$this->page()->render_tab_content();
 		$html = ob_get_clean();
@@ -48,7 +50,7 @@ final class RuleBuilderPageAccessibilityTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'Do not send repeated notifications more often than', $html );
 		$this->assertStringContainsString( 'name="cooldown_minutes"', $html );
 
-		// "Enabled" is plain-language and must stay outside the collapsed
+		// "Status" is plain-language and must stay outside the collapsed
 		// disclosure — it is not a nonessential control.
 		$enabled_position  = strpos( $html, 'id="ut-rule-enabled"' );
 		$details_position  = strpos( $html, '<details id="ut-advanced-delivery">' );
