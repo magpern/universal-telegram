@@ -82,6 +82,7 @@ use UniversalTelegram\Conversations\ConversationOutboundDispatcher;
 use UniversalTelegram\Conversations\ConversationOutboundHandler;
 use UniversalTelegram\Conversations\ConversationPurgeService;
 use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\ConversationTopicEligibility;
 use UniversalTelegram\Conversations\ImmediateDeliveryAttempt;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\OperatorAvailabilityRepository;
@@ -91,6 +92,8 @@ use UniversalTelegram\Conversations\Rest\ConversationsController;
 use UniversalTelegram\Conversations\RetentionCleanupHandler as ConversationRetentionCleanupHandler;
 use UniversalTelegram\Conversations\TopicCreationDispatcher;
 use UniversalTelegram\Conversations\TopicCreationHandler;
+use UniversalTelegram\Conversations\TopicDeletionDispatcher;
+use UniversalTelegram\Conversations\TopicDeletionHandler;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
@@ -474,6 +477,10 @@ final class Plugin {
 	 */
 	private ?TopicCreationDispatcher $topic_creation_dispatcher = null;
 
+	private ?TopicDeletionDispatcher $topic_deletion_dispatcher = null;
+
+	private ?ConversationTopicEligibility $conversation_topic_eligibility = null;
+
 	/**
 	 * The per-bot/per-destination circuit breaker, constructed by init().
 	 *
@@ -786,6 +793,27 @@ final class Plugin {
 		);
 		$this->handler_registry->register( TopicCreationHandler::JOB_TYPE, array( $topic_creation_handler, 'handle_job' ) );
 
+		$this->conversation_topic_eligibility = new ConversationTopicEligibility(
+			$this->conversation_repository,
+			$this->destination_repository
+		);
+		$this->conversation_purge_service     = new ConversationPurgeService(
+			$this->conversation_repository,
+			$this->message_repository,
+			$this->destination_repository,
+			$this->conversation_note_repository
+		);
+		$this->topic_deletion_dispatcher      = new TopicDeletionDispatcher( $this->conversation_repository, $this->dispatcher );
+		$topic_deletion_handler               = new TopicDeletionHandler(
+			$this->conversation_repository,
+			$this->bot_profile_repository,
+			$this->conversation_topic_eligibility,
+			$this->conversation_purge_service,
+			$this->telegram_api_client,
+			new RetryPolicy()
+		);
+		$this->handler_registry->register( TopicDeletionHandler::JOB_TYPE, array( $topic_deletion_handler, 'handle_job' ) );
+
 		$conversation_outbound_dispatcher = new ConversationOutboundDispatcher( $this->dispatcher );
 		$conversation_outbound_handler    = new ConversationOutboundHandler(
 			$this->message_repository,
@@ -851,13 +879,6 @@ final class Plugin {
 					as_schedule_recurring_action( time() + DAY_IN_SECONDS, DAY_IN_SECONDS, RetentionCleanupHandler::HOOK, array(), WorkerRunner::GROUP );
 				}
 			}
-		);
-
-		$this->conversation_purge_service = new ConversationPurgeService(
-			$this->conversation_repository,
-			$this->message_repository,
-			$this->destination_repository,
-			$this->conversation_note_repository
 		);
 
 		$this->conversation_retention_cleanup_handler = new ConversationRetentionCleanupHandler(
@@ -1748,6 +1769,24 @@ final class Plugin {
 	 */
 	public function topic_creation_dispatcher(): ?TopicCreationDispatcher {
 		return $this->topic_creation_dispatcher;
+	}
+
+	/**
+	 * Topic deletion dispatcher (M07.1).
+	 *
+	 * @return TopicDeletionDispatcher|null
+	 */
+	public function topic_deletion_dispatcher(): ?TopicDeletionDispatcher {
+		return $this->topic_deletion_dispatcher;
+	}
+
+	/**
+	 * Conversation topic remote-delete eligibility gate (M07.1).
+	 *
+	 * @return ConversationTopicEligibility|null
+	 */
+	public function conversation_topic_eligibility(): ?ConversationTopicEligibility {
+		return $this->conversation_topic_eligibility;
 	}
 
 	/**
