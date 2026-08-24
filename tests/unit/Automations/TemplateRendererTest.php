@@ -67,7 +67,9 @@ final class TemplateRendererTest extends TestCase {
 
 		$result = $renderer->render( 'Value: [{{ subject.post_id }}]', $this->envelope( $registry ), array() );
 
-		$this->assertSame( 'Value: []', $result );
+		// The literal "[" and "]" are themselves MarkdownV2-reserved and are
+		// escaped like any other literal template text.
+		$this->assertSame( 'Value: \\[\\]', $result );
 	}
 
 	public function test_a_missing_field_renders_as_empty_string(): void {
@@ -110,11 +112,25 @@ final class TemplateRendererTest extends TestCase {
 		$registry = $this->registry();
 		$renderer = new TemplateRenderer();
 
-		// A token that is not the fixed {{ field.path }} shape is left
-		// entirely untouched — proving there is no broader expression
-		// grammar to exploit.
+		// A token that is not the fixed {{ field.path }} shape is never
+		// evaluated as an expression — proving there is no broader
+		// expression grammar to exploit. It is still literal template text,
+		// so it is still MarkdownV2-escaped like any other literal text.
 		$result = $renderer->render( '{{ subject.post_id + 1 }}', $this->envelope( $registry ), array( 'subject.post_id' ) );
 
-		$this->assertSame( '{{ subject.post_id + 1 }}', $result );
+		$this->assertSame( '\\{\\{ subject\\.post\\_id \\+ 1 \\}\\}', $result );
+	}
+
+	public function test_literal_template_text_surrounding_a_token_is_markdown_v2_escaped(): void {
+		$registry = $this->registry();
+		$renderer = new TemplateRenderer();
+
+		// Real preset/admin-authored templates put plain free-form
+		// punctuation around tokens (e.g. "Product #123 (quantity: 2).") —
+		// every literal MarkdownV2-reserved character must be escaped, or
+		// Telegram rejects the whole message and it is dead-lettered.
+		$result = $renderer->render( 'Product #{{ subject.post_id }} added (in stock).', $this->envelope( $registry ), array( 'subject.post_id' ) );
+
+		$this->assertSame( 'Product \\#17 added \\(in stock\\)\\.', $result );
 	}
 }

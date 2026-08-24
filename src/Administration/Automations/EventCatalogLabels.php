@@ -97,6 +97,7 @@ final class EventCatalogLabels {
 		'subject.refund_id'            => 'Refund ID',
 		'payload.refund_amount'        => 'Refund amount',
 		'subject.product_id'           => 'Product ID',
+		'payload.product_name'         => 'Product name',
 		'payload.stock_quantity'       => 'Stock quantity',
 		'payload.product_sku'          => 'Product SKU',
 		'payload.quantity'             => 'Quantity added',

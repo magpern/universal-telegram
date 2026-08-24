@@ -59,6 +59,13 @@ indicator, so administrators have an accurate signal rather than an unearned exa
   stays editable with its conditions preserved exactly and a read-only compatibility notice,
   never silently altered. Condition evaluation gains an explicit all/any match mode and three
   additional comparison operators, defaulting to every existing rule's own current behavior.
+* Fixed: a notification's own literal message text (e.g. "Product #123 added (in stock).") was
+  never escaped for Telegram's MarkdownV2 parse mode, only the values it substituted — any literal
+  `.`, `#`, `(`, `)`, etc. caused Telegram to reject the message outright, dead-lettering it. Every
+  built-in preset was affected. Literal template text is now escaped exactly like a substituted
+  field value.
+* The "Added to cart" preset now names the product (a new `payload.product_name` field on the
+  `woocommerce.cart_item_added` event) instead of showing only its numeric product ID.
 
 = 0.14.1 =
 * When WordPress deletes a destination (or purges a conversation that exclusively

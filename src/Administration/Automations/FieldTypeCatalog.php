@@ -244,6 +244,11 @@ final class FieldTypeCatalog {
 			'operators'     => self::NUMERIC_OPERATORS,
 			'preview_value' => '501',
 		),
+		'payload.product_name'      => array(
+			'type'          => self::TYPE_TEXT,
+			'operators'     => self::TEXT_OPERATORS,
+			'preview_value' => 'Sample Product',
+		),
 		'payload.stock_quantity'    => array(
 			'type'          => self::TYPE_NUMBER,
 			'operators'     => self::NUMERIC_OPERATORS,

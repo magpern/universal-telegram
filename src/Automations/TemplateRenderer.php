@@ -16,15 +16,22 @@ use UniversalTelegram\Events\EventEnvelope;
  * the allowed-fields list with that field's value from the event,
  * MarkdownV2-escaped for Telegram. A token referencing a disallowed or
  * missing field renders as an empty string — never a PHP notice, never the
- * raw unescaped value, never a fatal. No conditionals, loops, or function
- * calls exist in this grammar (M02 plan §7.4).
+ * raw unescaped value, never a fatal. The template's own literal text is
+ * MarkdownV2-escaped too, so an admin-authored template is free-form text,
+ * never markup an admin must hand-escape themselves. No conditionals,
+ * loops, or function calls exist in this grammar (M02 plan §7.4).
  */
 final class TemplateRenderer {
 
 	private const TOKEN_PATTERN = '/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/';
 
 	/**
-	 * Renders a template against one event occurrence.
+	 * Renders a template against one event occurrence. The template's own
+	 * literal text (everything outside {{ field.path }} tokens) is
+	 * MarkdownV2-escaped exactly like a resolved token's value — an
+	 * admin-authored template is free-form text, not markup, so a literal
+	 * `.`, `#`, `(`, `)`, etc. must reach Telegram escaped or every message
+	 * containing one is rejected outright and dead-lettered.
 	 *
 	 * @param string             $template       The message template.
 	 * @param EventEnvelope      $event          The event occurrence.
@@ -33,15 +40,24 @@ final class TemplateRenderer {
 	 * @return string
 	 */
 	public function render( string $template, EventEnvelope $event, array $allowed_fields ): string {
-		$result = preg_replace_callback(
-			self::TOKEN_PATTERN,
-			function ( array $matches ) use ( $event, $allowed_fields ): string {
-				return $this->resolve_token( $matches[1], $event, $allowed_fields );
-			},
-			$template
-		);
+		$parts = preg_split( self::TOKEN_PATTERN, $template, -1, PREG_SPLIT_DELIM_CAPTURE );
 
-		return null === $result ? '' : $result;
+		if ( false === $parts ) {
+			return '';
+		}
+
+		$result = '';
+
+		foreach ( $parts as $index => $part ) {
+			// preg_split with PREG_SPLIT_DELIM_CAPTURE alternates literal
+			// text (even indices) with the captured token field name (odd
+			// indices).
+			$result .= 0 === $index % 2
+				? $this->escape_markdown_v2( $part )
+				: $this->resolve_token( $part, $event, $allowed_fields );
+		}
+
+		return $result;
 	}
 
 	/**

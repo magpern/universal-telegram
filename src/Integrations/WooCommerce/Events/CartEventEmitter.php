@@ -33,6 +33,7 @@ final class CartEventEmitter {
 		$fields = array(
 			'actor.user_id'        => Classification::INTERNAL,
 			'subject.product_id'   => Classification::PUBLIC,
+			'payload.product_name' => Classification::PUBLIC,
 			'payload.quantity'     => Classification::PUBLIC,
 			'payload.variation_id' => Classification::PUBLIC,
 			'payload.cart_total'   => Classification::PUBLIC,
@@ -44,7 +45,7 @@ final class CartEventEmitter {
 			1,
 			$fields,
 			array_keys( $fields ),
-			array( 'subject.product_id', 'payload.quantity', 'payload.variation_id', 'payload.cart_total', 'payload.currency' )
+			array( 'subject.product_id', 'payload.product_name', 'payload.quantity', 'payload.variation_id', 'payload.cart_total', 'payload.currency' )
 		);
 	}
 
@@ -74,6 +75,8 @@ final class CartEventEmitter {
 			return;
 		}
 
+		$product = wc_get_product( $product_id );
+
 		$data = array(
 			'actor'   => array(
 				'user_id' => get_current_user_id(),
@@ -82,6 +85,7 @@ final class CartEventEmitter {
 				'product_id' => $product_id,
 			),
 			'payload' => array(
+				'product_name' => false !== $product ? $product->get_name() : '',
 				'quantity'     => $quantity,
 				'variation_id' => $variation_id,
 				'cart_total'   => (float) WC()->cart->get_total( 'edit' ),

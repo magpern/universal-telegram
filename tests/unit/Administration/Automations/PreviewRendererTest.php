@@ -54,7 +54,9 @@ final class PreviewRendererTest extends TestCase {
 			'New order #{{subject.order_id}} — {{payload.order_total}} {{payload.currency}}.'
 		);
 
-		$this->assertSame( 'New order #1042 — 49\.90 EUR.', $preview );
+		// The template's own literal text ("New order #", the trailing ".")
+		// is MarkdownV2-escaped exactly like a substituted value.
+		$this->assertSame( 'New order \\#1042 — 49\\.90 EUR\\.', $preview );
 	}
 
 	public function test_a_disallowed_token_renders_empty_never_the_raw_placeholder(): void {

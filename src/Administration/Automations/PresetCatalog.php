@@ -102,7 +102,7 @@ final class PresetCatalog {
 			'event_type'           => 'woocommerce.cart_item_added',
 			'conditions'           => array(),
 			'match_mode'           => 'all',
-			'message'              => 'Product #{{subject.product_id}} added to cart (quantity: {{payload.quantity}}).',
+			'message'              => '{{payload.product_name}} added to cart (quantity: {{payload.quantity}}).',
 			'requires_woocommerce' => true,
 		),
 		array(
