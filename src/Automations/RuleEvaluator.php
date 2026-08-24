@@ -122,10 +122,10 @@ class RuleEvaluator {
 	}
 
 	/**
-	 * Evaluates every clause; returns null if the rule matches, or a fixed
-	 * rejection reason code otherwise. An unknown field or operator makes
-	 * the rule evaluate to "rejected — invalid configuration" (M02 plan
-	 * §7.2, §7.3), regardless of match_mode. An empty condition list always
+	 * Evaluates every clause of one rule against one event, never short-
+	 * circuiting, so every clause's own result is available to a caller
+	 * that needs to explain a non-match honestly (M08.2 plan §1) — not
+	 * only the first failing clause. An empty condition list always
 	 * matches. A clause whose field is absent from the event
 	 * (EventEnvelope::value_at() returns null) never matches, for every
 	 * operator without exception (ADR-0032) — absence is never conflated
@@ -134,7 +134,102 @@ class RuleEvaluator {
 	 * clause must have a present field and match. For match_mode='any', the
 	 * rule matches as soon as one clause with a present field matches; if
 	 * every clause's field is absent, or no present-field clause matches,
-	 * the rule does not match.
+	 * the rule does not match. An unknown field or operator, on any clause,
+	 * makes the overall trace non-matched regardless of match_mode — the
+	 * same "rejected — invalid configuration" outcome production's own
+	 * rejection_reason() has always derived from this evaluation (M02 plan
+	 * §7.2, §7.3), unchanged.
+	 *
+	 * @param NotificationRule $rule  The rule to evaluate.
+	 * @param EventEnvelope    $event The event occurrence.
+	 *
+	 * @return RuleMatchTrace
+	 */
+	public function evaluate_conditions( NotificationRule $rule, EventEnvelope $event ): RuleMatchTrace {
+		$conditions = $rule->conditions();
+
+		if ( array() === $conditions ) {
+			return new RuleMatchTrace( true, $rule->match_mode(), array() );
+		}
+
+		$allowed_fields  = $this->registry->allowed_variable_fields_for( $event->event_type() );
+		$clause_results  = array();
+
+		foreach ( $conditions as $clause ) {
+			$clause_results[] = $this->evaluate_clause( $clause, $event, $allowed_fields );
+		}
+
+		return new RuleMatchTrace( $this->overall_matched( $clause_results, $rule->match_mode() ), $rule->match_mode(), $clause_results );
+	}
+
+	/**
+	 * Evaluates one condition clause in isolation. Pure, no side effects.
+	 *
+	 * @param array<string, mixed> $clause         The clause: field/operator/value.
+	 * @param EventEnvelope        $event          The event occurrence.
+	 * @param array<int, string>   $allowed_fields The event type's own allowed variable fields.
+	 *
+	 * @return ConditionClauseResult
+	 */
+	private function evaluate_clause( array $clause, EventEnvelope $event, array $allowed_fields ): ConditionClauseResult {
+		$raw_field   = $clause['field'] ?? null;
+		$field       = is_string( $raw_field ) ? $raw_field : '';
+		$field_valid = is_string( $raw_field ) && in_array( $raw_field, $allowed_fields, true );
+
+		$raw_operator   = (string) ( $clause['operator'] ?? '' );
+		$operator_enum  = ConditionOperator::tryFrom( $raw_operator );
+		$operator_valid = null !== $operator_enum;
+
+		$expected      = $clause['value'] ?? null;
+		$actual        = $event->value_at( $field );
+		$field_present = null !== $actual;
+
+		$matched = $field_valid && $operator_valid && $field_present && $operator_enum->matches( $actual, $expected );
+
+		return new ConditionClauseResult( $field, $raw_operator, $expected, $actual, $field_present, $matched, $field_valid, $operator_valid );
+	}
+
+	/**
+	 * The overall matched flag for a full set of clause results, per
+	 * match_mode. Any invalid field/operator on any clause forces false
+	 * regardless of mode — invalid configuration can never truly match.
+	 *
+	 * @param array<int, ConditionClauseResult> $clause_results Every clause's own result.
+	 * @param string                             $match_mode     'all' or 'any'.
+	 *
+	 * @return bool
+	 */
+	private function overall_matched( array $clause_results, string $match_mode ): bool {
+		foreach ( $clause_results as $clause_result ) {
+			if ( ! $clause_result->field_valid() || ! $clause_result->operator_valid() ) {
+				return false;
+			}
+		}
+
+		if ( 'any' === $match_mode ) {
+			foreach ( $clause_results as $clause_result ) {
+				if ( $clause_result->matched() ) {
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		foreach ( $clause_results as $clause_result ) {
+			if ( ! $clause_result->matched() ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Translates a full RuleMatchTrace into the fixed rejection reason-code
+	 * strings dispatch-log rows have always used — derived from the same
+	 * evaluate_conditions() trace a tester consumes, not a second
+	 * evaluation algorithm.
 	 *
 	 * @param NotificationRule $rule  The rule to evaluate.
 	 * @param EventEnvelope    $event The event occurrence.
@@ -142,48 +237,19 @@ class RuleEvaluator {
 	 * @return string|null
 	 */
 	private function rejection_reason( NotificationRule $rule, EventEnvelope $event ): ?string {
-		$conditions = $rule->conditions();
+		$trace = $this->evaluate_conditions( $rule, $event );
 
-		if ( array() === $conditions ) {
-			return null;
-		}
-
-		$allowed_fields = $this->registry->allowed_variable_fields_for( $event->event_type() );
-		$any_matched    = false;
-
-		foreach ( $conditions as $clause ) {
-			$field = $clause['field'] ?? null;
-
-			if ( ! is_string( $field ) || ! in_array( $field, $allowed_fields, true ) ) {
+		foreach ( $trace->clause_results() as $clause_result ) {
+			if ( ! $clause_result->field_valid() ) {
 				return 'invalid_condition_field';
 			}
 
-			$operator = ConditionOperator::tryFrom( (string) ( $clause['operator'] ?? '' ) );
-
-			if ( null === $operator ) {
+			if ( ! $clause_result->operator_valid() ) {
 				return 'invalid_condition_operator';
 			}
-
-			$actual         = $event->value_at( $field );
-			$clause_matched = null !== $actual && $operator->matches( $actual, $clause['value'] ?? null );
-
-			if ( 'any' === $rule->match_mode() ) {
-				if ( $clause_matched ) {
-					$any_matched = true;
-				}
-				continue;
-			}
-
-			if ( ! $clause_matched ) {
-				return 'condition_not_matched';
-			}
 		}
 
-		if ( 'any' === $rule->match_mode() ) {
-			return $any_matched ? null : 'condition_not_matched';
-		}
-
-		return null;
+		return $trace->matched() ? null : 'condition_not_matched';
 	}
 
 	/**
