@@ -884,7 +884,9 @@ final class Plugin {
 		$this->conversation_retention_cleanup_handler = new ConversationRetentionCleanupHandler(
 			$this->conversation_repository,
 			$this->message_repository,
-			$this->conversation_purge_service
+			$this->conversation_purge_service,
+			$this->conversation_topic_eligibility,
+			$this->topic_deletion_dispatcher
 		);
 		add_action( ConversationRetentionCleanupHandler::HOOK, array( $this->conversation_retention_cleanup_handler, 'run' ) );
 
