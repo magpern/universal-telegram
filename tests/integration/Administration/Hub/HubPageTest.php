@@ -5,6 +5,7 @@
 
 namespace UniversalTelegram\Tests\Integration\Administration\Hub;
 
+use UniversalTelegram\Administration\Automations\NotificationTesterPage;
 use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Administration\Hub\Tab;
 use UniversalTelegram\Administration\Hub\TabRegistry;
@@ -123,5 +124,46 @@ final class HubPageTest extends WP_UnitTestCase {
 
 		$this->assertMatchesRegularExpression( '/nav-tab-active" aria-current="page">Events</', $output );
 		$this->assertStringNotContainsString( 'nav-tab-active" aria-current="page">Overview<', $output );
+	}
+
+	private function make_registry_with_test_notifications_tab(): TabRegistry {
+		$registry = $this->make_registry();
+		$registry->register(
+			new Tab(
+				NotificationTesterPage::TAB_ID,
+				'Test notifications',
+				CapabilityRegistrar::MANAGE_AUTOMATIONS,
+				static function (): void {
+					echo 'test-notifications-content';
+				}
+			)
+		);
+
+		return $registry;
+	}
+
+	/**
+	 * M08.2 plan §4/§6: a bookmarked `?tab=simulator` URL from before the
+	 * Simulator tab was renamed must keep landing on its own content, not
+	 * silently fall back to the default Overview tab.
+	 */
+	public function test_the_legacy_simulator_tab_id_resolves_to_test_notifications(): void {
+		$_GET['tab'] = 'simulator';
+		$page        = new HubPage( $this->make_registry_with_test_notifications_tab() );
+
+		$this->assertSame( NotificationTesterPage::TAB_ID, $page->resolve_tab_id() );
+	}
+
+	public function test_a_legacy_simulator_bookmark_renders_the_test_notifications_tabs_content_not_the_default(): void {
+		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $admin_id );
+		$_GET['tab'] = 'simulator';
+
+		ob_start();
+		( new HubPage( $this->make_registry_with_test_notifications_tab() ) )->render();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'test-notifications-content', $output );
+		$this->assertStringNotContainsString( 'overview-content', $output );
 	}
 }

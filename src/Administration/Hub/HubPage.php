@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Hub;
 
+use UniversalTelegram\Administration\Automations\NotificationTesterPage;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 
 /**
@@ -27,6 +28,25 @@ use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 final class HubPage {
 
 	public const SLUG = 'universal-telegram';
+
+	/**
+	 * Old tab id => its current replacement id — the tab-id-level
+	 * counterpart of LegacyUrlRedirector's own page-slug-level alias table
+	 * (ADR-0020's "old identifiers preserved permanently" pattern),
+	 * consulted before the registry lookup so a bookmarked
+	 * `?tab=<old id>` URL keeps landing on the tab it always did, even
+	 * after that tab is renamed. Without this, resolve_tab_id() would
+	 * silently fall back to the registry's default tab for any id no
+	 * longer registered — indistinguishable from a typo — which is the
+	 * wrong behavior for a deliberately renamed tab (M08.2 plan §4/§6:
+	 * `simulator` renamed to NotificationTesterPage::TAB_ID). Reusable for
+	 * any future tab rename, not special-cased to this one.
+	 *
+	 * @var array<string, string>
+	 */
+	private const LEGACY_TAB_ALIASES = array(
+		'simulator' => NotificationTesterPage::TAB_ID,
+	);
 
 	/**
 	 * Constructor.
@@ -49,12 +69,17 @@ final class HubPage {
 	}
 
 	/**
-	 * Resolves the requested tab id. An absent or unregistered value is
-	 * treated identically to no request at all: the registry's default
-	 * tab id, never an error.
+	 * Resolves the requested tab id. A known legacy alias is transparently
+	 * resolved to its current replacement id first. An absent or
+	 * otherwise-unregistered value is treated identically to no request at
+	 * all: the registry's default tab id, never an error.
 	 */
 	public function resolve_tab_id(): string {
 		$requested = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( (string) $_GET['tab'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+		if ( isset( self::LEGACY_TAB_ALIASES[ $requested ] ) ) {
+			$requested = self::LEGACY_TAB_ALIASES[ $requested ];
+		}
 
 		if ( '' !== $requested && null !== $this->tabs->get( $requested ) ) {
 			return $requested;
