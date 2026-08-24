@@ -856,7 +856,8 @@ final class Plugin {
 		$this->conversation_purge_service = new ConversationPurgeService(
 			$this->conversation_repository,
 			$this->message_repository,
-			$this->destination_repository
+			$this->destination_repository,
+			$this->conversation_note_repository
 		);
 
 		$this->conversation_retention_cleanup_handler = new ConversationRetentionCleanupHandler(

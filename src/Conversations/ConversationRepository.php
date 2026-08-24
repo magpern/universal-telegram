@@ -366,6 +366,8 @@ class ConversationRepository {
 	 * topic can ever match; a 'pending' or 'failed' topic_creation_state
 	 * never does, since no reply could legitimately reference it yet.
 	 *
+	 * @deprecated Prefer find_by_bot_chat_thread(); thread id alone is not identity (M07.1).
+	 *
 	 * @param int $bot_id            The receiving bot's primary key.
 	 * @param int $telegram_topic_id The Telegram forum topic id from the inbound update.
 	 *
@@ -389,6 +391,188 @@ class ConversationRepository {
 		);
 
 		return null === $row ? null : $this->hydrate( $row );
+	}
+
+	/**
+	 * Finds a conversation by the exact Telegram identity tuple
+	 * `(bot_id, chat_id, message_thread_id)`. A thread id alone is never
+	 * sufficient (M07.1, docs/adr/0031).
+	 *
+	 * @param int    $bot_id            The receiving bot's primary key.
+	 * @param string $chat_id           Telegram chat id from the update.
+	 * @param int    $message_thread_id Forum topic / message_thread_id from the update.
+	 *
+	 * @return Conversation|null
+	 */
+	public function find_by_bot_chat_thread( int $bot_id, string $chat_id, int $message_thread_id ): ?Conversation {
+		if ( ! $this->schema_health->is_available() || $message_thread_id <= 1 || '' === $chat_id ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$conversations = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$destinations  = $wpdb->prefix . Migrator::DESTINATIONS_TABLE;
+
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT c.* FROM {$conversations} c
+					INNER JOIN {$destinations} d ON d.id = c.destination_id
+					WHERE c.bot_id = %d
+					  AND c.topic_creation_state = 'created'
+					  AND c.telegram_topic_id = %d
+					  AND d.chat_id = %s
+					  AND d.message_thread_id = %d
+					  AND d.bot_id = %d
+					LIMIT 1",
+				$bot_id,
+				$message_thread_id,
+				$chat_id,
+				$message_thread_id,
+				$bot_id
+			),
+			ARRAY_A
+		);
+
+		return null === $row ? null : $this->hydrate( $row );
+	}
+
+	/**
+	 * Finds the conversation that exclusively owns a destination row, if any.
+	 *
+	 * @param int $destination_id The destination primary key.
+	 *
+	 * @return Conversation|null
+	 */
+	public function find_by_destination_id( int $destination_id ): ?Conversation {
+		if ( ! $this->schema_health->is_available() || $destination_id <= 0 ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$row   = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT * FROM {$table} WHERE destination_id = %d LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$destination_id
+			),
+			ARRAY_A
+		);
+
+		return null === $row ? null : $this->hydrate( $row );
+	}
+
+	/**
+	 * How many conversation rows reference the given destination id.
+	 *
+	 * @param int $destination_id The destination primary key.
+	 *
+	 * @return int
+	 */
+	public function count_by_destination_id( int $destination_id ): int {
+		if ( ! $this->schema_health->is_available() || $destination_id <= 0 ) {
+			return 0;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$table} WHERE destination_id = %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$destination_id
+			)
+		);
+	}
+
+	/**
+	 * Compare-and-set into delete_pending with a time-bound claim lease.
+	 *
+	 * @param int $id            The conversation primary key.
+	 * @param int $lease_seconds Claim duration in seconds.
+	 *
+	 * @return string|null The lease expiry datetime on success, or null if the CAS lost.
+	 */
+	public function try_begin_topic_deletion( int $id, int $lease_seconds = 60 ): ?string {
+		if ( ! $this->schema_health->is_available() ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$table        = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$now          = current_time( 'mysql', true );
+		$lease_expiry = gmdate( 'Y-m-d H:i:s', strtotime( $now ) + $lease_seconds );
+
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"UPDATE {$table}
+					SET topic_lifecycle_state = %s,
+					    topic_lifecycle_code = NULL,
+					    topic_delete_claim_expires_at = %s,
+					    updated_at = %s
+					WHERE id = %d
+					  AND status = %s
+					  AND topic_lifecycle_state IN ( %s, %s, %s )
+					  AND ( topic_delete_claim_expires_at IS NULL
+					        OR topic_delete_claim_expires_at < %s
+					        OR topic_lifecycle_state <> %s )",
+				TopicLifecycleState::DELETE_PENDING,
+				$lease_expiry,
+				$now,
+				$id,
+				ConversationStatus::ARCHIVED,
+				TopicLifecycleState::ACTIVE,
+				TopicLifecycleState::UNAVAILABLE,
+				TopicLifecycleState::DELETE_FAILED,
+				$now,
+				TopicLifecycleState::DELETE_PENDING
+			)
+		);
+
+		return ( false !== $updated && $updated > 0 ) ? $lease_expiry : null;
+	}
+
+	/**
+	 * Sets topic lifecycle state and optional fixed code.
+	 *
+	 * @param int         $id    Conversation primary key.
+	 * @param string      $state TopicLifecycleState value.
+	 * @param string|null $code  Fixed normalized code, or null.
+	 *
+	 * @return bool
+	 */
+	public function mark_topic_lifecycle( int $id, string $state, ?string $code = null ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		if ( ! in_array( $state, TopicLifecycleState::all(), true ) ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'topic_lifecycle_state'         => $state,
+				'topic_lifecycle_code'          => $code,
+				'topic_delete_claim_expires_at' => null,
+				'updated_at'                    => current_time( 'mysql', true ),
+			),
+			array( 'id' => $id ),
+			array( '%s', '%s', '%s', '%s' ),
+			array( '%d' )
+		);
+
+		return false !== $updated;
 	}
 
 	/**
@@ -529,11 +713,13 @@ class ConversationRepository {
 				'topic_creation_state'   => 'created',
 				'telegram_topic_id'      => $telegram_topic_id,
 				'destination_id'         => $destination_id,
+				'topic_lifecycle_state'  => TopicLifecycleState::ACTIVE,
+				'topic_lifecycle_code'   => null,
 				'topic_claim_expires_at' => null,
 				'updated_at'             => current_time( 'mysql', true ),
 			),
 			array( 'id' => $id ),
-			array( '%s', '%d', '%d', '%s', '%s' ),
+			array( '%s', '%d', '%d', '%s', '%s', '%s', '%s' ),
 			array( '%d' )
 		);
 
@@ -1056,7 +1242,10 @@ class ConversationRepository {
 			null === $row['display_name_ciphertext'] ? null : (string) $row['display_name_ciphertext'],
 			isset( $row['owner_user_id'] ) ? (int) $row['owner_user_id'] : null,
 			isset( $row['assignee_last_seen_message_id'] ) ? (int) $row['assignee_last_seen_message_id'] : null,
-			isset( $row['ai_ack_policy_version'] ) ? (string) $row['ai_ack_policy_version'] : null
+			isset( $row['ai_ack_policy_version'] ) ? (string) $row['ai_ack_policy_version'] : null,
+			isset( $row['topic_lifecycle_state'] ) ? (string) $row['topic_lifecycle_state'] : TopicLifecycleState::NONE,
+			isset( $row['topic_lifecycle_code'] ) && null !== $row['topic_lifecycle_code'] ? (string) $row['topic_lifecycle_code'] : null,
+			isset( $row['topic_delete_claim_expires_at'] ) && null !== $row['topic_delete_claim_expires_at'] ? (string) $row['topic_delete_claim_expires_at'] : null
 		);
 	}
 

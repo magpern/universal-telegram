@@ -44,6 +44,9 @@ final class Conversation {
 	 * @param int|null    $owner_user_id            The authenticated WordPress user this conversation belongs to, or null for a legacy/ownerless row or one whose owner account was deleted (M06.3.1, ADR-0025).
 	 * @param int|null    $assignee_last_seen_message_id The highest message id the currently assigned operator has viewed, or null if unset/reset on reassignment (M07, docs/adr/0026).
 	 * @param string|null $ai_ack_policy_version          Set only if the visitor explicitly acknowledged AI processing at creation time while it was enabled; null means permanently AI-draft-ineligible (M09, docs/adr/0028 decision 1). Distinct from consent_state, which M09 does not use.
+	 * @param string      $topic_lifecycle_state          Telegram topic health / delete workflow (M07.1, docs/adr/0031).
+	 * @param string|null $topic_lifecycle_code           Fixed normalized code only, never raw Telegram text.
+	 * @param string|null $topic_delete_claim_expires_at  When the remote-delete claim/lease expires, or null.
 	 */
 	public function __construct(
 		private readonly int $id,
@@ -68,7 +71,10 @@ final class Conversation {
 		private readonly ?string $display_name_ciphertext = null,
 		private readonly ?int $owner_user_id = null,
 		private readonly ?int $assignee_last_seen_message_id = null,
-		private readonly ?string $ai_ack_policy_version = null
+		private readonly ?string $ai_ack_policy_version = null,
+		private readonly string $topic_lifecycle_state = TopicLifecycleState::NONE,
+		private readonly ?string $topic_lifecycle_code = null,
+		private readonly ?string $topic_delete_claim_expires_at = null
 	) {}
 
 	/**
@@ -318,5 +324,32 @@ final class Conversation {
 	 */
 	public function ai_ack_policy_version(): ?string {
 		return $this->ai_ack_policy_version;
+	}
+
+	/**
+	 * Telegram topic health / remote-delete workflow state (M07.1).
+	 *
+	 * @return string
+	 */
+	public function topic_lifecycle_state(): string {
+		return $this->topic_lifecycle_state;
+	}
+
+	/**
+	 * Fixed normalized topic-lifecycle code, never raw Telegram text.
+	 *
+	 * @return string|null
+	 */
+	public function topic_lifecycle_code(): ?string {
+		return $this->topic_lifecycle_code;
+	}
+
+	/**
+	 * When the remote-delete claim/lease expires, or null if unclaimed.
+	 *
+	 * @return string|null
+	 */
+	public function topic_delete_claim_expires_at(): ?string {
+		return $this->topic_delete_claim_expires_at;
 	}
 }

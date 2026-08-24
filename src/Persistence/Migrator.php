@@ -169,6 +169,7 @@ class Migrator {
 			26 => array( array( $this, 'step_26_create_intelligence_settings_state_table' ), array( $this, 'verify_step_26' ) ),
 			27 => array( array( $this, 'step_27_create_operational_alert_state_table' ), array( $this, 'verify_step_27' ) ),
 			28 => array( array( $this, 'step_28_create_operational_summary_ai_drafts_table' ), array( $this, 'verify_step_28' ) ),
+			29 => array( array( $this, 'step_29_add_conversation_topic_lifecycle_columns' ), array( $this, 'verify_step_29' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -1768,6 +1769,126 @@ class Migrator {
 			$wpdb->prefix . self::OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE,
 			array( 'id', 'summary_run_id', 'draft_uuid', 'status', 'provider', 'model', 'body_ciphertext', 'requested_by_user_id', 'reviewed_by_user_id', 'lease_token', 'generation_lease_expires_at', 'attempt_count' )
 		);
+	}
+
+	/**
+	 * Adds topic-lifecycle columns and exclusive destination_id ownership
+	 * (M07.1, docs/adr/0031): topic_lifecycle_state/code, delete claim
+	 * lease, backfill active for created topics, null duplicate
+	 * destination_id references, then UNIQUE(destination_id).
+	 */
+	private function step_29_add_conversation_topic_lifecycle_columns(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::CONVERSATIONS_TABLE;
+		$destinations    = $wpdb->prefix . self::DESTINATIONS_TABLE;
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( ! $this->table_has_columns( $table, array( 'topic_lifecycle_state' ) ) ) {
+			$wpdb->query(
+				"ALTER TABLE {$table}
+					ADD COLUMN topic_lifecycle_state VARCHAR(16) NOT NULL DEFAULT 'none'"
+			);
+		}
+
+		if ( ! $this->table_has_columns( $table, array( 'topic_lifecycle_code' ) ) ) {
+			$wpdb->query(
+				"ALTER TABLE {$table}
+					ADD COLUMN topic_lifecycle_code VARCHAR(64) NULL"
+			);
+		}
+
+		if ( ! $this->table_has_columns( $table, array( 'topic_delete_claim_expires_at' ) ) ) {
+			$wpdb->query(
+				"ALTER TABLE {$table}
+					ADD COLUMN topic_delete_claim_expires_at DATETIME NULL"
+			);
+		}
+
+		if ( ! $this->table_has_index( $table, 'topic_lifecycle_state' ) ) {
+			$wpdb->query( "ALTER TABLE {$table} ADD KEY topic_lifecycle_state (topic_lifecycle_state)" );
+		}
+
+		$wpdb->query(
+			"UPDATE {$table}
+				SET topic_lifecycle_state = 'active'
+				WHERE topic_creation_state = 'created'
+				  AND topic_lifecycle_state = 'none'"
+		);
+
+		// Exclusive destination ownership: keep one owner per destination_id
+		// (prefer created topic matching the destination's thread; else lowest id),
+		// then UNIQUE. Extras become remote-ineligible.
+		$duplicates = $wpdb->get_col(
+			"SELECT destination_id FROM {$table}
+				WHERE destination_id IS NOT NULL
+				GROUP BY destination_id
+				HAVING COUNT(*) > 1"
+		);
+
+		if ( is_array( $duplicates ) ) {
+			foreach ( $duplicates as $destination_id ) {
+				$destination_id = (int) $destination_id;
+				$owner_id       = $wpdb->get_var(
+					$wpdb->prepare(
+						"SELECT c.id FROM {$table} c
+							INNER JOIN {$destinations} d ON d.id = c.destination_id
+							WHERE c.destination_id = %d
+							  AND c.topic_creation_state = 'created'
+							  AND c.telegram_topic_id IS NOT NULL
+							  AND c.telegram_topic_id = d.message_thread_id
+							ORDER BY c.id ASC
+							LIMIT 1",
+						$destination_id
+					)
+				);
+
+				if ( null === $owner_id ) {
+					$owner_id = $wpdb->get_var(
+						$wpdb->prepare(
+							"SELECT id FROM {$table} WHERE destination_id = %d ORDER BY id ASC LIMIT 1",
+							$destination_id
+						)
+					);
+				}
+
+				if ( null === $owner_id ) {
+					continue;
+				}
+
+				$wpdb->query(
+					$wpdb->prepare(
+						"UPDATE {$table}
+							SET destination_id = NULL
+							WHERE destination_id = %d AND id <> %d",
+						$destination_id,
+						(int) $owner_id
+					)
+				);
+			}
+		}
+
+		if ( ! $this->table_has_index( $table, 'destination_id' ) ) {
+			$wpdb->query( "ALTER TABLE {$table} ADD UNIQUE KEY destination_id (destination_id)" );
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_29(): bool {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::CONVERSATIONS_TABLE;
+
+		return $this->table_has_columns(
+			$table,
+			array( 'topic_lifecycle_state', 'topic_lifecycle_code', 'topic_delete_claim_expires_at' )
+		) && $this->table_has_index( $table, 'topic_lifecycle_state' )
+			&& $this->table_has_index( $table, 'destination_id' );
 	}
 
 	/**

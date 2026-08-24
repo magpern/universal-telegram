@@ -54,8 +54,17 @@ final class ConversationRepositoryTest extends WP_UnitTestCase {
 
 		$created = $repo->create( 'uuid-transition-1', 'hashed-secret', 1, null );
 
-		$this->assertFalse( $repo->transition( $created->id(), ConversationStatus::NEW, ConversationStatus::ARCHIVED ) );
+		$this->assertFalse( $repo->transition( $created->id(), ConversationStatus::NEW, ConversationStatus::RESOLVED ) );
 		$this->assertSame( ConversationStatus::NEW, $repo->find( $created->id() )->status() );
+	}
+
+	public function test_transition_allows_direct_archive_from_new(): void {
+		$repo = $this->repository();
+
+		$created = $repo->create( 'uuid-transition-archive', 'hashed-secret', 1, null );
+
+		$this->assertTrue( $repo->transition( $created->id(), ConversationStatus::NEW, ConversationStatus::ARCHIVED ) );
+		$this->assertSame( ConversationStatus::ARCHIVED, $repo->find( $created->id() )->status() );
 	}
 
 	public function test_transition_applies_an_allowed_transition(): void {
@@ -625,5 +634,42 @@ final class ConversationRepositoryTest extends WP_UnitTestCase {
 		foreach ( $names as $name ) {
 			$this->assertStringNotContainsStringIgnoringCase( 'telegram', $name );
 		}
+	}
+
+	public function test_find_by_bot_chat_thread_requires_the_exact_tuple(): void {
+		$repo = $this->repository();
+		$dest = new \UniversalTelegram\Telegram\Configuration\DestinationRepository( new SchemaHealth() );
+
+		$conversation = $repo->create( wp_generate_uuid4(), 'hash', 1, null );
+		$destination  = $dest->create( 1, \UniversalTelegram\Telegram\Configuration\DestinationKind::SUPERGROUP, '-100aaa', 42, 'Topic' );
+		$repo->mark_topic_created( $conversation->id(), 42, $destination->id() );
+
+		$found = $repo->find_by_bot_chat_thread( 1, '-100aaa', 42 );
+		$this->assertNotNull( $found );
+		$this->assertSame( $conversation->id(), $found->id() );
+		$this->assertSame( 'active', $found->topic_lifecycle_state() );
+
+		$this->assertNull( $repo->find_by_bot_chat_thread( 1, '-100bbb', 42 ) );
+		$this->assertNull( $repo->find_by_bot_chat_thread( 1, '-100aaa', 43 ) );
+		$this->assertNull( $repo->find_by_bot_chat_thread( 2, '-100aaa', 42 ) );
+		$this->assertSame( 1, $repo->count_by_destination_id( $destination->id() ) );
+	}
+
+	public function test_try_begin_topic_deletion_cas_from_archived_active(): void {
+		$repo = $this->repository();
+		$dest = new \UniversalTelegram\Telegram\Configuration\DestinationRepository( new SchemaHealth() );
+
+		$conversation = $repo->create( wp_generate_uuid4(), 'hash', 1, null );
+		$destination  = $dest->create( 1, \UniversalTelegram\Telegram\Configuration\DestinationKind::SUPERGROUP, '-100del', 88, 'Del' );
+		$repo->mark_topic_created( $conversation->id(), 88, $destination->id() );
+		$repo->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::RESOLVED );
+		$repo->transition( $conversation->id(), ConversationStatus::RESOLVED, ConversationStatus::ARCHIVED );
+
+		$lease = $repo->try_begin_topic_deletion( $conversation->id() );
+		$this->assertNotNull( $lease );
+
+		$fresh = $repo->find( $conversation->id() );
+		$this->assertSame( 'delete_pending', $fresh->topic_lifecycle_state() );
+		$this->assertNull( $repo->try_begin_topic_deletion( $conversation->id() ) );
 	}
 }

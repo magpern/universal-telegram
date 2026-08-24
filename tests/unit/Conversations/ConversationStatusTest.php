@@ -30,8 +30,12 @@ final class ConversationStatusTest extends TestCase {
 			'open to resolved'                  => array( ConversationStatus::OPEN, ConversationStatus::RESOLVED ),
 			'waiting_for_visitor to resolved'   => array( ConversationStatus::WAITING_FOR_VISITOR, ConversationStatus::RESOLVED ),
 			'waiting_for_operator to resolved'  => array( ConversationStatus::WAITING_FOR_OPERATOR, ConversationStatus::RESOLVED ),
-			'resolved to archived'              => array( ConversationStatus::RESOLVED, ConversationStatus::ARCHIVED ),
-			'resolved reopens to open'          => array( ConversationStatus::RESOLVED, ConversationStatus::OPEN ),
+			'resolved to archived'                  => array( ConversationStatus::RESOLVED, ConversationStatus::ARCHIVED ),
+			'resolved reopens to open'              => array( ConversationStatus::RESOLVED, ConversationStatus::OPEN ),
+			'new archives directly'                 => array( ConversationStatus::NEW, ConversationStatus::ARCHIVED ),
+			'open archives directly'                => array( ConversationStatus::OPEN, ConversationStatus::ARCHIVED ),
+			'waiting_for_visitor archives directly' => array( ConversationStatus::WAITING_FOR_VISITOR, ConversationStatus::ARCHIVED ),
+			'waiting_for_operator archives directly'=> array( ConversationStatus::WAITING_FOR_OPERATOR, ConversationStatus::ARCHIVED ),
 		);
 	}
 
@@ -48,8 +52,6 @@ final class ConversationStatusTest extends TestCase {
 	public function disallowed_transitions_provider(): array {
 		return array(
 			'new cannot go directly to resolved'     => array( ConversationStatus::NEW, ConversationStatus::RESOLVED ),
-			'new cannot go directly to archived'     => array( ConversationStatus::NEW, ConversationStatus::ARCHIVED ),
-			'open cannot go directly to archived'    => array( ConversationStatus::OPEN, ConversationStatus::ARCHIVED ),
 			'archived cannot transition anywhere'    => array( ConversationStatus::ARCHIVED, ConversationStatus::OPEN ),
 			'archived cannot reopen to resolved'     => array( ConversationStatus::ARCHIVED, ConversationStatus::RESOLVED ),
 			'unknown status has no valid transition' => array( 'nonexistent', ConversationStatus::OPEN ),

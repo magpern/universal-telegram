@@ -195,6 +195,26 @@ class ConversationNoteRepository {
 	}
 
 	/**
+	 * Permanently deletes every note for a conversation — part of the
+	 * shared ConversationPurgeService sequence (M07.1).
+	 *
+	 * @param int $conversation_id The owning conversation.
+	 *
+	 * @return bool
+	 */
+	public function delete_for_conversation( int $conversation_id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATION_NOTES_TABLE;
+
+		return false !== $wpdb->delete( $table, array( 'conversation_id' => $conversation_id ), array( '%d' ) );
+	}
+
+	/**
 	 * Hydrates one database row into a ConversationNote.
 	 *
 	 * @param array<string, mixed> $row The raw database row.

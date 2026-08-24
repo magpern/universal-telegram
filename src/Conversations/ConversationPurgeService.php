@@ -36,26 +36,31 @@ final class ConversationPurgeService {
 	/**
 	 * Constructor.
 	 *
-	 * @param ConversationRepository $conversations Conversation persistence.
-	 * @param MessageRepository      $messages      Conversation message persistence.
-	 * @param DestinationRepository  $destinations  Deletes a conversation's own destination row.
+	 * @param ConversationRepository     $conversations Conversation persistence.
+	 * @param MessageRepository          $messages      Conversation message persistence.
+	 * @param DestinationRepository      $destinations  Deletes a conversation's own destination row.
+	 * @param ConversationNoteRepository $notes         Internal notes; deleted with the conversation.
 	 */
 	public function __construct(
 		private readonly ConversationRepository $conversations,
 		private readonly MessageRepository $messages,
-		private readonly DestinationRepository $destinations
+		private readonly DestinationRepository $destinations,
+		private readonly ?ConversationNoteRepository $notes = null
 	) {}
 
 	/**
-	 * Permanently deletes a conversation, all its message rows, any AI
-	 * draft rows, and its own destination row (if any). Never contacts the
-	 * Telegram Bot API.
+	 * Permanently deletes a conversation, all its message rows, any notes,
+	 * any AI draft rows, and — only when `$destination_id` is non-null —
+	 * its own destination row. Never contacts the Telegram Bot API. Callers
+	 * that lack exclusive destination ownership must pass null so a shared
+	 * destination row is retained (M07.1, docs/adr/0031).
 	 *
 	 * @param int      $conversation_id The conversation to purge.
 	 * @param int|null $destination_id  The conversation's own destination row id, or null.
 	 */
 	public function purge( int $conversation_id, ?int $destination_id ): void {
 		$this->messages->delete_for_conversation( $conversation_id );
+		$this->notes?->delete_for_conversation( $conversation_id );
 		$this->delete_ai_drafts_for_conversation( $conversation_id );
 
 		if ( null !== $destination_id ) {
