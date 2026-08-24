@@ -40,6 +40,8 @@ class Migrator {
 	public const OPERATOR_AVAILABILITY_TABLE = 'universal_telegram_operator_availability';
 	public const AI_CONFIG_TABLE             = 'universal_telegram_ai_config';
 	public const AI_DRAFTS_TABLE             = 'universal_telegram_ai_drafts';
+	public const VISITOR_DIGEST_COUNTERS_TABLE = 'universal_telegram_visitor_digest_counters';
+	public const VISITOR_DIGEST_STATE_TABLE    = 'universal_telegram_visitor_digest_state';
 
 	private const DB_VERSION_OPTION = 'universal_telegram_db_version';
 
@@ -66,7 +68,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 22;
+		return 24;
 	}
 
 	/**
@@ -157,6 +159,8 @@ class Migrator {
 			20 => array( array( $this, 'step_20_create_ai_drafts_table' ), array( $this, 'verify_step_20' ) ),
 			21 => array( array( $this, 'step_21_add_conversation_ai_ack_column' ), array( $this, 'verify_step_21' ) ),
 			22 => array( array( $this, 'step_22_make_ai_draft_requester_nullable' ), array( $this, 'verify_step_22' ) ),
+			23 => array( array( $this, 'step_23_create_visitor_digest_counters_table' ), array( $this, 'verify_step_23' ) ),
+			24 => array( array( $this, 'step_24_create_visitor_digest_state_table' ), array( $this, 'verify_step_24' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -1443,6 +1447,103 @@ class Migrator {
 		global $wpdb;
 
 		return 'YES' === $this->column_is_nullable( $wpdb->prefix . self::AI_DRAFTS_TABLE, 'requested_by_user_id' );
+	}
+
+	/**
+	 * Creates the visitor-digest aggregation-window counters table (M11A,
+	 * docs/plans/m11a-visitor-activity-digests-plan-v1.md §5): one row per
+	 * (window, category, page_type) bucket, incremented synchronously by
+	 * Automations\Digest\VisitorDigestCounterRepository from
+	 * Events\EventDispatcher::handle() while a digest window is open. Never
+	 * one row per event.
+	 */
+	private function step_23_create_visitor_digest_counters_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::VISITOR_DIGEST_COUNTERS_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				window_started_at DATETIME NOT NULL,
+				category VARCHAR(32) NOT NULL,
+				page_type VARCHAR(16) NULL,
+				event_count BIGINT UNSIGNED NOT NULL DEFAULT 0,
+				last_event_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY window_category_page (window_started_at, category, page_type),
+				KEY idx_window_started_at (window_started_at)
+			) {$charset_collate}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_23(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::VISITOR_DIGEST_COUNTERS_TABLE,
+			array( 'id', 'window_started_at', 'category', 'page_type', 'event_count', 'last_event_at' )
+		);
+	}
+
+	/**
+	 * Creates the visitor-digest singleton state/checkpoint row (M11A §5):
+	 * one seeded row (id=1), the same "singleton row as mutex/checkpoint"
+	 * pattern step_19_create_ai_config_table already established for
+	 * universal_telegram_ai_config (docs/adr/0028 decision 5). Locked
+	 * (SELECT ... FOR UPDATE) by Automations\Digest\VisitorDigestSweep as
+	 * its sole admission mutex.
+	 */
+	private function step_24_create_visitor_digest_state_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::VISITOR_DIGEST_STATE_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id TINYINT UNSIGNED NOT NULL,
+				window_started_at DATETIME NULL,
+				last_digest_sent_at DATETIME NULL,
+				last_digest_status VARCHAR(32) NULL,
+				claim_token CHAR(36) NULL,
+				claim_expires_at DATETIME NULL,
+				PRIMARY KEY (id)
+			) {$charset_collate}"
+		);
+
+		$wpdb->query( "INSERT IGNORE INTO {$table} (id) VALUES (1)" );
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_24(): bool {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::VISITOR_DIGEST_STATE_TABLE;
+
+		if ( ! $this->table_has_columns(
+			$table,
+			array( 'id', 'window_started_at', 'last_digest_sent_at', 'last_digest_status', 'claim_token', 'claim_expires_at' )
+		) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return null !== $wpdb->get_var( "SELECT id FROM {$table} WHERE id = 1" );
 	}
 
 	/**

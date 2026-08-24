@@ -48,6 +48,9 @@ use UniversalTelegram\AI\Provider\AiFailureClassifier;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Automations\Digest\DigestEligibility;
+use UniversalTelegram\Automations\Digest\VisitorDigestAggregator;
+use UniversalTelegram\Automations\Digest\VisitorDigestCounterRepository;
+use UniversalTelegram\Automations\Digest\VisitorDigestStateRepository;
 use UniversalTelegram\Automations\DispatchLogRepository;
 use UniversalTelegram\Automations\NotificationDispatcher;
 use UniversalTelegram\Automations\NotificationRuleRepository;
@@ -1035,7 +1038,8 @@ final class Plugin {
 			$this->message_dispatcher
 		);
 		$rule_evaluator          = new RuleEvaluator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher, $this->digest_eligibility );
-		$this->event_dispatcher  = new EventDispatcher( $this->event_history_repository, $rule_evaluator );
+		$digest_aggregator       = new VisitorDigestAggregator( $this->digest_eligibility, new VisitorDigestCounterRepository( $this->schema_health ), new VisitorDigestStateRepository( $this->schema_health ) );
+		$this->event_dispatcher  = new EventDispatcher( $this->event_history_repository, $rule_evaluator, $digest_aggregator );
 		$this->event_emitter     = new EventEmitter( $this->event_registry, $this->event_dispatcher, $this->audit_logger );
 
 		// Core WordPress event emitters (M02 plan §8): constructed and

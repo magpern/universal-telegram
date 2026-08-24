@@ -28,8 +28,14 @@ use UniversalTelegram\Telegram\Configuration\DestinationRepository;
  * regardless of caller. The transient's own TTL is retained only as a
  * bounded fallback for an out-of-band database change neither of those
  * two triggers can observe.
+ *
+ * Not declared final: tests/unit/Automations/RuleEvaluatorTest.php,
+ * RuleSimulatorTest.php, and their integration-test counterparts double
+ * this class via PHPUnit's createMock(), which cannot double a final class
+ * (the same precedent Automations\NotificationDispatcher already
+ * documents).
  */
-final class DigestEligibility {
+class DigestEligibility {
 
 	public const TRANSIENT_KEY = 'universal_telegram_visitor_digest_active';
 
