@@ -9,8 +9,13 @@ use ActionScheduler;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
+use UniversalTelegram\Automations\Digest\DigestEligibility;
+use UniversalTelegram\Automations\Digest\VisitorDigestCounterRepository;
+use UniversalTelegram\Automations\Digest\VisitorDigestStateRepository;
 use UniversalTelegram\Automations\DispatchLogRepository;
 use UniversalTelegram\Automations\NotificationRuleRepository;
+use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Events\EventHistoryRepository;
@@ -68,7 +73,10 @@ final class DiagnosticsReportQueueTest extends WP_UnitTestCase {
 			new EventHistoryRepository( $this->schema_health, $registry, new Redactor() ),
 			new NotificationRuleRepository( $this->schema_health, $registry ),
 			new DispatchLogRepository( $this->schema_health ),
-			new Settings()
+			new Settings(),
+			new DigestEligibility( new Settings(), $bots, $destinations, new ConversationRepository( $this->schema_health, $vault, new VisitorTokenGenerator() ) ),
+			new VisitorDigestCounterRepository( $this->schema_health ),
+			new VisitorDigestStateRepository( $this->schema_health )
 		);
 	}
 

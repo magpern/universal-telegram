@@ -973,6 +973,13 @@ final class Plugin {
 		$this->notification_rule_repository = new NotificationRuleRepository( $this->schema_health, $this->event_registry );
 		$this->dispatch_log_repository      = new DispatchLogRepository( $this->schema_health );
 
+		// M11A visitor activity digest (docs/plans/m11a-visitor-activity-digests-plan-v1.md):
+		// the shared is_active()/eligibility gate, constructed once, ahead
+		// of DiagnosticsReport (below), RuleEvaluator, and the Visitor
+		// Tracking settings page, all of which reuse this same instance.
+		$this->digest_eligibility = new DigestEligibility( $settings, $this->bot_profile_repository, $this->destination_repository, $this->conversation_repository );
+		$this->digest_eligibility->register();
+
 		$report                 = new DiagnosticsReport(
 			$this->queue_health,
 			$this->audit_log_repository,
@@ -985,6 +992,9 @@ final class Plugin {
 			$this->notification_rule_repository,
 			$this->dispatch_log_repository,
 			$settings,
+			$this->digest_eligibility,
+			new VisitorDigestCounterRepository( $this->schema_health ),
+			new VisitorDigestStateRepository( $this->schema_health ),
 			(int) $settings_values['telegram_stale_pending_alert_seconds'],
 			(int) $settings_values['telegram_webhook_rotation_max_pending_hours']
 		);
@@ -1019,14 +1029,6 @@ final class Plugin {
 		// Tracking, Settings, Diagnostics.
 		$this->hub_page = new HubPage( $this->hub_tab_registry );
 		add_action( 'admin_menu', array( $this->hub_page, 'register_menu' ) );
-
-		// M11A visitor activity digest (docs/plans/m11a-visitor-activity-digests-plan-v1.md):
-		// the shared is_active()/eligibility gate, constructed once, ahead of
-		// RuleEvaluator (which consults it to suppress digest-eligible
-		// visitor event types) and reused unchanged by the Visitor Tracking
-		// settings page below.
-		$this->digest_eligibility = new DigestEligibility( $settings, $this->bot_profile_repository, $this->destination_repository, $this->conversation_repository );
-		$this->digest_eligibility->register();
 
 		// Events/Automations (M02) continued: the repositories above are
 		// already constructed; wire the remaining dispatch/evaluation/

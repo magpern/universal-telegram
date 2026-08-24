@@ -7,8 +7,13 @@ namespace UniversalTelegram\Tests\Integration\Administration\Diagnostics;
 
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
 use UniversalTelegram\Audit\AuditLogRepository;
+use UniversalTelegram\Automations\Digest\DigestEligibility;
+use UniversalTelegram\Automations\Digest\VisitorDigestCounterRepository;
+use UniversalTelegram\Automations\Digest\VisitorDigestStateRepository;
 use UniversalTelegram\Automations\DispatchLogRepository;
 use UniversalTelegram\Automations\NotificationRuleRepository;
+use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Events\EventHistoryRepository;
 use UniversalTelegram\Events\Registry;
@@ -47,7 +52,10 @@ final class DiagnosticsReportWooCommerceTest extends WP_UnitTestCase {
 			new EventHistoryRepository( $schema_health, $registry, new Redactor() ),
 			new NotificationRuleRepository( $schema_health, $registry ),
 			new DispatchLogRepository( $schema_health ),
-			new \UniversalTelegram\Core\Configuration\Settings()
+			new \UniversalTelegram\Core\Configuration\Settings(),
+			new DigestEligibility( new \UniversalTelegram\Core\Configuration\Settings(), $bots, $destinations, new ConversationRepository( $schema_health, $vault, new VisitorTokenGenerator() ) ),
+			new VisitorDigestCounterRepository( $schema_health ),
+			new VisitorDigestStateRepository( $schema_health )
 		);
 	}
 

@@ -239,7 +239,7 @@ final class SelfTestTest extends WP_UnitTestCase {
 		$event_history      = new EventHistoryRepository( $schema_health, $registry, new Redactor() );
 		$notification_rules = new NotificationRuleRepository( $schema_health, $registry );
 		$dispatch_log       = new DispatchLogRepository( $schema_health );
-		$report             = new DiagnosticsReport( new QueueHealth(), new AuditLogRepository( $schema_health ), new WooCommerceSupport(), $schema_health, $bots, $destinations, $alert, $event_history, $notification_rules, $dispatch_log, new \UniversalTelegram\Core\Configuration\Settings() );
+		$report             = new DiagnosticsReport( new QueueHealth(), new AuditLogRepository( $schema_health ), new WooCommerceSupport(), $schema_health, $bots, $destinations, $alert, $event_history, $notification_rules, $dispatch_log, new \UniversalTelegram\Core\Configuration\Settings(), new \UniversalTelegram\Automations\Digest\DigestEligibility( new \UniversalTelegram\Core\Configuration\Settings(), $bots, $destinations, new \UniversalTelegram\Conversations\ConversationRepository( $schema_health, $vault, new \UniversalTelegram\Conversations\VisitorTokenGenerator() ) ), new \UniversalTelegram\Automations\Digest\VisitorDigestCounterRepository( $schema_health ), new \UniversalTelegram\Automations\Digest\VisitorDigestStateRepository( $schema_health ) );
 		$diagnostics_page   = new DiagnosticsPage( $report, $schema_health, $self_test, $alert );
 
 		ob_start();
