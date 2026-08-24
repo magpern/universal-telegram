@@ -50,7 +50,9 @@ use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Automations\Digest\DigestEligibility;
 use UniversalTelegram\Automations\Digest\VisitorDigestAggregator;
 use UniversalTelegram\Automations\Digest\VisitorDigestCounterRepository;
+use UniversalTelegram\Automations\Digest\VisitorDigestRenderer;
 use UniversalTelegram\Automations\Digest\VisitorDigestStateRepository;
+use UniversalTelegram\Automations\Digest\VisitorDigestSweep;
 use UniversalTelegram\Automations\DispatchLogRepository;
 use UniversalTelegram\Automations\NotificationDispatcher;
 use UniversalTelegram\Automations\NotificationRuleRepository;
@@ -1340,6 +1342,19 @@ final class Plugin {
 		$ai_lease_sweep = new AiDraftLeaseSweep( $this->ai_draft_repository );
 		add_action( AiDraftLeaseSweep::JOB_TYPE, array( $ai_lease_sweep, 'run' ) );
 		add_action( 'init', array( $ai_lease_sweep, 'register' ) );
+
+		// M11A visitor digest evaluation sweep (docs/plans/m11a-visitor-activity-digests-plan-v1.md §5).
+		$visitor_digest_sweep = new VisitorDigestSweep(
+			$settings,
+			$this->digest_eligibility,
+			new VisitorDigestStateRepository( $this->schema_health ),
+			new VisitorDigestCounterRepository( $this->schema_health ),
+			new VisitorDigestRenderer(),
+			$this->message_dispatcher,
+			$this->woocommerce_support
+		);
+		add_action( VisitorDigestSweep::JOB_TYPE, array( $visitor_digest_sweep, 'run' ) );
+		add_action( 'init', array( $visitor_digest_sweep, 'register' ) );
 
 		// Operator draft-request endpoint (M09, docs/adr/0028 decisions 1
 		// and 5): the only path that ever enqueues an ai_draft_generate job.
