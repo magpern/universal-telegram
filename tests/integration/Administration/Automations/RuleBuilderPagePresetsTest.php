@@ -59,6 +59,19 @@ final class RuleBuilderPagePresetsTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'Create a custom notification', $html );
 		$this->assertStringContainsString( 'Store essentials starter set', $html );
 
+		// Regression: the link must resolve to the real registered Hub page
+		// (HubPage::SLUG, "universal-telegram"), never RuleBuilderPage::SLUG
+		// (the retired pre-Hub slug, "universal-telegram-rules") — a link
+		// built from the retired slug is silently caught by
+		// LegacyUrlRedirector and redirected to the plain Rules tab with the
+		// view=starter_set query arg dropped, which made the button appear
+		// to do nothing.
+		$this->assertStringContainsString( 'page=universal-telegram&#038;tab=rules&#038;view=starter_set', $html );
+		$this->assertStringNotContainsString( 'page=universal-telegram-rules', $html );
+
+		// The button must also explain what it does.
+		$this->assertStringContainsString( 'Sets up three ready-to-review notifications at once', $html );
+
 		// Rendering the presets section must never itself write a rule.
 		$this->assertCount( 0, Plugin::instance()->notification_rule_repository()->all() );
 	}

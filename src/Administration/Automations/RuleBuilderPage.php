@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Automations;
 
+use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Administration\Shared\BotDestinationPairFields;
 use UniversalTelegram\Automations\Digest\DigestEligibility;
 use UniversalTelegram\Automations\Intelligence\IntelligenceSettings;
@@ -205,22 +206,28 @@ final class RuleBuilderPage {
 
 	/**
 	 * The URL for the Store-essentials two-step review screen (step one:
-	 * a plain GET, no mutation).
+	 * a plain GET, no mutation). Built from HubPage::SLUG — the actually
+	 * registered top-level admin page — never RuleBuilderPage::SLUG, which
+	 * is only the retired pre-Hub menu slug LegacyUrlRedirector answers;
+	 * a link built from that slug is silently redirected to the plain
+	 * Rules tab with every extra query arg (view, edit, error) dropped,
+	 * which is exactly why this button previously appeared to do nothing.
 	 *
 	 * @return string
 	 */
 	private function starter_set_review_url(): string {
-		return admin_url( 'admin.php?page=' . self::SLUG . '&tab=' . self::TAB_ID . '&view=starter_set' );
+		return admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . self::TAB_ID . '&view=starter_set' );
 	}
 
 	/**
-	 * The plain Rules tab URL, used as the "« Back to presets" link and as
-	 * the post-confirmation redirect target.
+	 * The plain Rules tab URL, used as the "« Back to presets" link, the
+	 * "Edit" row action, and the post-confirmation redirect target. See
+	 * starter_set_review_url()'s own note on why this must be HubPage::SLUG.
 	 *
 	 * @return string
 	 */
 	private function rules_tab_url(): string {
-		return admin_url( 'admin.php?page=' . self::SLUG . '&tab=' . self::TAB_ID );
+		return admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . self::TAB_ID );
 	}
 
 	/**
@@ -275,7 +282,8 @@ final class RuleBuilderPage {
 		echo '</div>';
 
 		if ( $this->woocommerce_active() ) {
-			echo '<p><a class="button" href="' . esc_url( $this->starter_set_review_url() ) . '">' . esc_html__( 'Store essentials starter set', 'universal-telegram' ) . '</a></p>';
+			echo '<p><a class="button" href="' . esc_url( $this->starter_set_review_url() ) . '">' . esc_html__( 'Store essentials starter set', 'universal-telegram' ) . '</a><br />';
+			echo '<span class="description">' . esc_html__( 'Sets up three ready-to-review notifications at once — new order, order failed, and low stock — as disabled drafts you enable individually after checking the destination and message on the next screen.', 'universal-telegram' ) . '</span></p>';
 		}
 
 		echo '<p><button type="button" id="ut-custom-notification" class="button">' . esc_html__( 'Create a custom notification', 'universal-telegram' ) . '</button></p>';

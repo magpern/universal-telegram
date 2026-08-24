@@ -39,6 +39,25 @@ final class RuleBuilderPageEditTest extends WP_UnitTestCase {
 		);
 	}
 
+	/**
+	 * Regression: the rule list's "Edit" action must link to the real
+	 * registered Hub page (HubPage::SLUG), never RuleBuilderPage::SLUG (the
+	 * retired pre-Hub slug) — a link built from the retired slug is
+	 * silently caught by LegacyUrlRedirector and redirected with the
+	 * edit=<id> query arg dropped, landing back on a blank Add Rule form.
+	 */
+	public function test_the_edit_link_points_to_the_real_hub_page_slug(): void {
+		$rules = $this->rules();
+		$saved = $rules->save( null, 'A rule', 'wordpress.user_registered', 1, array(), 1, 1, 'x', true, 100, 0, 'all' );
+
+		ob_start();
+		$this->page()->render_tab_content();
+		$html = ob_get_clean();
+
+		$this->assertStringContainsString( 'page=universal-telegram&#038;tab=rules&#038;edit=' . $saved->id(), $html );
+		$this->assertStringNotContainsString( 'page=universal-telegram-rules', $html );
+	}
+
 	public function test_editing_a_representable_rule_prefills_the_visible_condition_row(): void {
 		$rules = $this->rules();
 		$saved = $rules->save(
