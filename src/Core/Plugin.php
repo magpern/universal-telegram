@@ -87,6 +87,7 @@ use UniversalTelegram\Conversations\ImmediateDeliveryAttempt;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\OperatorAvailabilityRepository;
 use UniversalTelegram\Conversations\OperatorIdentityRepository;
+use UniversalTelegram\Conversations\OutboundDeliveryBridge;
 use UniversalTelegram\Conversations\PromptDeliveryFallback;
 use UniversalTelegram\Conversations\Rest\ConversationsController;
 use UniversalTelegram\Conversations\RetentionCleanupHandler as ConversationRetentionCleanupHandler;
@@ -813,6 +814,14 @@ final class Plugin {
 			new RetryPolicy()
 		);
 		$this->handler_registry->register( TopicDeletionHandler::JOB_TYPE, array( $topic_deletion_handler, 'handle_job' ) );
+
+		$outbound_delivery_bridge = new OutboundDeliveryBridge(
+			$this->message_repository,
+			$this->conversation_repository,
+			$this->outbound_message_repository,
+			$this->destination_repository
+		);
+		$outbound_delivery_bridge->register();
 
 		$conversation_outbound_dispatcher = new ConversationOutboundDispatcher( $this->dispatcher );
 		$conversation_outbound_handler    = new ConversationOutboundHandler(

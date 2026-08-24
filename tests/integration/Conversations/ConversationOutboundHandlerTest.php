@@ -84,7 +84,7 @@ final class ConversationOutboundHandlerTest extends WP_UnitTestCase {
 		$this->handler->handle_job( $this->job( $message->id(), $conversation->id() ) );
 
 		$updated = $this->messages->find( $message->id() );
-		$this->assertSame( 'sent', $updated->delivery_state() );
+		$this->assertSame( 'routed', $updated->delivery_state() );
 		$this->assertNotNull( $updated->outbound_message_uuid() );
 
 		$outbound = $this->outbound_messages->find_by_uuid( $updated->outbound_message_uuid() );

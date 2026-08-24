@@ -21,7 +21,7 @@ final class CommandCatalogue {
 	/** General topic (or a group with no forum topics) only. */
 	public const CONTEXT_GENERAL = 'general';
 
-	/** A conversation topic resolved via ConversationRepository::find_by_topic() only. */
+	/** A conversation topic resolved via ConversationRepository::find_by_bot_chat_thread() only. */
 	public const CONTEXT_CONVERSATION = 'conversation';
 
 	/** Either context. */

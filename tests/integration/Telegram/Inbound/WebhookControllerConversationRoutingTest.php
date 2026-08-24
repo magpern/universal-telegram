@@ -286,4 +286,47 @@ final class WebhookControllerConversationRoutingTest extends WP_UnitTestCase {
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame( array(), $this->messages->messages_since( $conversation->id(), 0 ) );
 	}
+
+	public function test_same_thread_id_in_a_different_chat_never_matches(): void {
+		$fixture = $this->conversation_with_a_created_topic();
+		$bot     = $fixture['bot'];
+
+		$response = $this->controller->handle_request(
+			$this->request( $bot->bot_uuid(), $this->active_secret_for( $bot ), 906, '-100999', 88, 'Wrong chat.' )
+		);
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( array(), $this->messages->messages_since( $fixture['conversation']->id(), 0 ) );
+		$this->assertSame( 'active', $this->conversations->find( $fixture['conversation']->id() )->topic_lifecycle_state() );
+	}
+
+	public function test_forum_topic_closed_marks_unavailable_only_on_exact_tuple(): void {
+		$fixture = $this->conversation_with_a_created_topic();
+		$bot     = $fixture['bot'];
+		$secret  = $this->active_secret_for( $bot );
+
+		$request = new WP_REST_Request( 'POST', '/universal-telegram/v1/webhook/' . $bot->bot_uuid() );
+		$request->set_header( 'X-Telegram-Bot-Api-Secret-Token', $secret );
+		$request->set_body(
+			wp_json_encode(
+				array(
+					'update_id' => 907,
+					'message'   => array(
+						'message_id'        => 1,
+						'chat'              => array( 'id' => -100123 ),
+						'message_thread_id' => 88,
+						'forum_topic_closed' => array(),
+						'from'              => array( 'id' => self::MAPPED_SENDER_TELEGRAM_ID ),
+					),
+				)
+			)
+		);
+
+		$this->controller->handle_request( $request );
+
+		$fresh = $this->conversations->find( $fixture['conversation']->id() );
+		$this->assertSame( 'unavailable', $fresh->topic_lifecycle_state() );
+		$this->assertSame( 'telegram_topic_closed', $fresh->topic_lifecycle_code() );
+		$this->assertSame( array(), $this->messages->messages_since( $fixture['conversation']->id(), 0 ) );
+	}
 }

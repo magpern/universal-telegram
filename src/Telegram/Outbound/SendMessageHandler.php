@@ -228,6 +228,14 @@ class SendMessageHandler {
 				: null;
 
 			$this->messages->mark_sent( $message->id(), $telegram_message_id );
+			/**
+			 * Fires after an outbound message reaches a terminal Telegram outcome.
+			 *
+			 * @param string      $uuid         Outbound message uuid.
+			 * @param string      $outcome      sent|failed.
+			 * @param string|null $failure_code Fixed code on failure.
+			 */
+			do_action( 'universal_telegram_outbound_message_resolved', $message->message_uuid(), 'sent', null );
 			return AttemptOutcome::DELIVERED;
 		}
 
@@ -427,7 +435,17 @@ class SendMessageHandler {
 	 * @param string $reason_code      A fixed stable code, never raw API text.
 	 */
 	private function dead_letter( int $message_id, int $bot_id, int $destination_id, string $reason_code ): void {
+		$message = $this->messages->find( $message_id );
 		$this->messages->mark_dead_letter( $message_id, $reason_code );
+
+		if ( null !== $message ) {
+			/**
+			 * @param string      $uuid         Outbound message uuid.
+			 * @param string      $outcome      sent|failed.
+			 * @param string|null $failure_code Fixed code on failure.
+			 */
+			do_action( 'universal_telegram_outbound_message_resolved', $message->message_uuid(), 'failed', $reason_code );
+		}
 
 		$this->audit_logger->record(
 			'telegram_message_dead_lettered',

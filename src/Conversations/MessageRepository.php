@@ -168,7 +168,7 @@ class MessageRepository {
 			$table,
 			array(
 				'outbound_message_uuid' => $outbound_message_uuid,
-				'delivery_state'        => 'sent',
+				'delivery_state'        => 'routed',
 			),
 			array( 'id' => $id ),
 			array( '%s', '%s' ),
@@ -176,6 +176,60 @@ class MessageRepository {
 		);
 
 		return false !== $updated;
+	}
+
+	/**
+	 * Records that Telegram accepted the outbound send for a visitor message.
+	 *
+	 * @param int $id The conversation message's primary key.
+	 *
+	 * @return bool
+	 */
+	public function mark_delivery_sent( int $id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
+
+		$updated = $wpdb->update(
+			$table,
+			array( 'delivery_state' => 'sent' ),
+			array( 'id' => $id ),
+			array( '%s' ),
+			array( '%d' )
+		);
+
+		return false !== $updated;
+	}
+
+	/**
+	 * Finds a conversation message by its correlated outbound uuid.
+	 *
+	 * @param string $outbound_message_uuid Outbound message uuid.
+	 *
+	 * @return ConversationMessage|null
+	 */
+	public function find_by_outbound_uuid( string $outbound_message_uuid ): ?ConversationMessage {
+		if ( ! $this->schema_health->is_available() ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
+		$row   = $wpdb->get_row(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT * FROM {$table} WHERE outbound_message_uuid = %s LIMIT 1",
+				$outbound_message_uuid
+			),
+			ARRAY_A
+		);
+
+		return is_array( $row ) ? $this->hydrate( $row ) : null;
 	}
 
 	/**

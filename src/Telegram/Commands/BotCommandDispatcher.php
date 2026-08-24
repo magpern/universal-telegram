@@ -120,7 +120,7 @@ final class BotCommandDispatcher {
 			return;
 		}
 
-		list( $context, $conversation ) = $this->resolve_context( $bot->id(), $message_thread_id );
+		list( $context, $conversation ) = $this->resolve_context( $bot->id(), $chat_id, $message_thread_id );
 
 		if ( self::CONTEXT_UNKNOWN === $context ) {
 			// Fully silent for every command, authorized or not — no
@@ -918,19 +918,25 @@ final class BotCommandDispatcher {
 	/**
 	 * Resolves whether the update arrived in the General topic (no
 	 * message_thread_id), a known conversation topic, or an unrecognized
-	 * one.
+	 * one. Topic identity is the exact (bot_id, chat_id, message_thread_id)
+	 * tuple — never thread id alone (M07.1, docs/adr/0031).
 	 *
-	 * @param int      $bot_id            The bot's primary key.
-	 * @param int|null $message_thread_id The update's forum topic id.
+	 * @param int         $bot_id            The bot's primary key.
+	 * @param string|null $chat_id           The update's chat id.
+	 * @param int|null    $message_thread_id The update's forum topic id.
 	 *
 	 * @return array{0: string, 1: Conversation|null}
 	 */
-	private function resolve_context( int $bot_id, ?int $message_thread_id ): array {
+	private function resolve_context( int $bot_id, ?string $chat_id, ?int $message_thread_id ): array {
 		if ( null === $message_thread_id ) {
 			return array( self::CONTEXT_GENERAL, null );
 		}
 
-		$conversation = $this->conversations->find_by_topic( $bot_id, $message_thread_id );
+		if ( null === $chat_id ) {
+			return array( self::CONTEXT_UNKNOWN, null );
+		}
+
+		$conversation = $this->conversations->find_by_bot_chat_thread( $bot_id, $chat_id, $message_thread_id );
 
 		if ( null === $conversation ) {
 			return array( self::CONTEXT_UNKNOWN, null );
