@@ -41,3 +41,13 @@ No new event source; every new table's columns are integers, enums, or fixed-voc
 ## Compatibility/Migration Impact
 
 Additive only: four new tables, `Migrator` steps 25–28, `db_version` 24→28. No existing table (M11A's included) is altered or renamed.
+
+## Amendment: Execution-Sequencing Addendum (Product Owner authorization)
+
+**Status:** Accepted.
+
+**Context.** This ADR's Context section originally recorded that M09 Product Owner acceptance blocks M11B implementation, per M11's charter and ADR-0029. The Product Owner has since authorized decoupling *implementation* from that acceptance, without weakening any downstream gate.
+
+**Decision.** M09 Product Owner acceptance is no longer a precondition for starting or continuing M11B implementation (the frozen work packages, on `feature/m11a-visitor-activity-digests`, tests written with each package but not run). It remains a mandatory precondition for everything downstream: any M11A/M11B test execution or other validation, PR creation, GitHub Actions, merge to `main`, release/tag/deployment, and M11 closure or its own Product Owner acceptance. No code implemented under this amendment reaches `main` before the combined M11A+M11B validation gate this ADR's Decision 4/5 and the plan's §9 already require.
+
+**Consequences.** Implementation may proceed and accumulate on the feature branch while M09 acceptance is still pending; the single combined validation/PR/merge/closure sequence this ADR and the plan already specify is otherwise unchanged.

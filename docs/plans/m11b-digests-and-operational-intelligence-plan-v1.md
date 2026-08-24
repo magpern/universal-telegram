@@ -1,7 +1,8 @@
 # M11B — Digests and Operational Intelligence (Remainder) — Implementation Plan v1
 
-Status: Frozen — implementation authorized once M09 has Product Owner acceptance (ADR-0029,
-M11's charter). Implements the remainder of M11's charter
+Status: Frozen — implementation authorized (see §10 execution-sequencing addendum: implementation
+no longer waits on M09 acceptance; combined validation, PR, merge, release, and closure still do).
+Implements the remainder of M11's charter
 (`docs/milestones/m11-digests-and-operational-intelligence.md`), complementing
 M11A (ADR-0029, `docs/plans/m11a-visitor-activity-digests-plan-v1.md`,
 frozen/implementation-complete but unvalidated and unmerged on
@@ -246,3 +247,12 @@ M11B implementation may not begin until (1) M09 has Product Owner acceptance, an
 - M09 acceptance status stated accurately: §0/ADR-0030 Context — pending, not "available or imminently expected"; M11B implementation stays blocked until it is recorded.
 - DB/version/ADR numbers consistent: `db_version` 24→28 stated identically in §4, §7, §8, ADR-0030's own Compatibility section; ADR-0030 is the next free number after ADR-0029.
 - Work-package test traceability: every WP in §7 names files, DB impact, and tests, including the new cross-feature concurrency and account-deletion tests.
+
+## 10. Execution-sequencing addendum (Product Owner authorization)
+
+Recorded on Product Owner authorization to decouple M11B *implementation* from M09 acceptance, while keeping every downstream gate intact:
+
+- **M09 Product Owner acceptance is no longer a precondition for starting or continuing M11B implementation** (WP1–WP9, on `feature/m11a-visitor-activity-digests`, tests written with each package but not run).
+- **M09 Product Owner acceptance remains a mandatory precondition for everything downstream of implementation**: any M11A/M11B test execution (unit, integration, JS, PHPCS, PHPStan), build, package acceptance, or other validation; PR creation; GitHub Actions; merge to `main`; release, tag, or deployment; and M11 closure or its own Product Owner acceptance.
+- §9's combined-validation-gate and release-dependency statement is unchanged in substance — it still requires M09 acceptance before the single combined M11A+M11B gate, PR, merge, and closure — this addendum only moves the *implementation* work packages ahead of that gate, not the gate itself.
+- No code implemented under this addendum reaches `main` before the deferred combined M11 validation gate passes.
