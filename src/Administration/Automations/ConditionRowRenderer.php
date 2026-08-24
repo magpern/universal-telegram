@@ -80,10 +80,10 @@ final class ConditionRowRenderer {
 	 * @param array<string, mixed> $clause     The current field/operator/value, or empty for a blank row.
 	 */
 	public static function render( int $index, string $event_type, Registry $registry, array $clause = array() ): void {
-		$fields          = self::eligible_fields( $event_type, $registry );
-		$selected_field  = isset( $clause['field'] ) ? (string) $clause['field'] : ( $fields[0] ?? '' );
-		$selected_op     = isset( $clause['operator'] ) ? (string) $clause['operator'] : '';
-		$selected_value  = isset( $clause['value'] ) ? (string) $clause['value'] : '';
+		$fields         = self::eligible_fields( $event_type, $registry );
+		$selected_field = isset( $clause['field'] ) ? (string) $clause['field'] : ( $fields[0] ?? '' );
+		$selected_op    = isset( $clause['operator'] ) ? (string) $clause['operator'] : '';
+		$selected_value = isset( $clause['value'] ) ? (string) $clause['value'] : '';
 
 		echo '<div class="ut-condition-row" data-index="' . esc_attr( (string) $index ) . '">';
 

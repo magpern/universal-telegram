@@ -164,7 +164,7 @@ class RuleEvaluator {
 				return 'invalid_condition_operator';
 			}
 
-			$actual        = $event->value_at( $field );
+			$actual         = $event->value_at( $field );
 			$clause_matched = null !== $actual && $operator->matches( $actual, $clause['value'] ?? null );
 
 			if ( 'any' === $rule->match_mode() ) {

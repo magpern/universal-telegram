@@ -52,6 +52,8 @@ final class FieldTypeCatalog {
 	);
 
 	/**
+	 * Every catalogued field's type metadata, keyed by dot-notation path.
+	 *
 	 * @var array<string, array{type: string, operators: array<int, string>, preview_value: string, choice_options?: array<string, string>}>
 	 */
 	private const FIELDS = array(
@@ -101,10 +103,10 @@ final class FieldTypeCatalog {
 			'preview_value' => 'CA',
 		),
 		'payload.new_role'           => array(
-			'type'            => self::TYPE_CHOICE,
-			'operators'       => self::CHOICE_OPERATORS,
-			'preview_value'   => 'editor',
-			'choice_options'  => array(
+			'type'           => self::TYPE_CHOICE,
+			'operators'      => self::CHOICE_OPERATORS,
+			'preview_value'  => 'editor',
+			'choice_options' => array(
 				'administrator' => 'Administrator',
 				'editor'        => 'Editor',
 				'author'        => 'Author',
@@ -142,78 +144,78 @@ final class FieldTypeCatalog {
 			'operators'     => self::BOOLEAN_OPERATORS,
 			'preview_value' => 'true',
 		),
-		'payload.component'         => array(
+		'payload.component'          => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'core',
 		),
-		'payload.new_version'       => array(
+		'payload.new_version'        => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => '6.5.2',
 		),
-		'payload.type'              => array(
+		'payload.type'               => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'plugin',
 		),
-		'payload.action'            => array(
+		'payload.action'             => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'update',
 		),
-		'payload.action_id'         => array(
+		'payload.action_id'          => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'wc_cleanup_sessions',
 		),
-		'payload.group'             => array(
+		'payload.group'              => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'woocommerce',
 		),
-		'payload.hook'              => array(
+		'payload.hook'               => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'wc_cleanup_sessions',
 		),
-		'payload.route'             => array(
+		'payload.route'              => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => '/wp-json/wc/v3/orders',
 		),
-		'payload.status'            => array(
+		'payload.status'             => array(
 			'type'          => self::TYPE_NUMBER,
 			'operators'     => self::NUMERIC_OPERATORS,
 			'preview_value' => '500',
 		),
-		'payload.error_code'        => array(
+		'payload.error_code'         => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => '500',
 		),
-		'payload.error_type'        => array(
+		'payload.error_type'         => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'fatal',
 		),
-		'payload.location_hash'     => array(
+		'payload.location_hash'      => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'a1b2c3d4',
 		),
-		'subject.order_id'          => array(
+		'subject.order_id'           => array(
 			'type'          => self::TYPE_NUMBER,
 			'operators'     => self::NUMERIC_OPERATORS,
 			'preview_value' => '1042',
 		),
-		'context.order_status'      => array(
+		'context.order_status'       => array(
 			'type'           => self::TYPE_CHOICE,
 			'operators'      => self::CHOICE_OPERATORS,
 			'preview_value'  => 'processing',
 			'choice_options' => self::ORDER_STATUS_CHOICES,
 		),
-		'context.storage_backend'   => array(
+		'context.storage_backend'    => array(
 			'type'           => self::TYPE_CHOICE,
 			'operators'      => self::CHOICE_OPERATORS,
 			'preview_value'  => 'hpos',
@@ -222,28 +224,28 @@ final class FieldTypeCatalog {
 				'legacy' => 'Legacy post storage',
 			),
 		),
-		'payload.order_total'       => array(
+		'payload.order_total'        => array(
 			'type'          => self::TYPE_MONEY,
 			'operators'     => self::NUMERIC_OPERATORS,
 			'preview_value' => '49.90',
 		),
-		'payload.currency'          => array(
+		'payload.currency'           => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'EUR',
 		),
-		'payload.item_count'        => array(
+		'payload.item_count'         => array(
 			'type'          => self::TYPE_NUMBER,
 			'operators'     => self::NUMERIC_OPERATORS,
 			'preview_value' => '3',
 		),
-		'payload.status_from'       => array(
+		'payload.status_from'        => array(
 			'type'           => self::TYPE_CHOICE,
 			'operators'      => self::CHOICE_OPERATORS,
 			'preview_value'  => 'pending',
 			'choice_options' => self::ORDER_STATUS_CHOICES,
 		),
-		'payload.status_to'         => array(
+		'payload.status_to'          => array(
 			'type'           => self::TYPE_CHOICE,
 			'operators'      => self::CHOICE_OPERATORS,
 			'preview_value'  => 'processing',
@@ -254,62 +256,62 @@ final class FieldTypeCatalog {
 			'operators'     => self::BOOLEAN_OPERATORS,
 			'preview_value' => 'true',
 		),
-		'subject.refund_id'         => array(
+		'subject.refund_id'          => array(
 			'type'          => self::TYPE_NUMBER,
 			'operators'     => self::NUMERIC_OPERATORS,
 			'preview_value' => '12',
 		),
-		'payload.refund_amount'     => array(
+		'payload.refund_amount'      => array(
 			'type'          => self::TYPE_MONEY,
 			'operators'     => self::NUMERIC_OPERATORS,
 			'preview_value' => '10.00',
 		),
-		'subject.product_id'        => array(
+		'subject.product_id'         => array(
 			'type'          => self::TYPE_NUMBER,
 			'operators'     => self::NUMERIC_OPERATORS,
 			'preview_value' => '501',
 		),
-		'payload.product_name'      => array(
+		'payload.product_name'       => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'Sample Product',
 		),
-		'payload.stock_quantity'    => array(
+		'payload.stock_quantity'     => array(
 			'type'          => self::TYPE_NUMBER,
 			'operators'     => self::NUMERIC_OPERATORS,
 			'preview_value' => '2',
 		),
-		'payload.product_sku'       => array(
+		'payload.product_sku'        => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'SKU-001',
 		),
-		'payload.quantity'          => array(
+		'payload.quantity'           => array(
 			'type'          => self::TYPE_NUMBER,
 			'operators'     => self::NUMERIC_OPERATORS,
 			'preview_value' => '1',
 		),
-		'payload.variation_id'      => array(
+		'payload.variation_id'       => array(
 			'type'          => self::TYPE_NUMBER,
 			'operators'     => self::NUMERIC_OPERATORS,
 			'preview_value' => '0',
 		),
-		'payload.cart_total'        => array(
+		'payload.cart_total'         => array(
 			'type'          => self::TYPE_MONEY,
 			'operators'     => self::NUMERIC_OPERATORS,
 			'preview_value' => '29.90',
 		),
-		'subject.coupon_code'       => array(
+		'subject.coupon_code'        => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'SAVE10',
 		),
-		'payload.error_codes_csv'   => array(
+		'payload.error_codes_csv'    => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'invalid_email',
 		),
-		'context.checkout_type'     => array(
+		'context.checkout_type'      => array(
 			'type'           => self::TYPE_CHOICE,
 			'operators'      => self::CHOICE_OPERATORS,
 			'preview_value'  => 'block',
@@ -318,37 +320,37 @@ final class FieldTypeCatalog {
 				'block'   => 'Block checkout',
 			),
 		),
-		'subject.path'              => array(
+		'subject.path'               => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => '/shop/',
 		),
-		'subject.page_type'         => array(
+		'subject.page_type'          => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'product',
 		),
-		'subject.from_path'         => array(
+		'subject.from_path'          => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => '/cart/',
 		),
-		'subject.to_path'           => array(
+		'subject.to_path'            => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => '/checkout/',
 		),
-		'payload.result_count'      => array(
+		'payload.result_count'       => array(
 			'type'          => self::TYPE_NUMBER,
 			'operators'     => self::NUMERIC_OPERATORS,
 			'preview_value' => '5',
 		),
-		'subject.target_key'        => array(
+		'subject.target_key'         => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'newsletter_signup',
 		),
-		'payload.error_category'    => array(
+		'payload.error_category'     => array(
 			'type'          => self::TYPE_TEXT,
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'network',

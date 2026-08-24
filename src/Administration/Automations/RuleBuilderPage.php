@@ -80,7 +80,7 @@ final class RuleBuilderPage {
 	 * @var array<string, array{label: string, requires_woocommerce: bool, event_types: array<int, string>}>
 	 */
 	private const EVENT_FAMILIES = array(
-		'website_and_users'   => array(
+		'website_and_users'  => array(
 			'label'                => 'Website and users',
 			'requires_woocommerce' => false,
 			'event_types'          => array(
@@ -98,7 +98,7 @@ final class RuleBuilderPage {
 				'wordpress.update_completed',
 			),
 		),
-		'store_orders'        => array(
+		'store_orders'       => array(
 			'label'                => 'Store orders and payments',
 			'requires_woocommerce' => true,
 			'event_types'          => array(
@@ -110,7 +110,7 @@ final class RuleBuilderPage {
 				'woocommerce.refund_created',
 			),
 		),
-		'stock_and_checkout'  => array(
+		'stock_and_checkout' => array(
 			'label'                => 'Stock and checkout',
 			'requires_woocommerce' => true,
 			'event_types'          => array(
@@ -121,7 +121,7 @@ final class RuleBuilderPage {
 				'woocommerce.checkout_validation_failed',
 			),
 		),
-		'website_health'      => array(
+		'website_health'     => array(
 			'label'                => 'Website health',
 			'requires_woocommerce' => false,
 			'event_types'          => array(
@@ -131,7 +131,7 @@ final class RuleBuilderPage {
 				'wordpress.fatal_error',
 			),
 		),
-		'visitor_activity'    => array(
+		'visitor_activity'   => array(
 			'label'                => 'Visitor activity',
 			'requires_woocommerce' => false,
 			'event_types'          => array(
@@ -173,14 +173,14 @@ final class RuleBuilderPage {
 
 		if ( isset( $_GET['edit'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a GET-only edit-mode switch, no mutation; the save POST below re-verifies capability and nonce itself.
 			$show_builder = true;
-			$rule         = $this->rules->find( (int) $_GET['edit'] );
+			$rule         = $this->rules->find( (int) $_GET['edit'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- same GET-only edit-mode switch as above, no mutation.
 			if ( null !== $rule ) {
 				$prefill = RuleEditor::from_existing( $rule );
 			}
 		} elseif ( isset( $_GET['view'] ) && 'create' === $_GET['view'] ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a GET-only view switch, no mutation; the save POST below re-verifies capability and nonce itself.
 			$show_builder = true;
 			if ( isset( $_GET['preset'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a GET-only prefill selector, no mutation.
-				$preset = PresetCatalog::find( sanitize_key( wp_unslash( $_GET['preset'] ) ) );
+				$preset = PresetCatalog::find( sanitize_key( wp_unslash( $_GET['preset'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- same GET-only prefill selector as above, no mutation.
 				if ( null !== $preset && ( ! $preset['requires_woocommerce'] || $this->woocommerce_active() ) ) {
 					$prefill = RuleEditor::from_preset( $preset );
 				}
@@ -503,12 +503,10 @@ final class RuleBuilderPage {
 	public function handle_preview_request(): void {
 		if ( ! current_user_can( CapabilityRegistrar::MANAGE_AUTOMATIONS ) ) {
 			wp_send_json_error( array(), 403 );
-			return;
 		}
 
 		if ( ! check_ajax_referer( self::PREVIEW_NONCE_ACTION, '_wpnonce', false ) ) {
 			wp_send_json_error( array(), 403 );
-			return;
 		}
 
 		$event_type = isset( $_POST['event_type'] ) ? sanitize_text_field( wp_unslash( $_POST['event_type'] ) ) : '';
@@ -833,7 +831,8 @@ final class RuleBuilderPage {
 		echo '<select id="ut-insert-field"><option value="">' . esc_html__( 'Insert field…', 'universal-telegram' ) . '</option></select> ';
 		echo '<button type="button" id="ut-insert-field-button" class="button">' . esc_html__( 'Insert', 'universal-telegram' ) . '</button> ';
 		echo '<label for="ut-insert-emoji" class="screen-reader-text">' . esc_html__( 'Insert emoji', 'universal-telegram' ) . '</label>';
-		echo '<select id="ut-insert-emoji"><option value="">' . esc_html__( 'Insert emoji…', 'universal-telegram' ) . '</option>' . $this->emoji_options_html() . '</select> ';
+		echo '<select id="ut-insert-emoji"><option value="">' . esc_html__( 'Insert emoji…', 'universal-telegram' ) . '</option>' . $this->emoji_options_html() // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- emoji_options_html() returns already-escaped HTML.
+			. '</select> ';
 		echo '<button type="button" id="ut-insert-emoji-button" class="button">' . esc_html__( 'Insert', 'universal-telegram' ) . '</button></p>';
 		echo '<textarea id="ut-rule-template" name="template" class="large-text" rows="3">' . esc_textarea( $editing['template'] ?? '' ) . '</textarea>';
 		echo '<p class="description">' . esc_html__( 'The final message uses the real event information when it is sent.', 'universal-telegram' ) . '</p>';
@@ -917,17 +916,17 @@ final class RuleBuilderPage {
 	 * @var array<string, string>
 	 */
 	private const EMOJI_OPTIONS = array(
-		'🔔' => 'Bell',
-		'✅' => 'Check mark',
+		'🔔'  => 'Bell',
+		'✅'  => 'Check mark',
 		'⚠️' => 'Warning',
-		'🚨' => 'Alert',
-		'🛒' => 'Cart',
-		'📦' => 'Package',
-		'💳' => 'Payment',
-		'👤' => 'Person',
-		'📧' => 'Email',
-		'📉' => 'Low stock',
-		'❌' => 'Cross mark',
+		'🚨'  => 'Alert',
+		'🛒'  => 'Cart',
+		'📦'  => 'Package',
+		'💳'  => 'Payment',
+		'👤'  => 'Person',
+		'📧'  => 'Email',
+		'📉'  => 'Low stock',
+		'❌'  => 'Cross mark',
 	);
 
 	/**
@@ -968,6 +967,9 @@ final class RuleBuilderPage {
 	 * WooCommerce-only family is disabled with a clear explanation when
 	 * WooCommerce is inactive, rather than omitted (task requirement — an
 	 * admin should understand why options are missing).
+	 *
+	 * @param string $selected_event_type The currently selected event type, if any.
+	 * @param bool   $locked              Whether the event type is locked (an existing rule the visual builder cannot fully represent).
 	 */
 	private function render_event_picker( string $selected_event_type = '', bool $locked = false ): void {
 		$woocommerce_active = $this->woocommerce_active();

@@ -30,6 +30,10 @@ final class FieldTypeCatalogTest extends WP_UnitTestCase {
 	);
 
 	public function test_every_catalogued_field_is_allowed_by_at_least_one_registered_event_type(): void {
+		if ( ! getenv( 'UT_TEST_WC_ACTIVE' ) ) {
+			$this->markTestSkipped( 'The catalog includes WooCommerce-only fields, registered only when WooCommerce is active.' );
+		}
+
 		$allowed_fields = array();
 
 		foreach ( Plugin::instance()->event_registry()->all() as $entry ) {

@@ -34,9 +34,15 @@ final class NoPiiFieldAuditTest extends WP_UnitTestCase {
 
 	// context.has_transaction_id is the one explicitly permitted
 	// payment-adjacent field (a boolean, never the id itself) — M03 plan
-	// §5.5, §5.14.
+	// §5.5, §5.14. payload.product_name is a WooCommerce catalog product's
+	// own name — public, non-personal, the same sensitivity class as the
+	// already-uncatalogued payload.product_sku on the same event type — not
+	// a customer name; the denylist's "name" substring exists to catch
+	// customer/billing/shipping name fields (M08.1 friendly-cart-notification
+	// follow-up).
 	private const ALLOWED_EXCEPTIONS = array(
 		'context.has_transaction_id',
+		'payload.product_name',
 	);
 
 	public function test_no_woocommerce_event_type_field_path_matches_the_pii_denylist(): void {

@@ -38,7 +38,7 @@ final class PreviewRendererTest extends TestCase {
 	}
 
 	public function test_the_constructor_accepts_only_a_registry_no_io_dependency(): void {
-		$reflection = new ReflectionClass( PreviewRenderer::class );
+		$reflection  = new ReflectionClass( PreviewRenderer::class );
 		$constructor = $reflection->getConstructor();
 
 		$this->assertNotNull( $constructor );

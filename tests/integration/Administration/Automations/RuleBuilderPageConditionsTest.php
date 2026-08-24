@@ -54,10 +54,15 @@ final class RuleBuilderPageConditionsTest extends WP_UnitTestCase {
 		return implode( ' ', array_merge( $option_matches[1], $label_matches[1] ) );
 	}
 
-	private function page( bool $woocommerce_active ): RuleBuilderPage {
-		$woocommerce_support = $this->createMock( WooCommerceSupport::class );
-		$woocommerce_support->method( 'is_active' )->willReturn( $woocommerce_active );
-
+	/**
+	 * WooCommerceSupport is deliberately final (the single place every
+	 * later module asks whether WooCommerce is present) and its own
+	 * is_active() is a pure, unfakeable function of the real environment
+	 * (class_exists('WooCommerce')) — never mocked. Tests that specifically
+	 * need it active/inactive are guarded with UT_TEST_WC_ACTIVE below,
+	 * matching this suite's other WooCommerce-conditional tests.
+	 */
+	private function page(): RuleBuilderPage {
 		return new RuleBuilderPage(
 			Plugin::instance()->notification_rule_repository(),
 			Plugin::instance()->event_registry(),
@@ -67,12 +72,12 @@ final class RuleBuilderPageConditionsTest extends WP_UnitTestCase {
 			null,
 			null,
 			null,
-			$woocommerce_support
+			new WooCommerceSupport()
 		);
 	}
 
 	public function test_visible_text_uses_only_friendly_labels_not_technical_identifiers(): void {
-		$page = $this->page( true );
+		$page = $this->page();
 
 		ob_start();
 		$page->render_tab_content();
@@ -91,7 +96,11 @@ final class RuleBuilderPageConditionsTest extends WP_UnitTestCase {
 	}
 
 	public function test_woocommerce_families_are_disabled_with_explanatory_text_when_inactive(): void {
-		$page = $this->page( false );
+		if ( getenv( 'UT_TEST_WC_ACTIVE' ) ) {
+			$this->markTestSkipped( 'This assertion applies only to the WooCommerce-absent configuration.' );
+		}
+
+		$page = $this->page();
 
 		ob_start();
 		$page->render_tab_content();
@@ -102,7 +111,11 @@ final class RuleBuilderPageConditionsTest extends WP_UnitTestCase {
 	}
 
 	public function test_woocommerce_families_are_enabled_when_active(): void {
-		$page = $this->page( true );
+		if ( ! getenv( 'UT_TEST_WC_ACTIVE' ) ) {
+			$this->markTestSkipped( 'WooCommerce is not active in this configuration.' );
+		}
+
+		$page = $this->page();
 
 		ob_start();
 		$page->render_tab_content();
@@ -113,7 +126,7 @@ final class RuleBuilderPageConditionsTest extends WP_UnitTestCase {
 	}
 
 	public function test_condition_builder_starts_hidden_with_no_visible_rows(): void {
-		$page = $this->page( true );
+		$page = $this->page();
 
 		ob_start();
 		$page->render_tab_content();

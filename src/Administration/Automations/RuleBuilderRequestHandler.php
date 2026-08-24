@@ -168,7 +168,7 @@ class RuleBuilderRequestHandler {
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function parse_preserved_conditions_from_post(): array {
-		$raw = isset( $_POST['conditions_preserved_json'] ) ? sanitize_textarea_field( wp_unslash( $_POST['conditions_preserved_json'] ) ) : '[]';
+		$raw     = isset( $_POST['conditions_preserved_json'] ) ? sanitize_textarea_field( wp_unslash( $_POST['conditions_preserved_json'] ) ) : '[]';
 		$decoded = json_decode( (string) $raw, true );
 
 		return is_array( $decoded ) ? $decoded : array();

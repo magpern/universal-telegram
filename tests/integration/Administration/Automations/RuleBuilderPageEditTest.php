@@ -130,7 +130,8 @@ final class RuleBuilderPageEditTest extends WP_UnitTestCase {
 		$this->page()->render_tab_content();
 		$html = ob_get_clean();
 
-		$this->assertStringContainsString( 'This rule\'s conditions were created with a format the visual builder cannot display', $html );
+		// esc_html__() renders the apostrophe as its HTML entity.
+		$this->assertStringContainsString( 'This rule&#039;s conditions were created with a format the visual builder cannot display', $html );
 		$this->assertStringContainsString( 'greater_than', $html );
 		$this->assertStringContainsString( 'name="conditions_locked" value="1"', $html );
 		$this->assertStringNotContainsString( '<textarea id="ut-rule-conditions"', $html );

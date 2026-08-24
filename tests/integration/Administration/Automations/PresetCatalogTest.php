@@ -14,6 +14,10 @@ use WP_UnitTestCase;
 final class PresetCatalogTest extends WP_UnitTestCase {
 
 	public function test_every_preset_references_a_registered_event_type(): void {
+		if ( ! getenv( 'UT_TEST_WC_ACTIVE' ) ) {
+			$this->markTestSkipped( 'Several presets reference WooCommerce event types, registered only when WooCommerce is active.' );
+		}
+
 		$registry = Plugin::instance()->event_registry();
 
 		foreach ( PresetCatalog::all() as $preset ) {

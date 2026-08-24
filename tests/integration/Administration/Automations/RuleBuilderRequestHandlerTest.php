@@ -195,11 +195,11 @@ final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 			'woocommerce.order_created',
 			1,
 			array(
-				'subject.order_id'    => Classification::PUBLIC,
+				'subject.order_id'     => Classification::PUBLIC,
 				'context.order_status' => Classification::PUBLIC,
-				'payload.order_total' => Classification::PUBLIC,
-				'payload.currency'    => Classification::PUBLIC,
-				'payload.item_count'  => Classification::PUBLIC,
+				'payload.order_total'  => Classification::PUBLIC,
+				'payload.currency'     => Classification::PUBLIC,
+				'payload.item_count'   => Classification::PUBLIC,
 			),
 			array( 'subject.order_id', 'context.order_status', 'payload.order_total', 'payload.currency', 'payload.item_count' ),
 			array( 'subject.order_id', 'context.order_status', 'payload.order_total', 'payload.currency', 'payload.item_count' )
@@ -237,11 +237,11 @@ final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 		( new CapabilityRegistrar() )->grant_to_administrator();
 		wp_set_current_user( $admin );
 
-		$nonce                = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
-		$_POST['_wpnonce']    = $nonce;
-		$_REQUEST['_wpnonce'] = $nonce;
-		$_POST['op']          = 'create_starter_set';
-		$_POST['bot_id']      = '0';
+		$nonce                   = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$_POST['_wpnonce']       = $nonce;
+		$_REQUEST['_wpnonce']    = $nonce;
+		$_POST['op']             = 'create_starter_set';
+		$_POST['bot_id']         = '0';
 		$_POST['destination_id'] = '0';
 
 		$rules   = new NotificationRuleRepository( new SchemaHealth(), $this->starter_set_registry() );
@@ -311,21 +311,21 @@ final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 
 		$saved = $rules->save( null, 'Legacy', 'wordpress.user_registered', 1, $original_conditions, 1, 1, 'old message', true, 100, 0, 'all' );
 
-		$nonce                          = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
-		$_POST['_wpnonce']              = $nonce;
-		$_REQUEST['_wpnonce']           = $nonce;
-		$_POST['op']                    = 'save_rule';
-		$_POST['id']                    = (string) $saved->id();
-		$_POST['name']                  = 'Legacy';
-		$_POST['event_type']            = 'wordpress.user_registered';
-		$_POST['schema_version_min']    = '1';
-		$_POST['bot_id']                = '1';
-		$_POST['destination_id']        = '1';
-		$_POST['template']              = 'new message';
-		$_POST['priority']              = '100';
-		$_POST['cooldown_seconds']      = '0';
-		$_POST['match_mode']            = 'all';
-		$_POST['conditions_locked']     = '1';
+		$nonce                              = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$_POST['_wpnonce']                  = $nonce;
+		$_REQUEST['_wpnonce']               = $nonce;
+		$_POST['op']                        = 'save_rule';
+		$_POST['id']                        = (string) $saved->id();
+		$_POST['name']                      = 'Legacy';
+		$_POST['event_type']                = 'wordpress.user_registered';
+		$_POST['schema_version_min']        = '1';
+		$_POST['bot_id']                    = '1';
+		$_POST['destination_id']            = '1';
+		$_POST['template']                  = 'new message';
+		$_POST['priority']                  = '100';
+		$_POST['cooldown_seconds']          = '0';
+		$_POST['match_mode']                = 'all';
+		$_POST['conditions_locked']         = '1';
 		$_POST['conditions_preserved_json'] = wp_json_encode( $original_conditions );
 
 		$handler = $this->handler( $rules );

@@ -130,7 +130,12 @@ final class UserLifecycleEmitterTest extends WP_UnitTestCase {
 			'all'
 		);
 
-		$user_id = self::factory()->user->create( array( 'user_login' => 'quinn', 'user_email' => 'quinn@example.com' ) );
+		$user_id = self::factory()->user->create(
+			array(
+				'user_login' => 'quinn',
+				'user_email' => 'quinn@example.com',
+			)
+		);
 
 		do_action( 'user_register', $user_id );
 

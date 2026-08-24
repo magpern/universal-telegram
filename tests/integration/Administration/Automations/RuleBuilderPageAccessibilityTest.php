@@ -52,8 +52,8 @@ final class RuleBuilderPageAccessibilityTest extends WP_UnitTestCase {
 
 		// "Status" is plain-language and must stay outside the collapsed
 		// disclosure — it is not a nonessential control.
-		$enabled_position  = strpos( $html, 'id="ut-rule-enabled"' );
-		$details_position  = strpos( $html, '<details id="ut-advanced-delivery">' );
+		$enabled_position = strpos( $html, 'id="ut-rule-enabled"' );
+		$details_position = strpos( $html, '<details id="ut-advanced-delivery">' );
 		$this->assertNotFalse( $enabled_position );
 		$this->assertNotFalse( $details_position );
 		$this->assertLessThan( $details_position, $enabled_position );

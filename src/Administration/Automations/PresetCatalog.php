@@ -22,6 +22,8 @@ namespace UniversalTelegram\Administration\Automations;
 final class PresetCatalog {
 
 	/**
+	 * Every built-in notification preset.
+	 *
 	 * @var array<int, array{key: string, title: string, description: string, event_type: string, conditions: array<int, array<string, mixed>>, match_mode: string, message: string, requires_woocommerce: bool}>
 	 */
 	private const PRESETS = array(
