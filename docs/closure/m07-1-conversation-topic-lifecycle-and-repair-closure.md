@@ -13,7 +13,8 @@ Validation, PR creation, GitHub Actions / CI wait, merge to `main`, release/tag/
 | Feature branch | `feature/m11a-visitor-activity-digests` |
 | Starting SHA (pre-M07.1) | `dee2135e1eeef4576d2d67da92a6d6e92ce49ad6` |
 | Plan freeze SHA | `305c8d1d2a098e7d5fef9a43cefb16fe3f642c2b` |
-| Final SHA (this closure commit) | `dced7de14aef2b28d911aabc66da953392191416` |
+| Closure record SHA | `dced7de14aef2b28d911aabc66da953392191416` |
+| Final feature-branch SHA | `526a39a9608736b2f5a2a1b0d59911394c113d37` |
 | Plugin version | `0.14.0` |
 | `db_version` target | `29` |
 | ADR | ADR-0031 |
@@ -30,7 +31,8 @@ Validation, PR creation, GitHub Actions / CI wait, merge to `main`, release/tag/
 8. `2c965a2` — `feat(conversations): mark missing topics unavailable without leaking Telegram errors` (WP6)
 9. `d046f41` — `test(conversations): cover topic lifecycle upgrade and uninstall` (WP7)
 10. `cf84402` — `docs(conversations): freeze M07.1 topic lifecycle (ADR-0031)` (WP8)
-11. *(this commit)* — closure record
+11. `dced7de` — `docs(conversations): record M07.1 deferred-validation closure`
+12. `526a39a` — `docs(conversations): stamp M07.1 closure final SHA`
 
 ## Critical safety invariants
 
