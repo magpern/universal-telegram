@@ -831,7 +831,10 @@ final class RuleBuilderPage {
 		echo '<tr><th><label for="ut-rule-template">' . esc_html__( 'Message', 'universal-telegram' ) . '</label></th><td>';
 		echo '<p><label for="ut-insert-field" class="screen-reader-text">' . esc_html__( 'Insert field', 'universal-telegram' ) . '</label>';
 		echo '<select id="ut-insert-field"><option value="">' . esc_html__( 'Insert field…', 'universal-telegram' ) . '</option></select> ';
-		echo '<button type="button" id="ut-insert-field-button" class="button">' . esc_html__( 'Insert', 'universal-telegram' ) . '</button></p>';
+		echo '<button type="button" id="ut-insert-field-button" class="button">' . esc_html__( 'Insert', 'universal-telegram' ) . '</button> ';
+		echo '<label for="ut-insert-emoji" class="screen-reader-text">' . esc_html__( 'Insert emoji', 'universal-telegram' ) . '</label>';
+		echo '<select id="ut-insert-emoji"><option value="">' . esc_html__( 'Insert emoji…', 'universal-telegram' ) . '</option>' . $this->emoji_options_html() . '</select> ';
+		echo '<button type="button" id="ut-insert-emoji-button" class="button">' . esc_html__( 'Insert', 'universal-telegram' ) . '</button></p>';
 		echo '<textarea id="ut-rule-template" name="template" class="large-text" rows="3">' . esc_textarea( $editing['template'] ?? '' ) . '</textarea>';
 		echo '<p class="description">' . esc_html__( 'The final message uses the real event information when it is sent.', 'universal-telegram' ) . '</p>';
 		echo '<p><strong>' . esc_html__( 'Example notification preview', 'universal-telegram' ) . '</strong></p>';
@@ -902,6 +905,44 @@ final class RuleBuilderPage {
 
 		echo '</tbody></table>';
 		echo '</details>';
+	}
+
+	/**
+	 * A fixed, curated set of emoji offered by the message editor's own
+	 * "Insert emoji" menu — unlike the field-insert menu, this list is not
+	 * event-type-dependent. Emoji use is a matter of taste, not
+	 * professionalism, and is opt-in per message: nothing here is inserted
+	 * automatically into any preset or newly created rule.
+	 *
+	 * @var array<string, string>
+	 */
+	private const EMOJI_OPTIONS = array(
+		'🔔' => 'Bell',
+		'✅' => 'Check mark',
+		'⚠️' => 'Warning',
+		'🚨' => 'Alert',
+		'🛒' => 'Cart',
+		'📦' => 'Package',
+		'💳' => 'Payment',
+		'👤' => 'Person',
+		'📧' => 'Email',
+		'📉' => 'Low stock',
+		'❌' => 'Cross mark',
+	);
+
+	/**
+	 * The "Insert emoji" menu's own `<option>` markup.
+	 *
+	 * @return string
+	 */
+	private function emoji_options_html(): string {
+		$html = '';
+
+		foreach ( self::EMOJI_OPTIONS as $emoji => $label ) {
+			$html .= '<option value="' . esc_attr( $emoji ) . '">' . esc_html( $emoji . ' ' . $label ) . '</option>';
+		}
+
+		return $html;
 	}
 
 	/**
@@ -1182,22 +1223,36 @@ final class RuleBuilderPage {
 				insertFieldSelect.innerHTML = '<option value="">' + insertFieldSelect.options[ 0 ].text + '</option>' + fieldOptionsHtml( eventType );
 			}
 
+			function insertAtCursor( text ) {
+				var start = templateTextarea.selectionStart || 0;
+				var end = templateTextarea.selectionEnd || 0;
+				var value = templateTextarea.value;
+
+				templateTextarea.value = value.slice( 0, start ) + text + value.slice( end );
+				templateTextarea.focus();
+				templateTextarea.selectionStart = templateTextarea.selectionEnd = start + text.length;
+
+				schedulePreview();
+			}
+
 			insertFieldButton.addEventListener( 'click', function () {
 				var token = insertFieldSelect.value;
 				if ( ! token ) {
 					return;
 				}
 
-				var placeholder = '{{' + token + '}}';
-				var start = templateTextarea.selectionStart || 0;
-				var end = templateTextarea.selectionEnd || 0;
-				var value = templateTextarea.value;
+				insertAtCursor( '{{' + token + '}}' );
+			} );
 
-				templateTextarea.value = value.slice( 0, start ) + placeholder + value.slice( end );
-				templateTextarea.focus();
-				templateTextarea.selectionStart = templateTextarea.selectionEnd = start + placeholder.length;
+			var insertEmojiSelect = document.getElementById( 'ut-insert-emoji' );
+			var insertEmojiButton = document.getElementById( 'ut-insert-emoji-button' );
 
-				schedulePreview();
+			insertEmojiButton.addEventListener( 'click', function () {
+				if ( ! insertEmojiSelect.value ) {
+					return;
+				}
+
+				insertAtCursor( insertEmojiSelect.value );
 			} );
 
 			function fetchPreview() {

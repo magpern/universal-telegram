@@ -75,6 +75,21 @@ final class FieldTypeCatalog {
 			'operators'     => self::NUMERIC_OPERATORS,
 			'preview_value' => '42',
 		),
+		'subject.username'           => array(
+			'type'          => self::TYPE_TEXT,
+			'operators'     => self::TEXT_OPERATORS,
+			'preview_value' => 'jsmith',
+		),
+		'subject.name'               => array(
+			'type'          => self::TYPE_TEXT,
+			'operators'     => self::TEXT_OPERATORS,
+			'preview_value' => 'Jane Smith',
+		),
+		'subject.email'              => array(
+			'type'          => self::TYPE_TEXT,
+			'operators'     => self::TEXT_OPERATORS,
+			'preview_value' => 'jane@example.com',
+		),
 		'payload.new_role'           => array(
 			'type'            => self::TYPE_CHOICE,
 			'operators'       => self::CHOICE_OPERATORS,

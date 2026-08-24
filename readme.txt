@@ -66,6 +66,12 @@ indicator, so administrators have an accurate signal rather than an unearned exa
   field value.
 * The "Added to cart" preset now names the product (a new `payload.product_name` field on the
   `woocommerce.cart_item_added` event) instead of showing only its numeric product ID.
+* The "New user registered" preset and event now include the account's username, name, and email
+  address (new `subject.username`, `subject.name`, `subject.email` fields), not just its numeric
+  ID. These are usable in message templates and conditions but, like other personal data, are
+  never written to the durable event history.
+* The message editor's field-insert menu now has a companion "Insert emoji" menu, for admins who
+  want emoji in their own notification text. Built-in presets remain plain professional text.
 
 = 0.14.1 =
 * When WordPress deletes a destination (or purges a conversation that exclusively

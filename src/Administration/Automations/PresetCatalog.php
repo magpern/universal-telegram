@@ -132,7 +132,7 @@ final class PresetCatalog {
 			'event_type'           => 'wordpress.user_registered',
 			'conditions'           => array(),
 			'match_mode'           => 'all',
-			'message'              => 'New user registered: account #{{subject.user_id}}.',
+			'message'              => 'New user registered: {{subject.name}} ({{subject.username}}), {{subject.email}}.',
 			'requires_woocommerce' => false,
 		),
 		array(

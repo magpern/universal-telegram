@@ -34,8 +34,13 @@ final class UserLifecycleEmitter {
 		$registry->register(
 			self::USER_REGISTERED,
 			1,
-			array( 'subject.user_id' => Classification::PUBLIC ),
-			array( 'subject.user_id' ),
+			array(
+				'subject.user_id'   => Classification::PUBLIC,
+				'subject.username'  => Classification::INTERNAL,
+				'subject.name'      => Classification::INTERNAL,
+				'subject.email'     => Classification::INTERNAL,
+			),
+			array( 'subject.user_id', 'subject.username', 'subject.name', 'subject.email' ),
 			array( 'subject.user_id' )
 		);
 
@@ -66,9 +71,18 @@ final class UserLifecycleEmitter {
 	 * @param int $user_id The newly registered user's ID.
 	 */
 	public function on_user_registered( int $user_id ): void {
+		$user = get_userdata( $user_id );
+
 		universal_telegram_emit_event(
 			self::USER_REGISTERED,
-			array( 'subject' => array( 'user_id' => $user_id ) ),
+			array(
+				'subject' => array(
+					'user_id'  => $user_id,
+					'username' => false !== $user ? $user->user_login : '',
+					'name'     => false !== $user ? $user->display_name : '',
+					'email'    => false !== $user ? $user->user_email : '',
+				),
+			),
 			wp_generate_uuid4()
 		);
 	}

@@ -78,4 +78,21 @@ final class RuleBuilderPageAccessibilityTest extends WP_UnitTestCase {
 
 		$this->assertStringNotContainsString( 'id="ut-save-error"', $html );
 	}
+
+	/**
+	 * Emoji is opt-in, not forced: the message editor offers an "Insert
+	 * emoji" menu alongside the existing field-insert menu, but nothing
+	 * inserts an emoji automatically into any rule.
+	 */
+	public function test_the_message_editor_offers_an_opt_in_emoji_insert_menu(): void {
+		$_GET['view'] = 'create';
+
+		ob_start();
+		$this->page()->render_tab_content();
+		$html = ob_get_clean();
+
+		$this->assertStringContainsString( 'id="ut-insert-emoji"', $html );
+		$this->assertStringContainsString( 'id="ut-insert-emoji-button"', $html );
+		$this->assertStringContainsString( '🔔', $html );
+	}
 }
