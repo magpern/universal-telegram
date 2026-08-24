@@ -56,8 +56,8 @@ class RuleBuilderRequestHandler {
 
 		switch ( $op ) {
 			case 'save_rule':
-				$this->save_rule();
-				$this->redirect_and_exit( $this->rules_tab_url() );
+				$saved = $this->save_rule();
+				$this->redirect_and_exit( $saved ? $this->rules_tab_url() : $this->rules_tab_url() . '&save_error=invalid_condition' );
 				return;
 			case 'delete_rule':
 				$this->delete_rule();
@@ -87,8 +87,14 @@ class RuleBuilderRequestHandler {
 	 * exact flat clause array NotificationRuleRepository::save() already
 	 * accepts and authoritatively validates; this translation performs no
 	 * validation of its own.
+	 *
+	 * @return bool Whether the rule was saved. False routes handle_request()
+	 *              to append a save_error flag so RuleBuilderPage can show an
+	 *              accessible error summary (M08.1 plan "Accessibility and
+	 *              admin integration") — the underlying rejection itself is
+	 *              unchanged.
 	 */
-	private function save_rule(): void {
+	private function save_rule(): bool {
 		$id = isset( $_POST['id'] ) && '' !== $_POST['id'] ? (int) $_POST['id'] : null;
 
 		$name               = isset( $_POST['name'] ) ? sanitize_text_field( wp_unslash( $_POST['name'] ) ) : '';
@@ -99,7 +105,7 @@ class RuleBuilderRequestHandler {
 		$template           = isset( $_POST['template'] ) ? sanitize_textarea_field( wp_unslash( $_POST['template'] ) ) : '';
 		$enabled            = ! empty( $_POST['enabled'] );
 		$priority           = isset( $_POST['priority'] ) ? (int) $_POST['priority'] : 100;
-		$cooldown_seconds   = isset( $_POST['cooldown_seconds'] ) ? max( 0, (int) $_POST['cooldown_seconds'] ) : 0;
+		$cooldown_seconds   = isset( $_POST['cooldown_minutes'] ) ? max( 0, (int) $_POST['cooldown_minutes'] ) * 60 : 0;
 		$match_mode         = isset( $_POST['match_mode'] ) && 'any' === $_POST['match_mode'] ? 'any' : 'all';
 
 		$conditions = ! empty( $_POST['conditions_locked'] )
@@ -112,8 +118,10 @@ class RuleBuilderRequestHandler {
 			// The authoritative, server-side rejection — a malformed or
 			// disallowed condition field is simply never saved. No raw
 			// exception detail is ever rendered.
-			return;
+			return false;
 		}
+
+		return true;
 	}
 
 	/**

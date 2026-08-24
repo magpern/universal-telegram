@@ -336,4 +336,88 @@ final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 		$this->assertSame( 'new message', $updated->template() );
 		$this->assertSame( $original_conditions, $updated->conditions() );
 	}
+
+	/**
+	 * The friendly delivery-options disclosure submits minutes; the stored
+	 * rule still keeps its underlying seconds-based schema unchanged
+	 * (M08.1 plan "Delivery options").
+	 */
+	public function test_cooldown_minutes_is_converted_to_cooldown_seconds(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		$nonce                       = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$_POST['_wpnonce']           = $nonce;
+		$_REQUEST['_wpnonce']        = $nonce;
+		$_POST['op']                 = 'save_rule';
+		$_POST['name']               = 'Test';
+		$_POST['event_type']         = 'wordpress.user_registered';
+		$_POST['schema_version_min'] = '1';
+		$_POST['bot_id']             = '1';
+		$_POST['destination_id']     = '1';
+		$_POST['template']           = 'x';
+		$_POST['priority']           = '100';
+		$_POST['cooldown_minutes']   = '5';
+
+		$rules   = new NotificationRuleRepository( new SchemaHealth(), $this->registry() );
+		$handler = $this->handler( $rules );
+
+		$handler->handle_request();
+
+		$saved = $rules->all();
+		$this->assertCount( 1, $saved );
+		$this->assertSame( 300, $saved[0]->cooldown_seconds() );
+	}
+
+	/**
+	 * Package acceptance (WP7): composes the exact POST shape the friendly
+	 * builder produces for the "New WooCommerce order" preset — the
+	 * server-side outcome the manual Product Owner checklist's first item
+	 * exercises through the real browser UI.
+	 */
+	public function test_package_acceptance_saving_the_new_order_preset_end_to_end(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		$registry = new Registry();
+		$registry->register(
+			'woocommerce.order_created',
+			1,
+			array(
+				'subject.order_id'    => Classification::PUBLIC,
+				'payload.order_total' => Classification::PUBLIC,
+				'payload.currency'    => Classification::PUBLIC,
+			),
+			array( 'subject.order_id', 'payload.order_total', 'payload.currency' ),
+			array( 'subject.order_id', 'payload.order_total', 'payload.currency' )
+		);
+
+		$nonce                       = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$_POST['_wpnonce']           = $nonce;
+		$_REQUEST['_wpnonce']        = $nonce;
+		$_POST['op']                 = 'save_rule';
+		$_POST['name']               = 'New WooCommerce order';
+		$_POST['event_type']         = 'woocommerce.order_created';
+		$_POST['schema_version_min'] = '1';
+		$_POST['bot_id']             = '1';
+		$_POST['destination_id']     = '1';
+		$_POST['template']           = 'New order #{{subject.order_id}} — {{payload.order_total}} {{payload.currency}}.';
+		$_POST['priority']           = '100';
+		$_POST['enabled']            = '1';
+		$_POST['conditions']         = array();
+
+		$rules   = new NotificationRuleRepository( new SchemaHealth(), $registry );
+		$handler = $this->handler( $rules );
+
+		$handler->handle_request();
+
+		$saved = $rules->all();
+		$this->assertCount( 1, $saved );
+		$this->assertSame( 'woocommerce.order_created', $saved[0]->event_type() );
+		$this->assertTrue( $saved[0]->enabled() );
+		$this->assertSame( array(), $saved[0]->conditions() );
+		$this->assertStringContainsString( '{{subject.order_id}}', $saved[0]->template() );
+	}
 }

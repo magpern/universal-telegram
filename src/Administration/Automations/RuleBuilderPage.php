@@ -155,6 +155,8 @@ final class RuleBuilderPage {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'universal-telegram' ) );
 		}
 
+		$this->render_styles();
+
 		if ( isset( $_GET['view'] ) && 'starter_set' === $_GET['view'] ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a GET-only view switch, no mutation; the confirmation POST below re-verifies capability and nonce itself.
 			$this->render_starter_set_review();
 			return;
@@ -168,6 +170,10 @@ final class RuleBuilderPage {
 			}
 		}
 
+		if ( isset( $_GET['save_error'] ) && 'invalid_condition' === $_GET['save_error'] ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only display of a prior POST's own outcome, not a mutation.
+			$this->render_save_error_summary();
+		}
+
 		$this->render_rule_list();
 
 		if ( null === $editing ) {
@@ -178,6 +184,23 @@ final class RuleBuilderPage {
 
 		$this->render_rule_form( $editing );
 		$this->render_intelligence_settings();
+	}
+
+	/**
+	 * Renders an accessible error summary for a rejected save
+	 * (InvalidConditionFieldException — the friendly builder should never
+	 * itself submit a disallowed field, but the server-side check remains
+	 * authoritative). `tabindex="-1"` plus the small inline script below
+	 * move keyboard/screen-reader focus onto the notice on load, the
+	 * standard WCAG error-summary pattern, so the rejection is never
+	 * silently invisible (M08.1 plan "Accessibility and admin
+	 * integration").
+	 */
+	private function render_save_error_summary(): void {
+		echo '<div class="notice notice-error" tabindex="-1" id="ut-save-error">';
+		echo '<p>' . esc_html__( 'This rule could not be saved: one of its conditions referenced a field that is not available for the selected event. Review the "Only when…" section and try again.', 'universal-telegram' ) . '</p>';
+		echo '</div>';
+		echo '<script>document.addEventListener( "DOMContentLoaded", function () { var el = document.getElementById( "ut-save-error" ); if ( el ) { el.focus(); } } );</script>';
 	}
 
 	/**
@@ -207,6 +230,30 @@ final class RuleBuilderPage {
 	 * the Store-essentials starter-set entry point (WooCommerce-active
 	 * only), and "Create a custom notification".
 	 */
+	/**
+	 * A small inline stylesheet — no new build pipeline, no design system
+	 * (M08.1 plan "Strengthen the visual design specification"): visible
+	 * hover/focus/selected states for preset cards, a stacking condition-row
+	 * layout that wraps at a narrow admin viewport, and spacing consistent
+	 * with WordPress-native form-table/postbox conventions.
+	 */
+	private function render_styles(): void {
+		echo '<style>
+			.ut-preset-cards { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
+			.ut-preset-card { flex: 1 1 240px; max-width: 320px; border: 1px solid #c3c4c7; border-radius: 4px; padding: 12px 14px; background: #fff; cursor: pointer; }
+			.ut-preset-card:hover, .ut-preset-card:focus { border-color: #2271b1; box-shadow: 0 0 0 1px #2271b1; outline: none; }
+			.ut-preset-card.is-selected { border-color: #2271b1; background: #f0f6fc; }
+			.ut-preset-card p { margin: 4px 0 0; color: #50575e; }
+			.ut-condition-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+			.ut-message-preview { padding: 8px 12px; background: #f6f7f7; border: 1px solid #dcdcde; border-radius: 4px; white-space: pre-wrap; min-height: 1.5em; }
+			#ut-advanced-delivery summary { cursor: pointer; font-weight: 600; margin: 12px 0; }
+			@media ( max-width: 782px ) {
+				.ut-preset-card { flex-basis: 100%; max-width: none; }
+				.ut-condition-row { flex-direction: column; align-items: stretch; }
+			}
+		</style>';
+	}
+
 	private function render_presets(): void {
 		echo '<h2>' . esc_html__( 'Start with a common notification', 'universal-telegram' ) . '</h2>';
 
@@ -598,14 +645,12 @@ final class RuleBuilderPage {
 		echo '<p id="ut-message-preview" class="ut-message-preview"></p>';
 		echo '</td></tr>';
 
-		echo '<tr><th><label for="ut-rule-priority">' . esc_html__( 'Priority', 'universal-telegram' ) . '</label></th><td><input type="number" id="ut-rule-priority" name="priority" value="' . esc_attr( (string) ( $editing['priority'] ?? 100 ) ) . '" /></td></tr>';
-
-		echo '<tr><th><label for="ut-rule-cooldown">' . esc_html__( 'Cooldown seconds', 'universal-telegram' ) . '</label></th><td><input type="number" id="ut-rule-cooldown" name="cooldown_seconds" value="' . esc_attr( (string) ( $editing['cooldown_seconds'] ?? 0 ) ) . '" min="0" /></td></tr>';
-
 		$enabled_checked = null === $editing ? true : $editing['enabled'];
-		echo '<tr><th><label for="ut-rule-enabled">' . esc_html__( 'Enabled', 'universal-telegram' ) . '</label></th><td><input type="checkbox" id="ut-rule-enabled" name="enabled" value="1" ' . checked( $enabled_checked, true, false ) . ' /></td></tr>';
+		echo '<tr><th><label for="ut-rule-enabled">' . esc_html__( 'Enabled', 'universal-telegram' ) . '</label></th><td><input type="checkbox" id="ut-rule-enabled" name="enabled" value="1" ' . checked( $enabled_checked, true, false ) . ' /> <span class="description">' . esc_html__( 'Whether this rule is currently active.', 'universal-telegram' ) . '</span></td></tr>';
 
 		echo '</tbody></table>';
+
+		$this->render_advanced_delivery_options( $editing );
 
 		submit_button( null === $editing ? __( 'Save rule', 'universal-telegram' ) : __( 'Save changes', 'universal-telegram' ) );
 		echo '</form>';
@@ -632,6 +677,37 @@ final class RuleBuilderPage {
 		echo '<input type="hidden" name="conditions_locked" value="1" />';
 		echo '<input type="hidden" name="conditions_preserved_json" value="' . esc_attr( $editing['conditions_json'] ) . '" />';
 		echo '<input type="hidden" name="match_mode" value="' . esc_attr( $editing['match_mode'] ) . '" />';
+	}
+
+	/**
+	 * Renders the collapsed-by-default "Advanced delivery options"
+	 * disclosure: evaluation priority and the repeat-notification cooldown,
+	 * expressed in plain language and minutes rather than raw seconds —
+	 * neither is essential for the common case, so neither is visible by
+	 * default (M08.1 plan "Delivery options").
+	 *
+	 * @param array{priority: int, cooldown_seconds: int}|null $editing The rule being edited, or null when creating.
+	 */
+	private function render_advanced_delivery_options( ?array $editing ): void {
+		$priority         = $editing['priority'] ?? 100;
+		$cooldown_minutes = (int) floor( ( $editing['cooldown_seconds'] ?? 0 ) / 60 );
+
+		echo '<details id="ut-advanced-delivery">';
+		echo '<summary>' . esc_html__( 'Advanced delivery options', 'universal-telegram' ) . '</summary>';
+		echo '<table class="form-table"><tbody>';
+
+		echo '<tr><th><label for="ut-rule-cooldown-minutes">' . esc_html__( 'Do not send repeated notifications more often than…', 'universal-telegram' ) . '</label></th><td>';
+		echo '<input type="number" id="ut-rule-cooldown-minutes" name="cooldown_minutes" value="' . esc_attr( (string) $cooldown_minutes ) . '" min="0" style="width:5em" /> ' . esc_html__( 'minutes', 'universal-telegram' );
+		echo '<p class="description">' . esc_html__( 'Leave at 0 to allow every matching occurrence to send its own notification.', 'universal-telegram' ) . '</p>';
+		echo '</td></tr>';
+
+		echo '<tr><th><label for="ut-rule-priority">' . esc_html__( 'Evaluation priority', 'universal-telegram' ) . '</label></th><td>';
+		echo '<input type="number" id="ut-rule-priority" name="priority" value="' . esc_attr( (string) $priority ) . '" style="width:6em" />';
+		echo '<p class="description">' . esc_html__( 'When more than one rule matches the same event, lower numbers run first. Most rules can leave this at 100.', 'universal-telegram' ) . '</p>';
+		echo '</td></tr>';
+
+		echo '</tbody></table>';
+		echo '</details>';
 	}
 
 	/**
@@ -1015,6 +1091,10 @@ final class RuleBuilderPage {
 			for ( var p = 0; p < presetCards.length; p++ ) {
 				presetCards[ p ].addEventListener( 'click', function () {
 					var key = this.getAttribute( 'data-preset-key' );
+					for ( var c = 0; c < presetCards.length; c++ ) {
+						presetCards[ c ].classList.remove( 'is-selected' );
+					}
+					this.classList.add( 'is-selected' );
 					for ( var j = 0; j < presets.length; j++ ) {
 						if ( presets[ j ].key === key ) {
 							applyPreset( presets[ j ] );

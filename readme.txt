@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.14.1
+Stable tag: 0.15.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,18 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.15.0 =
+* Friendly rule builder and notification presets (M08.1, ADR-0032): the Add Rule screen no
+  longer requires JSON, schema field paths, technical event names, or template syntax — a
+  plain-language event picker grouped by family, a visual "Only when…" condition builder
+  (typed operators, all/any matching), a friendly message editor with a field-insert menu and
+  an "Example notification preview", and one-click starting presets (including a guarded
+  two-step "Store essentials" starter set) replace the previous raw form. Existing rules keep
+  working unchanged; a rule the visual builder cannot represent stays editable elsewhere with
+  its conditions preserved exactly and a read-only compatibility notice, never silently
+  altered. Condition evaluation gains an explicit all/any match mode and three additional
+  comparison operators, defaulting to every existing rule's own current behavior.
 
 = 0.14.1 =
 * When WordPress deletes a destination (or purges a conversation that exclusively
