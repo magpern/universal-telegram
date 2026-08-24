@@ -1010,7 +1010,11 @@ final class Plugin {
 			new VisitorDigestCounterRepository( $this->schema_health ),
 			new VisitorDigestStateRepository( $this->schema_health ),
 			(int) $settings_values['telegram_stale_pending_alert_seconds'],
-			(int) $settings_values['telegram_webhook_rotation_max_pending_hours']
+			(int) $settings_values['telegram_webhook_rotation_max_pending_hours'],
+			new IntelligenceSettings( $settings ),
+			new OperationalSummaryRepository( $this->schema_health ),
+			new AlertRepository( $this->schema_health ),
+			new SummaryAiRepository( $this->schema_health, $this->credential_vault )
 		);
 		$this->diagnostics_page = new DiagnosticsPage(
 			$report,

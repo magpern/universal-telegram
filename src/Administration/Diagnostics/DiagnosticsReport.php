@@ -14,6 +14,10 @@ use UniversalTelegram\Automations\Digest\DigestEligibility;
 use UniversalTelegram\Automations\Digest\VisitorDigestCounterRepository;
 use UniversalTelegram\Automations\Digest\VisitorDigestStateRepository;
 use UniversalTelegram\Automations\DispatchLogRepository;
+use UniversalTelegram\Automations\Intelligence\AlertRepository;
+use UniversalTelegram\Automations\Intelligence\IntelligenceSettings;
+use UniversalTelegram\Automations\Intelligence\OperationalSummaryRepository;
+use UniversalTelegram\Automations\Intelligence\SummaryAiRepository;
 use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Automations\RuleEvaluator;
 use UniversalTelegram\Core\Configuration\Settings;
@@ -72,7 +76,11 @@ final class DiagnosticsReport {
 		private readonly VisitorDigestCounterRepository $digest_counters,
 		private readonly VisitorDigestStateRepository $digest_state,
 		private readonly int $stale_pending_threshold_seconds = 1800,
-		private readonly int $stale_registration_threshold_hours = 24
+		private readonly int $stale_registration_threshold_hours = 24,
+		private readonly ?IntelligenceSettings $intelligence_settings = null,
+		private readonly ?OperationalSummaryRepository $operational_summary_repository = null,
+		private readonly ?AlertRepository $alert_repository = null,
+		private readonly ?SummaryAiRepository $summary_ai_repository = null
 	) {}
 
 	/**
@@ -195,7 +203,43 @@ final class DiagnosticsReport {
 			'bot_commands_rejected_unauthorized_24h'   => $this->audit_log_repository->count_by_action_24h( 'bot_command.rejected_unauthorized' ),
 			'bot_commands_rejected_wrong_context_24h'  => $this->audit_log_repository->count_by_action_24h( 'bot_command.rejected_wrong_context' ),
 			'recent_audit_entries'                     => $this->audit_log_repository->recent( 20 ),
-		) + $this->visitor_digest_diagnostics();
+		) + $this->visitor_digest_diagnostics() + $this->intelligence_diagnostics();
+	}
+
+	/**
+	 * The M11B operational-intelligence diagnostics keys
+	 * (docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md §5).
+	 * Every value defaults safely (disabled/never_run) when the M11B
+	 * dependencies are not supplied (pre-M11B callers) or the schema is
+	 * unavailable.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function intelligence_diagnostics(): array {
+		if ( null === $this->intelligence_settings || null === $this->operational_summary_repository || null === $this->alert_repository || null === $this->summary_ai_repository ) {
+			return array();
+		}
+
+		$most_recent_summary = $this->schema_health->is_available() ? $this->operational_summary_repository->most_recent() : null;
+
+		$keys = array(
+			'operational_summary_enabled'      => $this->intelligence_settings->operational_summary_enabled(),
+			'operational_summary_last_status'  => null !== $most_recent_summary ? ( $most_recent_summary['send_status'] ?? 'never_run' ) : 'never_run',
+			'operational_summary_last_sent_at' => null !== $most_recent_summary ? $most_recent_summary['sent_at'] : null,
+		);
+
+		foreach ( IntelligenceSettings::ALERT_TYPES as $alert_type ) {
+			$keys[ 'alert_' . $alert_type . '_enabled' ]      = $this->intelligence_settings->alert_enabled( $alert_type );
+			$keys[ 'alert_' . $alert_type . '_last_fired_at' ] = $this->schema_health->is_available() ? $this->alert_repository->last_fired_at( $alert_type ) : null;
+		}
+
+		$most_recent_ai_draft = null !== $most_recent_summary && $this->schema_health->is_available()
+			? $this->summary_ai_repository->find_by_summary_run_id( (int) $most_recent_summary['id'] )
+			: null;
+
+		$keys['ai_summary_last_status'] = null !== $most_recent_ai_draft ? $most_recent_ai_draft->status() : 'never_run';
+
+		return $keys;
 	}
 
 	/**

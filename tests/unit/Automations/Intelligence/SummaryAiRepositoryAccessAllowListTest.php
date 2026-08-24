@@ -9,7 +9,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * M11B plan §3/§8 decision 4: SummaryAiRepository is referenced only by a
- * fixed five-class allow-list, and no class in its own AI-summary code
+ * fixed six-class allow-list, and no class in its own AI-summary code
  * path ever references Telegram\Outbound\MessageDispatcher — the
  * structural no-auto-send guarantee. Mirrors
  * AiDraftRepositoryAccessAllowListTest's exact static-scan technique.
@@ -17,7 +17,7 @@ use PHPUnit\Framework\TestCase;
 final class SummaryAiRepositoryAccessAllowListTest extends TestCase {
 
 	/**
-	 * Repository-relative paths, exactly the five classes the frozen plan
+	 * Repository-relative paths, exactly the six classes the frozen plan
 	 * names.
 	 *
 	 * @var array<int, string>
@@ -28,6 +28,7 @@ final class SummaryAiRepositoryAccessAllowListTest extends TestCase {
 		'src/Automations/Intelligence/SummaryAiGenerationHandler.php',
 		'src/Automations/Intelligence/SummaryAiLeaseSweep.php',
 		'src/Administration/Automations/IntelligencePanel.php',
+		'src/Administration/Diagnostics/DiagnosticsReport.php',
 	);
 
 	/**
@@ -43,7 +44,7 @@ final class SummaryAiRepositoryAccessAllowListTest extends TestCase {
 		'src/Automations/Intelligence/SummaryAiLeaseSweep.php',
 	);
 
-	public function test_only_the_fixed_five_class_allow_list_references_summary_ai_repository(): void {
+	public function test_only_the_fixed_six_class_allow_list_references_summary_ai_repository(): void {
 		$src_root = dirname( __DIR__, 4 ) . '/src';
 
 		$referencing_files = array( 'src/Automations/Intelligence/SummaryAiRepository.php' );
@@ -89,7 +90,7 @@ final class SummaryAiRepositoryAccessAllowListTest extends TestCase {
 		$this->assertSame(
 			$expected,
 			array_values( array_unique( $referencing_files ) ),
-			'SummaryAiRepository must be referenced only by the fixed five-class allow-list.'
+			'SummaryAiRepository must be referenced only by the fixed six-class allow-list.'
 		);
 	}
 
