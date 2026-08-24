@@ -306,9 +306,11 @@ indicator, so administrators have an accurate signal rather than an unearned exa
 * Telegram connectivity: multiple bot profiles, destinations (private/group/supergroup/channel,
   forum-topic routing), outbound queue with encrypted message storage, authenticated and
   replay-protected inbound webhook with a failure-safe registration/rotation protocol, per-bot and
-  per-destination rate limiting and circuit breaking, dead-letter handling with admin requeue,
-  retention-based cleanup, bot/destination management screen, queue-health alerting, best-effort
-  webhook deregistration on uninstall.
+  per-destination rate limiting and circuit breaking, dead-letter handling with admin requeue and
+  dismiss (dismiss removes a reviewed dead letter that cannot or should not be resent; the
+  queue-health banner stays until underlying conditions clear), retention-based cleanup,
+  bot/destination management screen, queue-health alerting, best-effort webhook deregistration on
+  uninstall.
 
 = 0.0.1 =
 * Product foundation: composition root, module boundaries, persistence and migration framework, queue

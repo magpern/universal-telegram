@@ -113,7 +113,9 @@ claim_expires_at      DATETIME NULL
 
 ## 6. Digest message format
 
-Fixed structure, MarkdownV2-safe (reuses `TemplateRenderer`'s existing escaping utility rather than hand-rolling escaping):
+Fixed structure, MarkdownV2-safe (escapes timestamps and other dynamic punctuation via the shared
+`Automations\MarkdownV2Escaper`, also used by `TemplateRenderer` and the operational summary
+renderer — raw DATETIME/`(N min)` text must not be sent unescaped under `parse_mode=MarkdownV2`):
 
 ```
 📊 *Visitor Activity Digest*

@@ -721,8 +721,11 @@ New `Automations` admin subdomain under `Administration`, gated by
 `CapabilityRegistrar::MANAGE_AUTOMATIONS` on the menu-registration capability parameter itself
 plus independent capability+nonce re-verification inside every write handler, mirroring
 `DiagnosticsPage`'s existing pattern exactly. Event catalog screen lists `Registry::all()` — event
-type, schema version, and its declared allowlisted fields — read-only. Rule builder screen: CRUD
-over `NotificationRuleRepository`, condition-clause editor constrained to the selected event
+type, schema version, and its declared allowlisted fields — read-only. Operator-facing presentation
+later adds plain-language description and field labels beside the technical identifiers (see
+`Administration\Automations\EventCatalogLabels`); the registry contract and technical event-type /
+field paths remain authoritative for rules, simulators, and history filters. Rule builder screen:
+CRUD over `NotificationRuleRepository`, condition-clause editor constrained to the selected event
 type's allowlist and the fixed operator enum, validated identically client-side and server-side
 (the server-side check in `NotificationRuleRepository::save()` is authoritative).
 

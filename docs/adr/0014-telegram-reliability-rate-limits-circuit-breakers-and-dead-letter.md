@@ -46,3 +46,41 @@ M09 (AI-provider reliability mechanisms — likely precedent, not a binding requ
 ## Compatibility/Migration Impact
 
 None — no Telegram reliability mechanism of any kind exists before this milestone.
+
+## Amendment: Operator dismiss and unresolved-outbound abandon
+
+**Status:** Accepted.
+
+**Context.** Exploratory operator testing showed two gaps in the dead-letter / queue-health
+surface defined above: (1) Requeue alone cannot clear messages whose stored body is permanently
+invalid (for example a MarkdownV2 parse rejection), so the site-wide alert stayed active with no
+operator path short of waiting for retention cleanup or editing the database; (2) pending outbound
+rows whose destination or bot had already been removed could stall as unresolved pending and keep
+the same alert active.
+
+**Decision.**
+
+- **Dismiss** is an administrator action on a `dead_letter` row: permanently delete that row after
+  review, record a fixed audit action (`telegram_dead_letter_dismissed`), and immediately clear the
+  queue-health alert cache so the banner re-evaluates on the next admin page load. Dismiss does not
+  re-fire `universal_telegram_outbound_message_resolved` (that already fired when the message was
+  dead-lettered). Requeue remains the recovery path when the environment (token, destination, topic)
+  has been repaired and the same stored payload should be tried again; Requeue is ignored unless the
+  row is currently `dead_letter`.
+- **Unresolved outbound abandon** deletes pending/retry/sending rows whose destination or bot no
+  longer exists (on destination/bot delete, and when a send attempt finds the destination missing),
+  fires `universal_telegram_outbound_message_resolved` with outcome `failed` and a fixed reason code
+  (`telegram_destination_removed`), then deletes the row so stale pending counts cannot pin the
+  queue-health alert.
+- The site-wide queue-health banner remains **condition-based**, not operator-snoozable: it has no
+  dismiss control of its own. Clearing it requires clearing the underlying conditions (dead-letter
+  count, open circuit breaker, stale pending, or unresolved webhook rotation). Requeue and Dismiss
+  both bust the short-lived alert cache so recovery is visible without waiting for the cache TTL.
+
+**Alternatives considered.** Making the admin banner WordPress-`is-dismissible` without clearing
+underlying conditions — rejected: it would reappear on the next page load and falsely imply the
+problem was acknowledged away. Auto-deleting every terminal rejection without review — rejected:
+encrypted content retention for Requeue remains the correct recovery tradeoff when the failure is
+environmental.
+
+**Compatibility.** Additive operator/admin behavior and send-path cleanup only; no schema change.
