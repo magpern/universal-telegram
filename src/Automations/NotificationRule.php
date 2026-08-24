@@ -11,8 +11,11 @@ namespace UniversalTelegram\Automations;
 
 /**
  * Immutable read model of one row of universal_telegram_notification_rules.
- * conditions() is a flat array of clauses; every clause must evaluate true
- * for the rule to match (AND-only, no nesting, no OR — M02 plan §7.2).
+ * conditions() is a flat, non-nested clause array; match_mode() determines
+ * whether every clause must evaluate true ('all', the original M02 §7.2
+ * behavior and every legacy rule's default) or at least one clause with a
+ * present field must ('any' — M08.1, ADR-0032). Never nested, never OR
+ * within a single clause.
  */
 final class NotificationRule {
 
@@ -23,7 +26,8 @@ final class NotificationRule {
 	 * @param string                           $name                Admin-facing name.
 	 * @param string                           $event_type          The triggering event type.
 	 * @param int                              $schema_version_min  The minimum schema version this rule applies to.
-	 * @param array<int, array<string, mixed>> $conditions Flat AND-only clause array.
+	 * @param array<int, array<string, mixed>> $conditions Flat clause array.
+	 * @param string                           $match_mode          'all' or 'any' (ADR-0032).
 	 * @param int                              $bot_id              The Telegram bot to send through.
 	 * @param int                              $destination_id      The Telegram destination to send to.
 	 * @param string                           $template            The message template.
@@ -39,6 +43,7 @@ final class NotificationRule {
 		private readonly string $event_type,
 		private readonly int $schema_version_min,
 		private readonly array $conditions,
+		private readonly string $match_mode,
 		private readonly int $bot_id,
 		private readonly int $destination_id,
 		private readonly string $template,
@@ -92,6 +97,16 @@ final class NotificationRule {
 	 */
 	public function conditions(): array {
 		return $this->conditions;
+	}
+
+	/**
+	 * Whether every clause must match ('all') or at least one present-field
+	 * clause must match ('any') for this rule to match (ADR-0032).
+	 *
+	 * @return string
+	 */
+	public function match_mode(): string {
+		return $this->match_mode;
 	}
 
 	/**

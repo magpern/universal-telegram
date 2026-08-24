@@ -27,6 +27,12 @@ final class ConditionOperatorTest extends TestCase {
 		$this->assertFalse( ConditionOperator::CONTAINS->matches( 42, 'world' ) );
 	}
 
+	public function test_not_contains(): void {
+		$this->assertTrue( ConditionOperator::NOT_CONTAINS->matches( 'hello world', 'xyz' ) );
+		$this->assertFalse( ConditionOperator::NOT_CONTAINS->matches( 'hello world', 'world' ) );
+		$this->assertFalse( ConditionOperator::NOT_CONTAINS->matches( 42, 'world' ) );
+	}
+
 	public function test_greater_than(): void {
 		$this->assertTrue( ConditionOperator::GREATER_THAN->matches( 10, 5 ) );
 		$this->assertFalse( ConditionOperator::GREATER_THAN->matches( 5, 10 ) );
@@ -36,6 +42,20 @@ final class ConditionOperatorTest extends TestCase {
 	public function test_less_than(): void {
 		$this->assertTrue( ConditionOperator::LESS_THAN->matches( 5, 10 ) );
 		$this->assertFalse( ConditionOperator::LESS_THAN->matches( 10, 5 ) );
+	}
+
+	public function test_at_least(): void {
+		$this->assertTrue( ConditionOperator::AT_LEAST->matches( 10, 10 ) );
+		$this->assertTrue( ConditionOperator::AT_LEAST->matches( 11, 10 ) );
+		$this->assertFalse( ConditionOperator::AT_LEAST->matches( 9, 10 ) );
+		$this->assertFalse( ConditionOperator::AT_LEAST->matches( 'x', 10 ) );
+	}
+
+	public function test_at_most(): void {
+		$this->assertTrue( ConditionOperator::AT_MOST->matches( 10, 10 ) );
+		$this->assertTrue( ConditionOperator::AT_MOST->matches( 9, 10 ) );
+		$this->assertFalse( ConditionOperator::AT_MOST->matches( 11, 10 ) );
+		$this->assertFalse( ConditionOperator::AT_MOST->matches( 'x', 10 ) );
 	}
 
 	public function test_in(): void {

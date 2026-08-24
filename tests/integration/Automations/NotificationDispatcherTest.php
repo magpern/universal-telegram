@@ -90,7 +90,7 @@ final class NotificationDispatcherTest extends WP_UnitTestCase {
 		[ 'bots' => $bots, 'destinations' => $destinations, 'dispatch_log' => $dispatch_log, 'dispatcher' => $dispatcher, 'registry' => $registry ] = $this->build();
 		[ $bot, $destination ] = $this->active_bot_and_destination( $bots, $destinations );
 
-		$rule  = new NotificationRule( 1, 'Rule', 'wordpress.user_registered', 1, array(), $bot->id(), $destination->id(), 'Hello {{ subject.user_id }}', true, 100, 0, 'now', 'now' );
+		$rule  = new NotificationRule( 1, 'Rule', 'wordpress.user_registered', 1, array(), 'all', $bot->id(), $destination->id(), 'Hello {{ subject.user_id }}', true, 100, 0, 'now', 'now' );
 		$event = $this->envelope( $registry );
 
 		$dispatcher->dispatch( $rule, $event );
@@ -109,7 +109,7 @@ final class NotificationDispatcherTest extends WP_UnitTestCase {
 		[ 'bots' => $bots, 'destinations' => $destinations, 'dispatcher' => $dispatcher, 'registry' => $registry ] = $this->build();
 		[ $bot, $destination ] = $this->active_bot_and_destination( $bots, $destinations );
 
-		$rule  = new NotificationRule( 1, 'Rule', 'wordpress.user_registered', 1, array(), $bot->id(), $destination->id(), 'Hello', true, 100, 0, 'now', 'now' );
+		$rule  = new NotificationRule( 1, 'Rule', 'wordpress.user_registered', 1, array(), 'all', $bot->id(), $destination->id(), 'Hello', true, 100, 0, 'now', 'now' );
 		$event = $this->envelope( $registry, 'same-key' );
 
 		$dispatcher->dispatch( $rule, $event );
@@ -126,7 +126,7 @@ final class NotificationDispatcherTest extends WP_UnitTestCase {
 		[ 'bots' => $bots, 'destinations' => $destinations, 'dispatch_log' => $dispatch_log, 'dispatcher' => $dispatcher, 'registry' => $registry ] = $this->build();
 		[ $bot, $destination ] = $this->active_bot_and_destination( $bots, $destinations );
 
-		$rule = new NotificationRule( 5, 'Rule', 'wordpress.user_registered', 1, array(), $bot->id(), $destination->id(), 'Hello', true, 100, 3600, 'now', 'now' );
+		$rule = new NotificationRule( 5, 'Rule', 'wordpress.user_registered', 1, array(), 'all', $bot->id(), $destination->id(), 'Hello', true, 100, 3600, 'now', 'now' );
 
 		$dispatcher->dispatch( $rule, $this->envelope( $registry, 'cooldown-1' ) );
 		$this->assertSame( 1, $this->outbound_message_count() );
@@ -151,7 +151,7 @@ final class NotificationDispatcherTest extends WP_UnitTestCase {
 		[ $bot, $destination ] = $this->active_bot_and_destination( $bots, $destinations );
 		$destinations->set_enabled( $destination->id(), false );
 
-		$rule = new NotificationRule( 1, 'Rule', 'wordpress.user_registered', 1, array(), $bot->id(), $destination->id(), 'Hello', true, 100, 0, 'now', 'now' );
+		$rule = new NotificationRule( 1, 'Rule', 'wordpress.user_registered', 1, array(), 'all', $bot->id(), $destination->id(), 'Hello', true, 100, 0, 'now', 'now' );
 
 		$dispatcher->dispatch( $rule, $this->envelope( $registry ) );
 

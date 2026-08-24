@@ -72,7 +72,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 29;
+		return 30;
 	}
 
 	/**
@@ -170,6 +170,7 @@ class Migrator {
 			27 => array( array( $this, 'step_27_create_operational_alert_state_table' ), array( $this, 'verify_step_27' ) ),
 			28 => array( array( $this, 'step_28_create_operational_summary_ai_drafts_table' ), array( $this, 'verify_step_28' ) ),
 			29 => array( array( $this, 'step_29_add_conversation_topic_lifecycle_columns' ), array( $this, 'verify_step_29' ) ),
+			30 => array( array( $this, 'step_30_add_notification_rule_match_mode_column' ), array( $this, 'verify_step_30' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -1898,6 +1899,44 @@ class Migrator {
 		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return $has_state && $has_code && $has_claim && $has_state_idx && $has_dest_uq;
+	}
+
+	/**
+	 * Adds the notification rule condition-combination mode column (M08.1,
+	 * ADR-0032): 'all' (default, matches every existing rule's own current
+	 * behavior exactly) or 'any'.
+	 */
+	private function step_30_add_notification_rule_match_mode_column(): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::NOTIFICATION_RULES_TABLE;
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// SHOW COLUMNS (this connection) — not INFORMATION_SCHEMA — so a
+		// DROP TABLE + recreate in the same PHPUnit process cannot leave a
+		// stale "column exists" view that skips the ADD (same precedent as
+		// step 29).
+		if ( empty( $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'match_mode'" ) ) ) {
+			$wpdb->query(
+				"ALTER TABLE {$table}
+					ADD COLUMN match_mode ENUM('all','any') NOT NULL DEFAULT 'all'"
+			);
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_30(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::NOTIFICATION_RULES_TABLE,
+			array( 'match_mode' )
+		);
 	}
 
 	/**

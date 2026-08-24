@@ -33,16 +33,19 @@ final class RuleEvaluatorTest extends TestCase {
 		$registry->register(
 			'wordpress.post_published',
 			1,
-			array( 'subject.post_id' => Classification::PUBLIC ),
-			array( 'subject.post_id' ),
-			array( 'subject.post_id' )
+			array(
+				'subject.post_id'   => Classification::PUBLIC,
+				'context.post_type' => Classification::PUBLIC,
+			),
+			array( 'subject.post_id', 'context.post_type' ),
+			array( 'subject.post_id', 'context.post_type' )
 		);
 
 		return $registry;
 	}
 
-	private function rule( int $id, array $conditions = array(), int $priority = 100 ): NotificationRule {
-		return new NotificationRule( $id, "Rule {$id}", 'wordpress.post_published', 1, $conditions, 1, 1, 'x', true, $priority, 0, 'now', 'now' );
+	private function rule( int $id, array $conditions = array(), int $priority = 100, string $match_mode = 'all' ): NotificationRule {
+		return new NotificationRule( $id, "Rule {$id}", 'wordpress.post_published', 1, $conditions, $match_mode, 1, 1, 'x', true, $priority, 0, 'now', 'now' );
 	}
 
 	private function envelope( Registry $registry, int $post_id = 1 ): EventEnvelope {
@@ -208,6 +211,171 @@ final class RuleEvaluatorTest extends TestCase {
 		$this->assertSame( array( 1 ), $rejected );
 	}
 
+	/**
+	 * ADR-0032: a condition on an absent event field never matches — not
+	 * even "is not," which would otherwise loosely-equal-compare against
+	 * null and appear to differ from the configured value.
+	 */
+	public function test_a_not_equals_condition_on_an_absent_field_never_matches(): void {
+		$registry = $this->registry();
+		$rule     = $this->rule(
+			1,
+			array(
+				array(
+					'field'    => 'context.post_type',
+					'operator' => 'not_equals',
+					'value'    => 'page',
+				),
+			)
+		);
+
+		$repo = $this->createMock( NotificationRuleRepository::class );
+		$repo->method( 'for_event_type' )->willReturn( array( $rule ) );
+
+		$matched   = array();
+		$rejected  = array();
+		$evaluator = $this->recording_evaluator( $repo, $registry, $matched, $rejected );
+
+		$evaluator->evaluate( $this->envelope( $registry, 5 ) );
+
+		$this->assertSame( array(), $matched );
+		$this->assertSame( array( 1 ), $rejected );
+	}
+
+	public function test_an_empty_condition_list_always_matches(): void {
+		$registry = $this->registry();
+		$rule     = $this->rule( 1, array() );
+
+		$repo = $this->createMock( NotificationRuleRepository::class );
+		$repo->method( 'for_event_type' )->willReturn( array( $rule ) );
+
+		$matched   = array();
+		$rejected  = array();
+		$evaluator = $this->recording_evaluator( $repo, $registry, $matched, $rejected );
+
+		$evaluator->evaluate( $this->envelope( $registry, 5 ) );
+
+		$this->assertSame( array( 1 ), $matched );
+		$this->assertSame( array(), $rejected );
+	}
+
+	public function test_any_mode_matches_when_at_least_one_present_field_clause_matches(): void {
+		$registry = $this->registry();
+		$rule     = $this->rule(
+			1,
+			array(
+				array(
+					'field'    => 'subject.post_id',
+					'operator' => 'equals',
+					'value'    => 999,
+				),
+				array(
+					'field'    => 'subject.post_id',
+					'operator' => 'equals',
+					'value'    => 5,
+				),
+			),
+			100,
+			'any'
+		);
+
+		$repo = $this->createMock( NotificationRuleRepository::class );
+		$repo->method( 'for_event_type' )->willReturn( array( $rule ) );
+
+		$matched   = array();
+		$rejected  = array();
+		$evaluator = $this->recording_evaluator( $repo, $registry, $matched, $rejected );
+
+		$evaluator->evaluate( $this->envelope( $registry, 5 ) );
+
+		$this->assertSame( array( 1 ), $matched );
+		$this->assertSame( array(), $rejected );
+	}
+
+	public function test_any_mode_does_not_match_when_every_clauses_field_is_absent(): void {
+		$registry = $this->registry();
+		$rule     = $this->rule(
+			1,
+			array(
+				array(
+					'field'    => 'context.post_type',
+					'operator' => 'not_equals',
+					'value'    => 'page',
+				),
+			),
+			100,
+			'any'
+		);
+
+		$repo = $this->createMock( NotificationRuleRepository::class );
+		$repo->method( 'for_event_type' )->willReturn( array( $rule ) );
+
+		$matched   = array();
+		$rejected  = array();
+		$evaluator = $this->recording_evaluator( $repo, $registry, $matched, $rejected );
+
+		$evaluator->evaluate( $this->envelope( $registry, 5 ) );
+
+		$this->assertSame( array(), $matched );
+		$this->assertSame( array( 1 ), $rejected );
+	}
+
+	public function test_any_mode_does_not_match_when_no_present_field_clause_matches(): void {
+		$registry = $this->registry();
+		$rule     = $this->rule(
+			1,
+			array(
+				array(
+					'field'    => 'subject.post_id',
+					'operator' => 'equals',
+					'value'    => 999,
+				),
+			),
+			100,
+			'any'
+		);
+
+		$repo = $this->createMock( NotificationRuleRepository::class );
+		$repo->method( 'for_event_type' )->willReturn( array( $rule ) );
+
+		$matched   = array();
+		$rejected  = array();
+		$evaluator = $this->recording_evaluator( $repo, $registry, $matched, $rejected );
+
+		$evaluator->evaluate( $this->envelope( $registry, 5 ) );
+
+		$this->assertSame( array(), $matched );
+		$this->assertSame( array( 1 ), $rejected );
+	}
+
+	public function test_all_mode_is_unchanged_when_every_clause_matches(): void {
+		$registry = $this->registry();
+		$rule     = $this->rule(
+			1,
+			array(
+				array(
+					'field'    => 'subject.post_id',
+					'operator' => 'equals',
+					'value'    => 5,
+				),
+			),
+			100,
+			'all'
+		);
+
+		$repo = $this->createMock( NotificationRuleRepository::class );
+		$repo->method( 'for_event_type' )->willReturn( array( $rule ) );
+
+		$matched   = array();
+		$rejected  = array();
+		$evaluator = $this->recording_evaluator( $repo, $registry, $matched, $rejected );
+
+		$evaluator->evaluate( $this->envelope( $registry, 5 ) );
+
+		$this->assertSame( array( 1 ), $matched );
+		$this->assertSame( array(), $rejected );
+	}
+
 	private function visitor_registry(): Registry {
 		$registry = new Registry();
 		$registry->register(
@@ -222,7 +390,7 @@ final class RuleEvaluatorTest extends TestCase {
 	}
 
 	private function visitor_rule( int $id ): NotificationRule {
-		return new NotificationRule( $id, "Rule {$id}", 'visitor.page_viewed', 1, array(), 1, 1, 'x', true, 100, 0, 'now', 'now' );
+		return new NotificationRule( $id, "Rule {$id}", 'visitor.page_viewed', 1, array(), 'all', 1, 1, 'x', true, 100, 0, 'now', 'now' );
 	}
 
 	private function visitor_envelope( Registry $registry ): EventEnvelope {
@@ -297,7 +465,7 @@ final class RuleEvaluatorTest extends TestCase {
 			array( 'payload.error_category' ),
 			array( 'payload.error_category' )
 		);
-		$rule = new NotificationRule( 1, 'Rule 1', 'visitor.javascript_error', 1, array(), 1, 1, 'x', true, 100, 0, 'now', 'now' );
+		$rule = new NotificationRule( 1, 'Rule 1', 'visitor.javascript_error', 1, array(), 'all', 1, 1, 'x', true, 100, 0, 'now', 'now' );
 
 		$repo = $this->createMock( NotificationRuleRepository::class );
 		$repo->method( 'for_event_type' )->willReturn( array( $rule ) );

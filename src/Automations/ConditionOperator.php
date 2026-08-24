@@ -18,8 +18,11 @@ enum ConditionOperator: string {
 	case EQUALS       = 'equals';
 	case NOT_EQUALS   = 'not_equals';
 	case CONTAINS     = 'contains';
+	case NOT_CONTAINS = 'not_contains';
 	case GREATER_THAN = 'greater_than';
 	case LESS_THAN    = 'less_than';
+	case AT_LEAST     = 'at_least';
+	case AT_MOST      = 'at_most';
 	case IN           = 'in';
 
 	/**
@@ -37,8 +40,11 @@ enum ConditionOperator: string {
 			self::EQUALS => self::loose_equals_static( $actual, $expected ),
 			self::NOT_EQUALS => ! self::loose_equals_static( $actual, $expected ),
 			self::CONTAINS => is_string( $actual ) && is_string( $expected ) && '' !== $expected && str_contains( $actual, $expected ),
+			self::NOT_CONTAINS => is_string( $actual ) && is_string( $expected ) && '' !== $expected && ! str_contains( $actual, $expected ),
 			self::GREATER_THAN => is_numeric( $actual ) && is_numeric( $expected ) && (float) $actual > (float) $expected,
 			self::LESS_THAN => is_numeric( $actual ) && is_numeric( $expected ) && (float) $actual < (float) $expected,
+			self::AT_LEAST => is_numeric( $actual ) && is_numeric( $expected ) && (float) $actual >= (float) $expected,
+			self::AT_MOST => is_numeric( $actual ) && is_numeric( $expected ) && (float) $actual <= (float) $expected,
 			self::IN => is_array( $expected ) && in_array( $actual, $expected, true ),
 		};
 	}
