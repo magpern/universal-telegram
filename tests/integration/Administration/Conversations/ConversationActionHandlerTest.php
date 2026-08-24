@@ -50,17 +50,17 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 	 * @return array{0: ConversationActionHandler, 1: OperatorAvailabilityRepository, 2: OperatorIdentityRepository, 3: ConversationRepository, 4: ConversationNoteRepository, 5: AuditLogger, 6: MessageRepository, 7: DestinationRepository}
 	 */
 	private function fixture(): array {
-		$schema_health = new SchemaHealth();
-		$availability  = new OperatorAvailabilityRepository( $schema_health );
-		$identities    = new OperatorIdentityRepository( $schema_health );
-		$conversations = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );
-		$notes         = new ConversationNoteRepository( $schema_health, new CredentialVault() );
-		$messages      = new MessageRepository( $schema_health, new CredentialVault() );
-		$destinations  = new DestinationRepository( $schema_health );
-		$purge_service = new ConversationPurgeService( $conversations, $messages, $destinations );
-		$eligibility   = new ConversationTopicEligibility( $conversations, $destinations );
+		$schema_health  = new SchemaHealth();
+		$availability   = new OperatorAvailabilityRepository( $schema_health );
+		$identities     = new OperatorIdentityRepository( $schema_health );
+		$conversations  = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );
+		$notes          = new ConversationNoteRepository( $schema_health, new CredentialVault() );
+		$messages       = new MessageRepository( $schema_health, new CredentialVault() );
+		$destinations   = new DestinationRepository( $schema_health );
+		$purge_service  = new ConversationPurgeService( $conversations, $messages, $destinations );
+		$eligibility    = new ConversationTopicEligibility( $conversations, $destinations );
 		$topic_deletion = new TopicDeletionDispatcher( $conversations, new Dispatcher( $schema_health ) );
-		$audit         = new AuditLogger( $schema_health, new Redactor() );
+		$audit          = new AuditLogger( $schema_health, new Redactor() );
 
 		$handler = new class( $availability, $identities, $conversations, $notes, $purge_service, $audit, $eligibility, $topic_deletion ) extends ConversationActionHandler {
 			public ?string $redirected_to = null;
@@ -553,11 +553,11 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$a                                   = $conversations->create( 'uuid-bulk-confirm-a', 'hash', 1, null );
 		$b                                   = $conversations->create( 'uuid-bulk-confirm-b', 'hash', 1, null );
 
-		$nonce                       = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
-		$_POST['_wpnonce']           = $nonce;
-		$_REQUEST['_wpnonce']        = $nonce;
-		$_POST['op']                 = 'confirm_bulk_archive_and_delete';
-		$_POST['conversation_ids']   = array( (string) $a->id(), (string) $b->id() );
+		$nonce                     = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']         = $nonce;
+		$_REQUEST['_wpnonce']      = $nonce;
+		$_POST['op']               = 'confirm_bulk_archive_and_delete';
+		$_POST['conversation_ids'] = array( (string) $a->id(), (string) $b->id() );
 
 		try {
 			$handler->handle_request();
@@ -604,7 +604,7 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		wp_set_current_user( $operator );
 
 		list( $handler, , , $conversations, , , $messages ) = $this->fixture();
-		$open                                               = $conversations->create( 'uuid-bulk-open', 'hash', 1, null );
+		$open = $conversations->create( 'uuid-bulk-open', 'hash', 1, null );
 		$conversations->transition( $open->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
 		$archived = $conversations->create( 'uuid-bulk-archived', 'hash', 1, null );
 		$conversations->transition( $archived->id(), ConversationStatus::NEW, ConversationStatus::OPEN );

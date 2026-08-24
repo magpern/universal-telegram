@@ -182,7 +182,8 @@ final class ConversationDetailPage {
 		}
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only confirm flag.
-		$confirm_delete = isset( $_GET['confirm_delete'] ) && '1' === (string) $_GET['confirm_delete'];
+		$confirm_delete_raw = isset( $_GET['confirm_delete'] ) ? sanitize_text_field( wp_unslash( $_GET['confirm_delete'] ) ) : '';
+		$confirm_delete     = ( '1' === $confirm_delete_raw );
 
 		echo '<h2>' . esc_html__( 'Actions', 'universal-telegram' ) . '</h2>';
 

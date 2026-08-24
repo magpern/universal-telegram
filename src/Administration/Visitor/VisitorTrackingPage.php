@@ -55,9 +55,9 @@ class VisitorTrackingPage {
 	/**
 	 * Constructor.
 	 *
-	 * @param Settings              $settings           Reads/writes the current visitor tracking configuration.
-	 * @param BotProfileRepository  $bots               Populates the digest bot dropdown.
-	 * @param DigestEligibility     $digest_eligibility Populates the eligible-destination dropdown and invalidates its cache on save.
+	 * @param Settings             $settings           Reads/writes the current visitor tracking configuration.
+	 * @param BotProfileRepository $bots               Populates the digest bot dropdown.
+	 * @param DigestEligibility    $digest_eligibility Populates the eligible-destination dropdown and invalidates its cache on save.
 	 */
 	public function __construct(
 		private readonly Settings $settings,
@@ -204,8 +204,8 @@ class VisitorTrackingPage {
 				continue;
 			}
 			printf(
-				'<option value="%1$d" %2$s>%3$s</option>',
-				$bot->id(),
+				'<option value="%1$s" %2$s>%3$s</option>',
+				esc_attr( (string) $bot->id() ),
 				selected( $selected_bot_id, $bot->id(), false ),
 				esc_html( $bot->name() )
 			);
@@ -220,8 +220,8 @@ class VisitorTrackingPage {
 		echo '<option value="">' . esc_html__( '— Select a destination —', 'universal-telegram' ) . '</option>';
 		foreach ( $eligible_destinations as $destination ) {
 			printf(
-				'<option value="%1$d" %2$s>%3$s</option>',
-				$destination->id(),
+				'<option value="%1$s" %2$s>%3$s</option>',
+				esc_attr( (string) $destination->id() ),
 				selected( $selected_destination_id, $destination->id(), false ),
 				esc_html( $destination->label() )
 			);

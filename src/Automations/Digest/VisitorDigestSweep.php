@@ -30,9 +30,9 @@ use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
  */
 final class VisitorDigestSweep {
 
-	public const JOB_TYPE             = 'visitor_digest_evaluation_sweep';
-	public const INTERVAL_SECONDS     = 60;
-	public const CLAIM_LEASE_SECONDS  = 120;
+	public const JOB_TYPE            = 'visitor_digest_evaluation_sweep';
+	public const INTERVAL_SECONDS    = 60;
+	public const CLAIM_LEASE_SECONDS = 120;
 
 	/**
 	 * Constructor.

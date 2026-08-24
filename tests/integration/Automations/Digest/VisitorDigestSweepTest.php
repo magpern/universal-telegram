@@ -30,8 +30,8 @@ final class VisitorDigestSweepTest extends WP_UnitTestCase {
 					'visitor_digest_enabled'          => true,
 					'visitor_digest_bot_id'           => 1,
 					'visitor_digest_destination_id'   => 1,
-					'visitor_digest_threshold'         => $threshold,
-					'visitor_digest_max_wait_minutes'  => $max_wait_minutes,
+					'visitor_digest_threshold'        => $threshold,
+					'visitor_digest_max_wait_minutes' => $max_wait_minutes,
 				)
 			)
 		);
@@ -101,14 +101,14 @@ final class VisitorDigestSweepTest extends WP_UnitTestCase {
 	}
 
 	public function test_threshold_trigger_sends_and_closes_the_window(): void {
-		$settings = $this->settings_with( 3, 60 );
+		$settings = $this->settings_with( 10, 60 );
 		$state    = new VisitorDigestStateRepository( new SchemaHealth() );
 		$counters = new VisitorDigestCounterRepository( new SchemaHealth() );
 
 		$window = $state->open_window_if_needed( gmdate( 'Y-m-d H:i:s' ) );
-		$counters->increment( $window, 'search' );
-		$counters->increment( $window, 'search' );
-		$counters->increment( $window, 'search' );
+		for ( $i = 0; $i < 10; $i++ ) {
+			$counters->increment( $window, 'search' );
+		}
 
 		$this->sweep( $settings, $this->active_eligibility(), $state, $counters )->run();
 
@@ -176,12 +176,14 @@ final class VisitorDigestSweepTest extends WP_UnitTestCase {
 	 * resume step — the same sweep instance, the same window.
 	 */
 	public function test_a_frozen_window_resumes_once_the_target_is_repaired(): void {
-		$settings = $this->settings_with( 1, 60 );
+		$settings = $this->settings_with( 10, 60 );
 		$state    = new VisitorDigestStateRepository( new SchemaHealth() );
 		$counters = new VisitorDigestCounterRepository( new SchemaHealth() );
 
 		$window = $state->open_window_if_needed( gmdate( 'Y-m-d H:i:s' ) );
-		$counters->increment( $window, 'search' );
+		for ( $i = 0; $i < 10; $i++ ) {
+			$counters->increment( $window, 'search' );
+		}
 
 		$inactive_eligibility = $this->createMock( DigestEligibility::class );
 		$inactive_eligibility->method( 'is_active' )->willReturn( false );
@@ -199,18 +201,20 @@ final class VisitorDigestSweepTest extends WP_UnitTestCase {
 	 * retries the same window.
 	 */
 	public function test_send_failure_leaves_the_window_open_for_retry(): void {
-		$settings = $this->settings_with( 1, 60 );
+		$settings = $this->settings_with( 10, 60 );
 		$state    = new VisitorDigestStateRepository( new SchemaHealth() );
 		$counters = new VisitorDigestCounterRepository( new SchemaHealth() );
 
 		$window = $state->open_window_if_needed( gmdate( 'Y-m-d H:i:s' ) );
-		$counters->increment( $window, 'search' );
+		for ( $i = 0; $i < 10; $i++ ) {
+			$counters->increment( $window, 'search' );
+		}
 
 		$this->sweep( $settings, $this->active_eligibility(), $state, $counters, $this->failing_message_dispatcher() )->run();
 
 		$this->assertSame( $window, $state->current_window_started_at() );
 		$this->assertSame( 'send_failed', $state->last_digest_status() );
-		$this->assertSame( 1, $counters->sum_for_window( $window ) );
+		$this->assertSame( 10, $counters->sum_for_window( $window ) );
 	}
 
 	/**
@@ -220,12 +224,14 @@ final class VisitorDigestSweepTest extends WP_UnitTestCase {
 	 * window (or holds an unexpired claim).
 	 */
 	public function test_concurrent_ticks_never_double_send_the_same_window(): void {
-		$settings = $this->settings_with( 1, 60 );
+		$settings = $this->settings_with( 10, 60 );
 		$state    = new VisitorDigestStateRepository( new SchemaHealth() );
 		$counters = new VisitorDigestCounterRepository( new SchemaHealth() );
 
 		$window = $state->open_window_if_needed( gmdate( 'Y-m-d H:i:s' ) );
-		$counters->increment( $window, 'search' );
+		for ( $i = 0; $i < 10; $i++ ) {
+			$counters->increment( $window, 'search' );
+		}
 
 		$first  = $this->sweep( $settings, $this->active_eligibility(), $state, $counters );
 		$second = $this->sweep( $settings, $this->active_eligibility(), $state, $counters );
@@ -248,12 +254,14 @@ final class VisitorDigestSweepTest extends WP_UnitTestCase {
 	 * rather than depending on the CI matrix leg.
 	 */
 	public function test_the_sweep_completes_successfully_regardless_of_woocommerce_presence(): void {
-		$settings = $this->settings_with( 1, 60 );
+		$settings = $this->settings_with( 10, 60 );
 		$state    = new VisitorDigestStateRepository( new SchemaHealth() );
 		$counters = new VisitorDigestCounterRepository( new SchemaHealth() );
 
 		$window = $state->open_window_if_needed( gmdate( 'Y-m-d H:i:s' ) );
-		$counters->increment( $window, 'search' );
+		for ( $i = 0; $i < 10; $i++ ) {
+			$counters->increment( $window, 'search' );
+		}
 
 		$this->sweep( $settings, $this->active_eligibility(), $state, $counters )->run();
 

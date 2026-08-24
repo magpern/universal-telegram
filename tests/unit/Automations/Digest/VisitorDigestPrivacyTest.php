@@ -92,7 +92,13 @@ final class VisitorDigestPrivacyTest extends TestCase {
 		$text = $renderer->render(
 			'2026-01-01 00:00:00',
 			'2026-01-01 00:15:00',
-			array( array( 'category' => 'totally-unexpected-category-xyz', 'page_type' => '', 'event_count' => 9 ) ),
+			array(
+				array(
+					'category'    => 'totally-unexpected-category-xyz',
+					'page_type'   => '',
+					'event_count' => 9,
+				),
+			),
 			true
 		);
 

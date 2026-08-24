@@ -58,7 +58,19 @@ final class VisitorDigestAggregatorTest extends WP_UnitTestCase {
 
 		$aggregator = new VisitorDigestAggregator( $eligibility, $counters, $state );
 		$aggregator->record(
-			new EventEnvelope( $registry, 'visitor.page_viewed', 'key-1', EventSource::VISITOR, array(), array( 'path' => '/', 'page_type' => 'home' ), array(), array() )
+			new EventEnvelope(
+				$registry,
+				'visitor.page_viewed',
+				'key-1',
+				EventSource::VISITOR,
+				array(),
+				array(
+					'path'      => '/',
+					'page_type' => 'home',
+				),
+				array(),
+				array()
+			)
 		);
 
 		$window = $state->current_window_started_at();

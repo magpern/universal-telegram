@@ -414,9 +414,9 @@ class ConversationRepository {
 		$conversations = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
 		$destinations  = $wpdb->prefix . Migrator::DESTINATIONS_TABLE;
 
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names from Migrator constants.
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				"SELECT c.* FROM {$conversations} c
 					INNER JOIN {$destinations} d ON d.id = c.destination_id
 					WHERE c.bot_id = %d
@@ -434,6 +434,7 @@ class ConversationRepository {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return null === $row ? null : $this->hydrate( $row );
 	}
@@ -1244,8 +1245,8 @@ class ConversationRepository {
 			isset( $row['assignee_last_seen_message_id'] ) ? (int) $row['assignee_last_seen_message_id'] : null,
 			isset( $row['ai_ack_policy_version'] ) ? (string) $row['ai_ack_policy_version'] : null,
 			isset( $row['topic_lifecycle_state'] ) ? (string) $row['topic_lifecycle_state'] : TopicLifecycleState::NONE,
-			isset( $row['topic_lifecycle_code'] ) && null !== $row['topic_lifecycle_code'] ? (string) $row['topic_lifecycle_code'] : null,
-			isset( $row['topic_delete_claim_expires_at'] ) && null !== $row['topic_delete_claim_expires_at'] ? (string) $row['topic_delete_claim_expires_at'] : null
+			isset( $row['topic_lifecycle_code'] ) ? (string) $row['topic_lifecycle_code'] : null,
+			isset( $row['topic_delete_claim_expires_at'] ) ? (string) $row['topic_delete_claim_expires_at'] : null
 		);
 	}
 

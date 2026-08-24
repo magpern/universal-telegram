@@ -478,8 +478,18 @@ final class Plugin {
 	 */
 	private ?TopicCreationDispatcher $topic_creation_dispatcher = null;
 
+	/**
+	 * Queued remote forum-topic deletion dispatch, constructed by init().
+	 *
+	 * @var TopicDeletionDispatcher|null
+	 */
 	private ?TopicDeletionDispatcher $topic_deletion_dispatcher = null;
 
+	/**
+	 * Structural eligibility gate for remote topic deletion, constructed by init().
+	 *
+	 * @var ConversationTopicEligibility|null
+	 */
 	private ?ConversationTopicEligibility $conversation_topic_eligibility = null;
 
 	/**
@@ -1474,7 +1484,7 @@ final class Plugin {
 			$this->message_dispatcher,
 			$this->woocommerce_support
 		);
-		$operational_summary_sweep = new OperationalSummarySweep(
+		$operational_summary_sweep      = new OperationalSummarySweep(
 			$intelligence_settings,
 			$this->digest_eligibility,
 			$operational_summary_repository,

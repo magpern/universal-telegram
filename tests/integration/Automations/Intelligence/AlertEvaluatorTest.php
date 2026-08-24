@@ -80,9 +80,9 @@ final class AlertEvaluatorTest extends WP_UnitTestCase {
 	public function test_default_disabled_alerts_never_fire(): void {
 		$settings = $this->settings_with(
 			array(
-				'alert_bot_id'                              => 1,
-				'alert_destination_id'                       => 1,
-				'alert_checkout_failure_count_threshold'    => 1,
+				'alert_bot_id'                           => 1,
+				'alert_destination_id'                   => 1,
+				'alert_checkout_failure_count_threshold' => 1,
 			)
 		);
 
@@ -103,10 +103,10 @@ final class AlertEvaluatorTest extends WP_UnitTestCase {
 
 		$settings = $this->settings_with(
 			array(
-				'alert_bot_id'                              => 1,
-				'alert_destination_id'                       => 1,
-				'alert_checkout_failure_count_enabled'      => true,
-				'alert_checkout_failure_count_threshold'    => 3,
+				'alert_bot_id'                           => 1,
+				'alert_destination_id'                   => 1,
+				'alert_checkout_failure_count_enabled'   => true,
+				'alert_checkout_failure_count_threshold' => 3,
 			)
 		);
 
@@ -127,10 +127,10 @@ final class AlertEvaluatorTest extends WP_UnitTestCase {
 
 		$settings = $this->settings_with(
 			array(
-				'alert_bot_id'                              => 1,
-				'alert_destination_id'                       => 1,
-				'alert_checkout_failure_count_enabled'      => true,
-				'alert_checkout_failure_count_threshold'    => 1,
+				'alert_bot_id'                           => 1,
+				'alert_destination_id'                   => 1,
+				'alert_checkout_failure_count_enabled'   => true,
+				'alert_checkout_failure_count_threshold' => 1,
 			)
 		);
 
@@ -143,15 +143,16 @@ final class AlertEvaluatorTest extends WP_UnitTestCase {
 	public function test_js_error_spike_fires_on_a_single_category_reaching_threshold(): void {
 		$settings = $this->settings_with(
 			array(
-				'alert_bot_id'                    => 1,
-				'alert_destination_id'             => 1,
-				'alert_js_error_spike_enabled'    => true,
-				'alert_js_error_spike_threshold'  => 2,
+				'alert_bot_id'                   => 1,
+				'alert_destination_id'           => 1,
+				'alert_js_error_spike_enabled'   => true,
+				'alert_js_error_spike_threshold' => 5,
 			)
 		);
 
-		$this->insert_event( 'visitor.javascript_error', current_time( 'mysql', true ), array( 'payload' => array( 'error_category' => 'runtime' ) ) );
-		$this->insert_event( 'visitor.javascript_error', current_time( 'mysql', true ), array( 'payload' => array( 'error_category' => 'runtime' ) ) );
+		for ( $i = 0; $i < 5; $i++ ) {
+			$this->insert_event( 'visitor.javascript_error', current_time( 'mysql', true ), array( 'payload' => array( 'error_category' => 'runtime' ) ) );
+		}
 		$this->insert_event( 'visitor.javascript_error', current_time( 'mysql', true ), array( 'payload' => array( 'error_category' => 'promise_rejection' ) ) );
 
 		$this->evaluator( $settings )->evaluate();
@@ -163,20 +164,22 @@ final class AlertEvaluatorTest extends WP_UnitTestCase {
 	public function test_one_hour_cooldown_prevents_a_re_fire_even_if_condition_persists(): void {
 		$settings = $this->settings_with(
 			array(
-				'alert_bot_id'                    => 1,
-				'alert_destination_id'             => 1,
-				'alert_js_error_spike_enabled'    => true,
-				'alert_js_error_spike_threshold'  => 1,
+				'alert_bot_id'                   => 1,
+				'alert_destination_id'           => 1,
+				'alert_js_error_spike_enabled'   => true,
+				'alert_js_error_spike_threshold' => 5,
 			)
 		);
 
-		$this->insert_event( 'visitor.javascript_error', current_time( 'mysql', true ), array( 'payload' => array( 'error_category' => 'runtime' ) ) );
+		for ( $i = 0; $i < 5; $i++ ) {
+			$this->insert_event( 'visitor.javascript_error', current_time( 'mysql', true ), array( 'payload' => array( 'error_category' => 'runtime' ) ) );
+		}
 
 		$evaluator = $this->evaluator( $settings );
 		$evaluator->evaluate();
 
-		$state           = new AlertRepository( new SchemaHealth() );
-		$first_fired_at  = $state->last_fired_at( 'js_error_spike' );
+		$state          = new AlertRepository( new SchemaHealth() );
+		$first_fired_at = $state->last_fired_at( 'js_error_spike' );
 		$this->assertNotNull( $first_fired_at );
 
 		// Condition still holds; a second evaluation within the hour must

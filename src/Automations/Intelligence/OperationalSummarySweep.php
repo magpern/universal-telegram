@@ -39,14 +39,14 @@ final class OperationalSummarySweep {
 	/**
 	 * Constructor.
 	 *
-	 * @param IntelligenceSettings           $settings            Supplies the operational_summary_* fields.
-	 * @param DigestEligibility              $eligibility         Reused destination-eligibility rule (M11A §4).
-	 * @param OperationalSummaryRepository   $repository          Row persistence and event_history aggregation.
-	 * @param IntelligenceStateRepository    $state               The sweep's own claim-lease mutex.
-	 * @param OperationalSummaryRenderer     $renderer             Fixed message rendering.
-	 * @param MessageDispatcher              $message_dispatcher  M01's own, unchanged outbound transport.
-	 * @param WooCommerceSupport             $woocommerce_support Governs whether commerce fields render.
-	 * @param AlertEvaluator|null            $alert_evaluator     Evaluates the three fixed threshold alerts on the same tick (§2.2). Null only for pre-WP3 callers.
+	 * @param IntelligenceSettings         $settings            Supplies the operational_summary_* fields.
+	 * @param DigestEligibility            $eligibility         Reused destination-eligibility rule (M11A §4).
+	 * @param OperationalSummaryRepository $repository          Row persistence and event_history aggregation.
+	 * @param IntelligenceStateRepository  $state               The sweep's own claim-lease mutex.
+	 * @param OperationalSummaryRenderer   $renderer             Fixed message rendering.
+	 * @param MessageDispatcher            $message_dispatcher  M01's own, unchanged outbound transport.
+	 * @param WooCommerceSupport           $woocommerce_support Governs whether commerce fields render.
+	 * @param AlertEvaluator|null          $alert_evaluator     Evaluates the three fixed threshold alerts on the same tick (§2.2). Null only for pre-WP3 callers.
 	 */
 	public function __construct(
 		private readonly IntelligenceSettings $settings,

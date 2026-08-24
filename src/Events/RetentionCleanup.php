@@ -31,8 +31,8 @@ final class RetentionCleanup {
 	// M11B plan §4: fixed, non-configurable retention windows for the
 	// operational-summary tables — no new settings surface is introduced,
 	// matching M11A's own no-new-retention-setting precedent.
-	private const OPERATIONAL_SUMMARY_RUNS_RETENTION_DAYS       = 90;
-	private const OPERATIONAL_SUMMARY_AI_DRAFTS_RETENTION_DAYS  = 30;
+	private const OPERATIONAL_SUMMARY_RUNS_RETENTION_DAYS      = 90;
+	private const OPERATIONAL_SUMMARY_AI_DRAFTS_RETENTION_DAYS = 30;
 
 	/**
 	 * Constructor.

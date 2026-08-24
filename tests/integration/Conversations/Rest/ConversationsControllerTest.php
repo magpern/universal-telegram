@@ -985,7 +985,7 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 	}
 
 	public function test_post_message_when_topic_unavailable_returns_409_without_storing(): void {
-		$started = $this->started_conversation();
+		$started      = $this->started_conversation();
 		$conversation = $this->conversations->find_by_uuid( $started['conversation_uuid'] );
 		$this->conversations->mark_topic_lifecycle(
 			$conversation->id(),

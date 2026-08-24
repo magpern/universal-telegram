@@ -44,14 +44,14 @@ final class IntelligenceSettingsTest extends WP_UnitTestCase {
 			Settings::OPTION_NAME,
 			( new Settings() )->sanitize(
 				array(
-					'operational_summary_enabled'            => true,
-					'operational_summary_bot_id'              => 7,
-					'operational_summary_destination_id'      => 9,
-					'operational_summary_hour_utc'             => 3,
-					'alert_bot_id'                              => 5,
-					'alert_destination_id'                      => 11,
-					'alert_checkout_failure_count_enabled'    => true,
-					'alert_checkout_failure_count_threshold'  => 25,
+					'operational_summary_enabled'          => true,
+					'operational_summary_bot_id'           => 7,
+					'operational_summary_destination_id'   => 9,
+					'operational_summary_hour_utc'         => 3,
+					'alert_bot_id'                         => 5,
+					'alert_destination_id'                 => 11,
+					'alert_checkout_failure_count_enabled' => true,
+					'alert_checkout_failure_count_threshold' => 25,
 				)
 			)
 		);

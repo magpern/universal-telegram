@@ -33,9 +33,9 @@ class EventDispatcher {
 	/**
 	 * Constructor.
 	 *
-	 * @param EventHistoryRepository        $history_repository Writes the PUBLIC-only history projection.
-	 * @param RuleEvaluator                 $rule_evaluator     Evaluates notification rules against the event.
-	 * @param VisitorDigestAggregator|null  $digest_aggregator  Increments digest counters (M11A). Nullable only for pre-M11A test doubles that construct this class directly; production wiring always supplies it.
+	 * @param EventHistoryRepository       $history_repository Writes the PUBLIC-only history projection.
+	 * @param RuleEvaluator                $rule_evaluator     Evaluates notification rules against the event.
+	 * @param VisitorDigestAggregator|null $digest_aggregator  Increments digest counters (M11A). Nullable only for pre-M11A test doubles that construct this class directly; production wiring always supplies it.
 	 */
 	public function __construct(
 		private readonly EventHistoryRepository $history_repository,

@@ -36,9 +36,9 @@ class SummaryAiRequestHandler {
 	/**
 	 * Constructor.
 	 *
-	 * @param SummaryAiRepository $drafts          Idempotent request enforcement (UNIQUE constraint).
+	 * @param SummaryAiRepository  $drafts          Idempotent request enforcement (UNIQUE constraint).
 	 * @param AIProviderRepository $provider_config Reads enablement/model/provider (M09's own config, reused).
-	 * @param Dispatcher            $dispatcher      Enqueues the opaque generation job.
+	 * @param Dispatcher           $dispatcher      Enqueues the opaque generation job.
 	 */
 	public function __construct(
 		private readonly SummaryAiRepository $drafts,

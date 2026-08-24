@@ -57,7 +57,10 @@ final class SummaryAiRepository {
 	 */
 	public function request( int $summary_run_id, int $requested_by_user_id, string $provider, string $model, string $prompt_policy_version ): array {
 		if ( ! $this->schema_health->is_available() ) {
-			return array( 'outcome' => 'not_available', 'draft_uuid' => null );
+			return array(
+				'outcome'    => 'not_available',
+				'draft_uuid' => null,
+			);
 		}
 
 		global $wpdb;
@@ -70,21 +73,24 @@ final class SummaryAiRepository {
 			$table,
 			array(
 				'summary_run_id'        => $summary_run_id,
-				'draft_uuid'             => $draft_uuid,
-				'status'                 => 'queued',
-				'provider'               => $provider,
-				'model'                  => $model,
-				'prompt_policy_version'  => $prompt_policy_version,
-				'requested_by_user_id'   => $requested_by_user_id,
-				'attempt_count'          => 0,
-				'created_at'             => $now,
-				'updated_at'             => $now,
+				'draft_uuid'            => $draft_uuid,
+				'status'                => 'queued',
+				'provider'              => $provider,
+				'model'                 => $model,
+				'prompt_policy_version' => $prompt_policy_version,
+				'requested_by_user_id'  => $requested_by_user_id,
+				'attempt_count'         => 0,
+				'created_at'            => $now,
+				'updated_at'            => $now,
 			),
 			array( '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%s', '%s' )
 		);
 
 		if ( false !== $inserted ) {
-			return array( 'outcome' => 'created', 'draft_uuid' => $draft_uuid );
+			return array(
+				'outcome'    => 'created',
+				'draft_uuid' => $draft_uuid,
+			);
 		}
 
 		// The UNIQUE(summary_run_id) constraint rejected the insert — a
@@ -92,7 +98,10 @@ final class SummaryAiRepository {
 		// its current status (including discarded — no second generation).
 		$existing = $this->find_by_summary_run_id( $summary_run_id );
 
-		return array( 'outcome' => 'existing', 'draft_uuid' => null !== $existing ? $existing->draft_uuid() : null );
+		return array(
+			'outcome'    => 'existing',
+			'draft_uuid' => null !== $existing ? $existing->draft_uuid() : null,
+		);
 	}
 
 	/**

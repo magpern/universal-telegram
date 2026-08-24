@@ -105,8 +105,8 @@ final class RuleBuilderPage {
 			$input[ $field ] = isset( $input[ $field ] );
 		}
 
-		$current    = $this->settings->get();
-		$sanitized  = $this->settings->sanitize( array_merge( $current, $input ) );
+		$current   = $this->settings->get();
+		$sanitized = $this->settings->sanitize( array_merge( $current, $input ) );
 		update_option( Settings::OPTION_NAME, $sanitized );
 
 		// The alert/summary destination fields above just changed; the
@@ -130,7 +130,15 @@ final class RuleBuilderPage {
 			return;
 		}
 
-		$values = $this->settings->get();
+		$values = null !== $this->intelligence_settings
+			? array_merge( $this->settings->get(), array() )
+			: $this->settings->get();
+
+		// Prefer the typed reader when present so the property is not write-only.
+		if ( null !== $this->intelligence_settings ) {
+			$values['operational_summary_enabled']  = $this->intelligence_settings->operational_summary_enabled();
+			$values['operational_summary_hour_utc'] = $this->intelligence_settings->operational_summary_hour_utc();
+		}
 
 		echo '<h2>' . esc_html__( 'Intelligence', 'universal-telegram' ) . '</h2>';
 		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
@@ -195,8 +203,9 @@ final class RuleBuilderPage {
 				continue;
 			}
 			printf(
-				'<option value="%1$d" %2$s>%3$s</option>',
-				$bot->id(),
+				'<option value="%1$s" %2$s>%3$s</option>',
+				esc_attr( (string) $bot->id() ),
+				// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- selected() returns a safe attribute fragment.
 				selected( $selected_bot_id, $bot->id(), false ),
 				esc_html( $bot->name() )
 			);
@@ -211,8 +220,9 @@ final class RuleBuilderPage {
 		echo '<option value="">' . esc_html__( '— Select a destination —', 'universal-telegram' ) . '</option>';
 		foreach ( $eligible_destinations as $destination ) {
 			printf(
-				'<option value="%1$d" %2$s>%3$s</option>',
-				$destination->id(),
+				'<option value="%1$s" %2$s>%3$s</option>',
+				esc_attr( (string) $destination->id() ),
+				// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- selected() returns a safe attribute fragment.
 				selected( $selected_destination_id, $destination->id(), false ),
 				esc_html( $destination->label() )
 			);
@@ -248,9 +258,11 @@ final class RuleBuilderPage {
 		foreach ( $this->rules->all() as $rule ) {
 			echo '<tr>';
 			printf(
-				'<td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>',
+				'<td>%1$s</td><td>%2$s%3$s</td><td>%4$s</td><td>%5$s</td><td>%6$s</td>',
 				esc_html( $rule->name() ),
-				esc_html( $rule->event_type() ) . $this->digest_badge( $rule->event_type() ),
+				esc_html( $rule->event_type() ),
+				// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- digest_badge() returns escaped HTML or ''.
+				$this->digest_badge( $rule->event_type() ),
 				$rule->enabled() ? esc_html__( 'Yes', 'universal-telegram' ) : esc_html__( 'No', 'universal-telegram' ),
 				esc_html( (string) $rule->priority() ),
 				esc_html( (string) $rule->cooldown_seconds() )

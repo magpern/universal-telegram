@@ -23,7 +23,7 @@ final class OperationalSummaryRenderer {
 	 * Renders the fixed summary message for one row.
 	 *
 	 * @param array<string, mixed> $row                The operational_summary_runs row.
-	 * @param bool                  $woocommerce_active Whether commerce lines render at all.
+	 * @param bool                 $woocommerce_active Whether commerce lines render at all.
 	 *
 	 * @return string
 	 */

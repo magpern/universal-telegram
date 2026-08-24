@@ -29,10 +29,10 @@ final class VisitorDigestCounterRepositoryTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * page_type is always stored as '' rather than SQL NULL — MySQL treats
-	 * every NULL in a unique key as distinct from every other NULL, which
-	 * would otherwise silently defeat the ON DUPLICATE KEY UPDATE collapse
-	 * for every category besides page_views.
+	 * The page_type column is always stored as '' rather than SQL NULL — MySQL
+	 * treats every NULL in a unique key as distinct from every other NULL,
+	 * which would otherwise silently defeat the ON DUPLICATE KEY UPDATE
+	 * collapse for every category besides page_views.
 	 */
 	public function test_repeated_increments_with_no_page_type_still_collapse_into_one_row(): void {
 		$repo   = $this->repository();

@@ -221,8 +221,8 @@ final class VisitorTrackingPageTest extends WP_UnitTestCase {
 		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
 		wp_set_current_user( $admin_id );
 
-		$bots         = $this->bots();
-		$bot          = $bots->create( 'Digest Bot', 'token' );
+		$bots = $this->bots();
+		$bot  = $bots->create( 'Digest Bot', 'token' );
 		$bots->set_status( $bot->id(), BotStatus::ACTIVE );
 
 		$destinations = $this->destinations();
@@ -256,8 +256,8 @@ final class VisitorTrackingPageTest extends WP_UnitTestCase {
 		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
 		wp_set_current_user( $admin_id );
 
-		$bots        = $this->bots();
-		$bot         = $bots->create( 'Digest Bot', 'token' );
+		$bots = $this->bots();
+		$bot  = $bots->create( 'Digest Bot', 'token' );
 		$bots->set_status( $bot->id(), BotStatus::ACTIVE );
 		$destination = $this->destinations()->create( $bot->id(), DestinationKind::CHANNEL, '@manual', null, 'Manual Channel' );
 
@@ -267,16 +267,16 @@ final class VisitorTrackingPageTest extends WP_UnitTestCase {
 		set_transient( DigestEligibility::TRANSIENT_KEY, '0', 30 );
 
 		$_POST['visitor_settings'] = array(
-			'visitor_tracking_enabled'       => '1',
-			'visitor_digest_enabled'         => '1',
-			'visitor_digest_bot_id'          => (string) $bot->id(),
-			'visitor_digest_destination_id'  => (string) $destination->id(),
-			'visitor_digest_threshold'       => '75',
+			'visitor_tracking_enabled'        => '1',
+			'visitor_digest_enabled'          => '1',
+			'visitor_digest_bot_id'           => (string) $bot->id(),
+			'visitor_digest_destination_id'   => (string) $destination->id(),
+			'visitor_digest_threshold'        => '75',
 			'visitor_digest_max_wait_minutes' => '20',
 		);
-		$nonce                = wp_create_nonce( VisitorTrackingPage::NONCE_ACTION );
-		$_POST['_wpnonce']    = $nonce;
-		$_REQUEST['_wpnonce'] = $nonce;
+		$nonce                     = wp_create_nonce( VisitorTrackingPage::NONCE_ACTION );
+		$_POST['_wpnonce']         = $nonce;
+		$_REQUEST['_wpnonce']      = $nonce;
 
 		$this->saving_page()->handle_request();
 

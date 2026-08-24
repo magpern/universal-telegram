@@ -32,20 +32,20 @@ final class VisitorDigestAggregator {
 	 */
 	private const CATEGORY_MAP = array(
 		'visitor.page_viewed'             => 'page_views',
-		'visitor.navigation'               => 'page_views',
-		'visitor.product_viewed'           => 'product_views',
-		'visitor.search_performed'         => 'search',
-		'visitor.add_to_cart_intent'       => 'cart_intent',
-		'visitor.checkout_started_intent'  => 'cart_intent',
-		'visitor.session_started'          => 'other',
+		'visitor.navigation'              => 'page_views',
+		'visitor.product_viewed'          => 'product_views',
+		'visitor.search_performed'        => 'search',
+		'visitor.add_to_cart_intent'      => 'cart_intent',
+		'visitor.checkout_started_intent' => 'cart_intent',
+		'visitor.session_started'         => 'other',
 	);
 
 	/**
 	 * Constructor.
 	 *
-	 * @param DigestEligibility               $eligibility The shared active/eligibility gate.
-	 * @param VisitorDigestCounterRepository  $counters    Bucket increment persistence.
-	 * @param VisitorDigestStateRepository    $state       Window open/checkpoint persistence.
+	 * @param DigestEligibility              $eligibility The shared active/eligibility gate.
+	 * @param VisitorDigestCounterRepository $counters    Bucket increment persistence.
+	 * @param VisitorDigestStateRepository   $state       Window open/checkpoint persistence.
 	 */
 	public function __construct(
 		private readonly DigestEligibility $eligibility,

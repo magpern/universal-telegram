@@ -100,7 +100,7 @@ final class ProviderConcurrencyGateTest extends WP_UnitTestCase {
 	 * uses, so M09's existing six-class allow-list needs no new entries.
 	 */
 	public function test_gate_file_references_no_domain_repository_class(): void {
-		$file     = dirname( __DIR__, 5 ) . '/src/AI/Provider/ProviderConcurrencyGate.php';
+		$file     = dirname( __DIR__, 4 ) . '/src/AI/Provider/ProviderConcurrencyGate.php';
 		$contents = file_get_contents( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 
 		$this->assertNotFalse( $contents );

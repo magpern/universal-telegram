@@ -231,6 +231,8 @@ class SendMessageHandler {
 			/**
 			 * Fires after an outbound message reaches a terminal Telegram outcome.
 			 *
+			 * @since 0.14.0
+			 *
 			 * @param string      $uuid         Outbound message uuid.
 			 * @param string      $outcome      sent|failed.
 			 * @param string|null $failure_code Fixed code on failure.
@@ -440,6 +442,10 @@ class SendMessageHandler {
 
 		if ( null !== $message ) {
 			/**
+			 * Fires after an outbound message reaches a terminal Telegram outcome.
+			 *
+			 * @since 0.14.0
+			 *
 			 * @param string      $uuid         Outbound message uuid.
 			 * @param string      $outcome      sent|failed.
 			 * @param string|null $failure_code Fixed code on failure.

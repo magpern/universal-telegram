@@ -307,16 +307,17 @@ final class WebhookControllerConversationRoutingTest extends WP_UnitTestCase {
 
 		$request = new WP_REST_Request( 'POST', '/universal-telegram/v1/webhook/' . $bot->bot_uuid() );
 		$request->set_header( 'X-Telegram-Bot-Api-Secret-Token', $secret );
+		$request->set_url_params( array( 'bot_uuid' => $bot->bot_uuid() ) );
 		$request->set_body(
 			wp_json_encode(
 				array(
 					'update_id' => 907,
 					'message'   => array(
-						'message_id'        => 1,
-						'chat'              => array( 'id' => -100123 ),
-						'message_thread_id' => 88,
+						'message_id'         => 1,
+						'chat'               => array( 'id' => '-100123' ),
+						'message_thread_id'  => 88,
 						'forum_topic_closed' => array(),
-						'from'              => array( 'id' => self::MAPPED_SENDER_TELEGRAM_ID ),
+						'from'               => array( 'id' => self::MAPPED_SENDER_TELEGRAM_ID ),
 					),
 				)
 			)

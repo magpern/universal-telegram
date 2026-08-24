@@ -33,10 +33,10 @@ final class OperationalSummarySweepTest extends WP_UnitTestCase {
 			Settings::OPTION_NAME,
 			( new Settings() )->sanitize(
 				array(
-					'operational_summary_enabled'         => true,
-					'operational_summary_bot_id'          => 1,
-					'operational_summary_destination_id'  => 1,
-					'operational_summary_hour_utc'         => $hour_utc,
+					'operational_summary_enabled'        => true,
+					'operational_summary_bot_id'         => 1,
+					'operational_summary_destination_id' => 1,
+					'operational_summary_hour_utc'       => $hour_utc,
 				)
 			)
 		);
