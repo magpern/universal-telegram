@@ -102,7 +102,9 @@ class RuleBuilderRequestHandler {
 		$cooldown_seconds   = isset( $_POST['cooldown_seconds'] ) ? max( 0, (int) $_POST['cooldown_seconds'] ) : 0;
 		$match_mode         = isset( $_POST['match_mode'] ) && 'any' === $_POST['match_mode'] ? 'any' : 'all';
 
-		$conditions = $this->parse_conditions_from_post();
+		$conditions = ! empty( $_POST['conditions_locked'] )
+			? $this->parse_preserved_conditions_from_post()
+			: $this->parse_conditions_from_post();
 
 		try {
 			$this->rules->save( $id, $name, $event_type, $schema_version_min, $conditions, $bot_id, $destination_id, $template, $enabled, $priority, $cooldown_seconds, $match_mode );
@@ -144,6 +146,24 @@ class RuleBuilderRequestHandler {
 		}
 
 		return $conditions;
+	}
+
+	/**
+	 * Decodes the hidden, non-editable `conditions_preserved_json` field
+	 * rendered only for a rule whose conditions the visual builder cannot
+	 * represent (M08.1 plan "Existing-rule compatibility strategy") — the
+	 * admin never edits this value directly, it is simply resubmitted
+	 * byte-for-byte from what RuleEditor::from_existing() originally
+	 * rendered. NotificationRuleRepository::save() still re-validates it
+	 * exactly as any other conditions array.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function parse_preserved_conditions_from_post(): array {
+		$raw = isset( $_POST['conditions_preserved_json'] ) ? sanitize_textarea_field( wp_unslash( $_POST['conditions_preserved_json'] ) ) : '[]';
+		$decoded = json_decode( (string) $raw, true );
+
+		return is_array( $decoded ) ? $decoded : array();
 	}
 
 	/**

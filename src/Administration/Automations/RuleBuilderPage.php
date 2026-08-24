@@ -160,9 +160,23 @@ final class RuleBuilderPage {
 			return;
 		}
 
+		$editing = null;
+		if ( isset( $_GET['edit'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a GET-only edit-mode switch, no mutation; the save POST below re-verifies capability and nonce itself.
+			$rule = $this->rules->find( (int) $_GET['edit'] );
+			if ( null !== $rule ) {
+				$editing = RuleEditor::from_existing( $rule );
+			}
+		}
+
 		$this->render_rule_list();
-		$this->render_presets();
-		$this->render_rule_form();
+
+		if ( null === $editing ) {
+			$this->render_presets();
+		} else {
+			echo '<p><a href="' . esc_url( $this->rules_tab_url() ) . '">&laquo; ' . esc_html__( 'Back to presets', 'universal-telegram' ) . '</a></p>';
+		}
+
+		$this->render_rule_form( $editing );
 		$this->render_intelligence_settings();
 	}
 
@@ -467,6 +481,7 @@ final class RuleBuilderPage {
 				esc_html( (string) $rule->cooldown_seconds() )
 			);
 			echo '<td>';
+			echo '<a class="button" href="' . esc_url( $this->rules_tab_url() . '&edit=' . $rule->id() ) . '">' . esc_html__( 'Edit', 'universal-telegram' ) . '</a> ';
 			echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" style="display:inline">';
 			wp_nonce_field( RuleBuilderRequestHandler::NONCE_ACTION );
 			echo '<input type="hidden" name="action" value="' . esc_attr( RuleBuilderRequestHandler::ADMIN_POST_ACTION ) . '" />';
@@ -517,42 +532,58 @@ final class RuleBuilderPage {
 	}
 
 	/**
-	 * Renders the create-rule form: the friendly, grouped event picker and
-	 * the visual "Only when…" condition builder (M08.1). Message editor,
-	 * delivery-options disclosure, and preset cards are added by later
-	 * work packages in this same milestone.
+	 * Renders the create- or edit-rule form: the friendly, grouped event
+	 * picker and the visual "Only when…" condition builder (M08.1). When
+	 * $editing is unrepresentable (M08.1 plan "Existing-rule compatibility
+	 * strategy"), the event type and conditions are locked and preserved
+	 * byte-for-byte via hidden fields instead of the editable controls.
+	 *
+	 * @param array{id: int, name: string, event_type: string, representable: bool, conditions: array<int, array<string, mixed>>, match_mode: string, conditions_json: string, bot_id: int, destination_id: int, template: string, enabled: bool, priority: int, cooldown_seconds: int}|null $editing The rule being edited, or null when creating.
 	 */
-	private function render_rule_form(): void {
-		echo '<h2>' . esc_html__( 'Add rule', 'universal-telegram' ) . '</h2>';
+	private function render_rule_form( ?array $editing = null ): void {
+		$locked = null !== $editing && ! $editing['representable'];
+
+		echo '<h2>' . ( null === $editing ? esc_html__( 'Add rule', 'universal-telegram' ) : esc_html__( 'Edit rule', 'universal-telegram' ) ) . '</h2>';
 		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 		wp_nonce_field( RuleBuilderRequestHandler::NONCE_ACTION );
 		echo '<input type="hidden" name="action" value="' . esc_attr( RuleBuilderRequestHandler::ADMIN_POST_ACTION ) . '" />';
 		echo '<input type="hidden" name="op" value="save_rule" />';
+		if ( null !== $editing ) {
+			echo '<input type="hidden" name="id" value="' . esc_attr( (string) $editing['id'] ) . '" />';
+		}
 
 		echo '<table class="form-table"><tbody>';
 
-		echo '<tr><th><label for="ut-rule-name">' . esc_html__( 'Name', 'universal-telegram' ) . '</label></th><td><input type="text" id="ut-rule-name" name="name" class="regular-text" /></td></tr>';
+		echo '<tr><th><label for="ut-rule-name">' . esc_html__( 'Name', 'universal-telegram' ) . '</label></th><td><input type="text" id="ut-rule-name" name="name" class="regular-text" value="' . esc_attr( $editing['name'] ?? '' ) . '" /></td></tr>';
 
 		echo '</tbody></table>';
 
 		echo '<h3>' . esc_html__( '1. When this happens', 'universal-telegram' ) . '</h3>';
-		$this->render_event_picker();
+		$this->render_event_picker( $editing['event_type'] ?? '', $locked );
 
 		echo '<h3>' . esc_html__( '2. Only when…', 'universal-telegram' ) . '</h3>';
-		$this->render_condition_builder();
+		if ( $locked ) {
+			$this->render_locked_conditions_notice( $editing );
+		} else {
+			$this->render_condition_builder(
+				$editing['event_type'] ?? '',
+				$editing['conditions'] ?? array(),
+				$editing['match_mode'] ?? 'all'
+			);
+		}
 
 		echo '<table class="form-table"><tbody>';
 
 		echo '<tr><th><label for="ut-rule-bot">' . esc_html__( 'Bot', 'universal-telegram' ) . '</label></th><td><select id="ut-rule-bot" name="bot_id">';
 		foreach ( $this->bots->all() as $bot ) {
-			printf( '<option value="%d">%s</option>', (int) $bot->id(), esc_html( $bot->name() ) );
+			printf( '<option value="%d" %s>%s</option>', (int) $bot->id(), selected( $editing['bot_id'] ?? 0, $bot->id(), false ), esc_html( $bot->name() ) );
 		}
 		echo '</select></td></tr>';
 
 		echo '<tr><th><label for="ut-rule-destination">' . esc_html__( 'Destination', 'universal-telegram' ) . '</label></th><td><select id="ut-rule-destination" name="destination_id">';
 		foreach ( $this->bots->all() as $bot ) {
 			foreach ( $this->eligible_destinations( $bot->id() ) as $destination ) {
-				printf( '<option value="%d">%s</option>', (int) $destination->id(), esc_html( $bot->name() . ' / ' . $destination->label() ) );
+				printf( '<option value="%d" %s>%s</option>', (int) $destination->id(), selected( $editing['destination_id'] ?? 0, $destination->id(), false ), esc_html( $bot->name() . ' / ' . $destination->label() ) );
 			}
 		}
 		echo '</select></td></tr>';
@@ -561,24 +592,46 @@ final class RuleBuilderPage {
 		echo '<p><label for="ut-insert-field" class="screen-reader-text">' . esc_html__( 'Insert field', 'universal-telegram' ) . '</label>';
 		echo '<select id="ut-insert-field"><option value="">' . esc_html__( 'Insert field…', 'universal-telegram' ) . '</option></select> ';
 		echo '<button type="button" id="ut-insert-field-button" class="button">' . esc_html__( 'Insert', 'universal-telegram' ) . '</button></p>';
-		echo '<textarea id="ut-rule-template" name="template" class="large-text" rows="3"></textarea>';
+		echo '<textarea id="ut-rule-template" name="template" class="large-text" rows="3">' . esc_textarea( $editing['template'] ?? '' ) . '</textarea>';
 		echo '<p class="description">' . esc_html__( 'The final message uses the real event information when it is sent.', 'universal-telegram' ) . '</p>';
 		echo '<p><strong>' . esc_html__( 'Example notification preview', 'universal-telegram' ) . '</strong></p>';
 		echo '<p id="ut-message-preview" class="ut-message-preview"></p>';
 		echo '</td></tr>';
 
-		echo '<tr><th><label for="ut-rule-priority">' . esc_html__( 'Priority', 'universal-telegram' ) . '</label></th><td><input type="number" id="ut-rule-priority" name="priority" value="100" /></td></tr>';
+		echo '<tr><th><label for="ut-rule-priority">' . esc_html__( 'Priority', 'universal-telegram' ) . '</label></th><td><input type="number" id="ut-rule-priority" name="priority" value="' . esc_attr( (string) ( $editing['priority'] ?? 100 ) ) . '" /></td></tr>';
 
-		echo '<tr><th><label for="ut-rule-cooldown">' . esc_html__( 'Cooldown seconds', 'universal-telegram' ) . '</label></th><td><input type="number" id="ut-rule-cooldown" name="cooldown_seconds" value="0" min="0" /></td></tr>';
+		echo '<tr><th><label for="ut-rule-cooldown">' . esc_html__( 'Cooldown seconds', 'universal-telegram' ) . '</label></th><td><input type="number" id="ut-rule-cooldown" name="cooldown_seconds" value="' . esc_attr( (string) ( $editing['cooldown_seconds'] ?? 0 ) ) . '" min="0" /></td></tr>';
 
-		echo '<tr><th><label for="ut-rule-enabled">' . esc_html__( 'Enabled', 'universal-telegram' ) . '</label></th><td><input type="checkbox" id="ut-rule-enabled" name="enabled" value="1" checked="checked" /></td></tr>';
+		$enabled_checked = null === $editing ? true : $editing['enabled'];
+		echo '<tr><th><label for="ut-rule-enabled">' . esc_html__( 'Enabled', 'universal-telegram' ) . '</label></th><td><input type="checkbox" id="ut-rule-enabled" name="enabled" value="1" ' . checked( $enabled_checked, true, false ) . ' /></td></tr>';
 
 		echo '</tbody></table>';
 
-		submit_button( __( 'Save rule', 'universal-telegram' ) );
+		submit_button( null === $editing ? __( 'Save rule', 'universal-telegram' ) : __( 'Save changes', 'universal-telegram' ) );
 		echo '</form>';
 
 		$this->render_builder_script();
+	}
+
+	/**
+	 * Renders the read-only compatibility notice for a rule whose
+	 * conditions the visual builder cannot represent, and the hidden
+	 * fields that resubmit those exact conditions/match_mode unchanged —
+	 * never an editable JSON field in the normal admin UI (M08.1 plan
+	 * "Existing-rule compatibility strategy").
+	 *
+	 * @param array{conditions_json: string, match_mode: string} $editing The rule being edited.
+	 */
+	private function render_locked_conditions_notice( array $editing ): void {
+		echo '<p class="description">' . esc_html__(
+			'This rule\'s conditions were created with a format the visual builder cannot display; they still apply exactly as saved.',
+			'universal-telegram'
+		) . '</p>';
+		echo '<details><summary>' . esc_html__( 'Technical details', 'universal-telegram' ) . '</summary><pre>' . esc_html( $editing['conditions_json'] ) . '</pre></details>';
+
+		echo '<input type="hidden" name="conditions_locked" value="1" />';
+		echo '<input type="hidden" name="conditions_preserved_json" value="' . esc_attr( $editing['conditions_json'] ) . '" />';
+		echo '<input type="hidden" name="match_mode" value="' . esc_attr( $editing['match_mode'] ) . '" />';
 	}
 
 	/**
@@ -605,11 +658,11 @@ final class RuleBuilderPage {
 	 * WooCommerce is inactive, rather than omitted (task requirement — an
 	 * admin should understand why options are missing).
 	 */
-	private function render_event_picker(): void {
+	private function render_event_picker( string $selected_event_type = '', bool $locked = false ): void {
 		$woocommerce_active = $this->woocommerce_active();
 
 		echo '<p><label for="ut-rule-event-type" class="screen-reader-text">' . esc_html__( 'Event type', 'universal-telegram' ) . '</label>';
-		echo '<select id="ut-rule-event-type" name="event_type">';
+		echo '<select id="ut-rule-event-type" name="' . ( $locked ? '' : 'event_type' ) . '"' . ( $locked ? ' disabled="disabled"' : '' ) . '>';
 
 		foreach ( self::EVENT_FAMILIES as $family ) {
 			$family_disabled = $family['requires_woocommerce'] && ! $woocommerce_active;
@@ -626,8 +679,9 @@ final class RuleBuilderPage {
 				}
 
 				printf(
-					'<option value="%s"%s>%s</option>',
+					'<option value="%s" %s%s>%s</option>',
 					esc_attr( $event_type ),
+					selected( $selected_event_type, $event_type, false ),
 					$family_disabled ? ' disabled="disabled"' : '',
 					esc_html( EventCatalogLabels::event_type_label( $event_type ) )
 				);
@@ -636,7 +690,11 @@ final class RuleBuilderPage {
 			echo '</optgroup>';
 		}
 
-		echo '</select></p>';
+		echo '</select>';
+		if ( $locked ) {
+			echo '<input type="hidden" name="event_type" value="' . esc_attr( $selected_event_type ) . '" />';
+		}
+		echo '</p>';
 
 		foreach ( self::EVENT_FAMILIES as $family ) {
 			if ( $family['requires_woocommerce'] && ! $woocommerce_active ) {
@@ -657,19 +715,30 @@ final class RuleBuilderPage {
 	}
 
 	/**
-	 * Renders the visual "Only when…" condition builder: hidden by default
+	 * Renders the visual "Only when…" condition builder. Hidden by default
 	 * (zero-state — no rows, no all/any control) until "Add a condition" is
-	 * clicked, per the frozen plan's progressive-disclosure requirement.
+	 * clicked, per the frozen plan's progressive-disclosure requirement —
+	 * unless $conditions is non-empty (editing a representable rule that
+	 * already has conditions), in which case the existing rows render
+	 * server-side and visible immediately, so an admin without JavaScript
+	 * still sees their rule's own conditions.
+	 *
+	 * @param string                           $event_type The rule's own event type, for row field options.
+	 * @param array<int, array<string, mixed>> $conditions Existing clauses to pre-render, or empty for a blank builder.
+	 * @param string                           $match_mode 'all' or 'any'.
 	 */
-	private function render_condition_builder(): void {
-		echo '<div id="ut-conditions-wrap" style="display:none">';
+	private function render_condition_builder( string $event_type = '', array $conditions = array(), string $match_mode = 'all' ): void {
+		echo '<div id="ut-conditions-wrap"' . ( array() === $conditions ? ' style="display:none"' : '' ) . '>';
 
 		echo '<fieldset><legend class="screen-reader-text">' . esc_html__( 'How conditions combine', 'universal-telegram' ) . '</legend>';
-		echo '<label><input type="radio" name="match_mode" value="all" checked="checked" /> ' . esc_html__( 'All conditions must match', 'universal-telegram' ) . '</label> ';
-		echo '<label><input type="radio" name="match_mode" value="any" /> ' . esc_html__( 'Any condition may match', 'universal-telegram' ) . '</label>';
+		echo '<label><input type="radio" name="match_mode" value="all" ' . checked( $match_mode, 'all', false ) . ' /> ' . esc_html__( 'All conditions must match', 'universal-telegram' ) . '</label> ';
+		echo '<label><input type="radio" name="match_mode" value="any" ' . checked( $match_mode, 'any', false ) . ' /> ' . esc_html__( 'Any condition may match', 'universal-telegram' ) . '</label>';
 		echo '</fieldset>';
 
 		echo '<div id="ut-condition-rows">';
+		foreach ( $conditions as $index => $clause ) {
+			ConditionRowRenderer::render( $index, $event_type, $this->registry, $clause );
+		}
 		echo '</div>';
 
 		echo '</div>';
@@ -722,7 +791,7 @@ final class RuleBuilderPage {
 			var insertFieldSelect = document.getElementById( 'ut-insert-field' );
 			var insertFieldButton = document.getElementById( 'ut-insert-field-button' );
 			var previewEl = document.getElementById( 'ut-message-preview' );
-			var rowIndex = 0;
+			var rowIndex = rows.querySelectorAll( '.ut-condition-row' ).length;
 			var previewTimer = null;
 
 			function optionsHtml( items, selectedValue ) {
@@ -820,6 +889,24 @@ final class RuleBuilderPage {
 
 			addButton.addEventListener( 'click', function () { addRow( null ); } );
 
+			function wireExistingRow( row ) {
+				row.querySelector( '.ut-remove-condition' ).addEventListener( 'click', function () {
+					row.parentNode.removeChild( row );
+					if ( ! rows.children.length ) {
+						wrap.style.display = 'none';
+					}
+				} );
+
+				row.querySelector( '.ut-condition-field' ).addEventListener( 'change', function () {
+					rebuildOperatorAndValue( row );
+				} );
+			}
+
+			var existingServerRows = rows.querySelectorAll( '.ut-condition-row' );
+			for ( var s = 0; s < existingServerRows.length; s++ ) {
+				wireExistingRow( existingServerRows[ s ] );
+			}
+
 			function rebuildInsertFieldOptions() {
 				var eventType = eventSelect.value;
 				insertFieldSelect.innerHTML = '<option value="">' + insertFieldSelect.options[ 0 ].text + '</option>' + fieldOptionsHtml( eventType );
@@ -897,24 +984,30 @@ final class RuleBuilderPage {
 				wrap.style.display = 'none';
 			}
 
-			function applyPreset( preset ) {
-				eventSelect.value = preset.event_type;
+			function applyFields( data ) {
+				eventSelect.value = data.event_type;
 				eventSelect.dispatchEvent( new Event( 'change' ) );
 
 				clearConditionRows();
-				for ( var i = 0; i < preset.conditions.length; i++ ) {
-					addRow( preset.conditions[ i ] );
+				for ( var i = 0; i < data.conditions.length; i++ ) {
+					addRow( data.conditions[ i ] );
 				}
 
 				var matchModeInputs = document.getElementsByName( 'match_mode' );
 				for ( var m = 0; m < matchModeInputs.length; m++ ) {
-					matchModeInputs[ m ].checked = ( matchModeInputs[ m ].value === preset.match_mode );
+					matchModeInputs[ m ].checked = ( matchModeInputs[ m ].value === data.match_mode );
 				}
 
-				templateTextarea.value = preset.message;
-				nameInput.value = preset.title;
+				if ( typeof data.message !== 'undefined' ) {
+					templateTextarea.value = data.message;
+				}
 
 				schedulePreview();
+			}
+
+			function applyPreset( preset ) {
+				applyFields( preset );
+				nameInput.value = preset.title;
 				nameInput.focus();
 			}
 

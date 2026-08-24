@@ -283,4 +283,57 @@ final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 
 		$this->assertStringNotContainsString( 'view=starter_set', (string) $handler->redirected_to );
 	}
+
+	/**
+	 * Editing an unrepresentable legacy rule and only changing its message
+	 * must resubmit the exact original conditions/match_mode via the
+	 * hidden conditions_locked fields — never mutate them (M08.1 plan
+	 * "Existing-rule compatibility strategy").
+	 */
+	public function test_editing_an_unrepresentable_rule_preserves_its_conditions_byte_for_byte(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		$registry = $this->registry();
+		$rules    = new NotificationRuleRepository( new SchemaHealth(), $registry );
+
+		// 'contains' is not one of subject.user_id's own permitted friendly
+		// operators (a number field: equals/not_equals/greater_than/
+		// less_than/at_least/at_most) — engine-valid, builder-unrepresentable.
+		$original_conditions = array(
+			array(
+				'field'    => 'subject.user_id',
+				'operator' => 'contains',
+				'value'    => '5',
+			),
+		);
+
+		$saved = $rules->save( null, 'Legacy', 'wordpress.user_registered', 1, $original_conditions, 1, 1, 'old message', true, 100, 0, 'all' );
+
+		$nonce                          = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$_POST['_wpnonce']              = $nonce;
+		$_REQUEST['_wpnonce']           = $nonce;
+		$_POST['op']                    = 'save_rule';
+		$_POST['id']                    = (string) $saved->id();
+		$_POST['name']                  = 'Legacy';
+		$_POST['event_type']            = 'wordpress.user_registered';
+		$_POST['schema_version_min']    = '1';
+		$_POST['bot_id']                = '1';
+		$_POST['destination_id']        = '1';
+		$_POST['template']              = 'new message';
+		$_POST['priority']              = '100';
+		$_POST['cooldown_seconds']      = '0';
+		$_POST['match_mode']            = 'all';
+		$_POST['conditions_locked']     = '1';
+		$_POST['conditions_preserved_json'] = wp_json_encode( $original_conditions );
+
+		$handler = $this->handler( $rules );
+		$handler->handle_request();
+
+		$updated = $rules->find( $saved->id() );
+
+		$this->assertSame( 'new message', $updated->template() );
+		$this->assertSame( $original_conditions, $updated->conditions() );
+	}
 }
