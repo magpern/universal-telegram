@@ -119,6 +119,29 @@ final class FailingConditionExplainer {
 			return '';
 		}
 
+		if ( is_array( $value ) ) {
+			return implode(
+				', ',
+				array_map( static fn( mixed $item ): string => self::format_scalar_value( $field, $item ), $value )
+			);
+		}
+
+		return self::format_scalar_value( $field, $value );
+	}
+
+	/**
+	 * The friendly display value for one non-array field value.
+	 *
+	 * @param string $field The field path.
+	 * @param mixed  $value The raw scalar value (never an array).
+	 *
+	 * @return string
+	 */
+	private static function format_scalar_value( string $field, mixed $value ): string {
+		if ( is_bool( $value ) ) {
+			return ConditionRowRenderer::boolean_value_labels()[ $value ? 'true' : 'false' ] ?? ( $value ? 'true' : 'false' );
+		}
+
 		$type = FieldTypeCatalog::type( $field );
 
 		if ( FieldTypeCatalog::TYPE_CHOICE === $type ) {
