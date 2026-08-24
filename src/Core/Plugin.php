@@ -45,6 +45,7 @@ use UniversalTelegram\AI\Draft\AiDraftRepository;
 use UniversalTelegram\AI\Draft\DraftRequestHandler;
 use UniversalTelegram\AI\Draft\PromptBuilder;
 use UniversalTelegram\AI\Provider\AiFailureClassifier;
+use UniversalTelegram\AI\Provider\ProviderConcurrencyGate;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Automations\Digest\DigestEligibility;
@@ -52,9 +53,14 @@ use UniversalTelegram\Automations\Intelligence\AlertEvaluator;
 use UniversalTelegram\Automations\Intelligence\AlertRepository;
 use UniversalTelegram\Automations\Intelligence\IntelligenceSettings;
 use UniversalTelegram\Automations\Intelligence\IntelligenceStateRepository;
+use UniversalTelegram\Automations\Intelligence\OperationalSummaryPromptBuilder;
 use UniversalTelegram\Automations\Intelligence\OperationalSummaryRenderer;
 use UniversalTelegram\Automations\Intelligence\OperationalSummaryRepository;
 use UniversalTelegram\Automations\Intelligence\OperationalSummarySweep;
+use UniversalTelegram\Automations\Intelligence\SummaryAiGenerationHandler;
+use UniversalTelegram\Automations\Intelligence\SummaryAiLeaseSweep;
+use UniversalTelegram\Automations\Intelligence\SummaryAiRepository;
+use UniversalTelegram\Automations\Intelligence\SummaryAiRequestHandler;
 use UniversalTelegram\Automations\Digest\VisitorDigestAggregator;
 use UniversalTelegram\Automations\Digest\VisitorDigestCounterRepository;
 use UniversalTelegram\Automations\Digest\VisitorDigestRenderer;
@@ -1339,6 +1345,13 @@ final class Plugin {
 		);
 		add_action( 'admin_post_' . ApprovedContentPage::ADMIN_POST_ACTION, array( $this->approved_content_page, 'handle_request' ) );
 
+		// Shared, cross-feature provider-concurrency admission mutex (M11B
+		// plan §3): the single instance both AIDraftGenerationHandler and
+		// SummaryAiGenerationHandler claim through, so M09's site-wide cap
+		// of 2 is enforced once, across both features, never duplicated.
+		$provider_concurrency_gate = new ProviderConcurrencyGate( $this->schema_health );
+		$summary_ai_repository     = new SummaryAiRepository( $this->schema_health, $this->credential_vault );
+
 		// AI draft generation queue worker + stale-lease recovery sweep
 		// (M09, docs/adr/0028 decisions 4–5). No Hub tab of its own — reached
 		// only via the queue and the recurring sweep action.
@@ -1349,13 +1362,40 @@ final class Plugin {
 			$prompt_builder,
 			$this->circuit_breaker,
 			new AiFailureClassifier(),
-			new RetryPolicy()
+			new RetryPolicy(),
+			$provider_concurrency_gate,
+			array( fn() => $summary_ai_repository->count_active_generating() )
 		);
 		$this->handler_registry->register( AIDraftGenerationHandler::JOB_TYPE, array( $ai_draft_handler, 'handle_job' ) );
 
 		$ai_lease_sweep = new AiDraftLeaseSweep( $this->ai_draft_repository );
 		add_action( AiDraftLeaseSweep::JOB_TYPE, array( $ai_lease_sweep, 'run' ) );
 		add_action( 'init', array( $ai_lease_sweep, 'register' ) );
+
+		// M11B operational-summary AI generation queue worker + stale-lease
+		// recovery sweep (docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md
+		// §3), mirroring the AI draft assistant's own structure above and
+		// sharing its admission mutex via $provider_concurrency_gate.
+		$operational_summary_prompt_builder = new OperationalSummaryPromptBuilder();
+		$summary_ai_handler                 = new SummaryAiGenerationHandler(
+			$summary_ai_repository,
+			$this->ai_provider_repository,
+			$operational_summary_prompt_builder,
+			new OperationalSummaryRepository( $this->schema_health ),
+			$this->circuit_breaker,
+			new AiFailureClassifier(),
+			new RetryPolicy(),
+			$provider_concurrency_gate,
+			array( fn() => $this->ai_draft_repository->count_active_generating() )
+		);
+		$this->handler_registry->register( SummaryAiGenerationHandler::JOB_TYPE, array( $summary_ai_handler, 'handle_job' ) );
+
+		$summary_ai_lease_sweep = new SummaryAiLeaseSweep( $summary_ai_repository );
+		add_action( SummaryAiLeaseSweep::JOB_TYPE, array( $summary_ai_lease_sweep, 'run' ) );
+		add_action( 'init', array( $summary_ai_lease_sweep, 'register' ) );
+
+		$summary_ai_request_handler = new SummaryAiRequestHandler( $summary_ai_repository, $this->ai_provider_repository, $this->dispatcher );
+		add_action( 'admin_post_' . SummaryAiRequestHandler::ADMIN_POST_ACTION, array( $summary_ai_request_handler, 'handle_request' ) );
 
 		// M11A visitor digest evaluation sweep (docs/plans/m11a-visitor-activity-digests-plan-v1.md §5).
 		$visitor_digest_sweep = new VisitorDigestSweep(

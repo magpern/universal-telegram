@@ -567,6 +567,100 @@ final class AiDraftRepository {
 	}
 
 	/**
+	 * The site-wide count of rows currently `generating` with an unexpired
+	 * lease — the same read claim_for_generation() already performs while
+	 * holding the config-row lock, extracted as its own method so a shared
+	 * cross-feature admission gate (AI\Provider\ProviderConcurrencyGate,
+	 * docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md §3)
+	 * can sum this count together with a second table's own count, inside
+	 * one transaction the gate itself opens. This method takes no lock of
+	 * its own — the caller is expected to already hold the config-row lock
+	 * (or an equivalent mutex) for the duration of the count-then-claim
+	 * sequence, exactly as claim_for_generation() does internally.
+	 *
+	 * @return int
+	 */
+	public function count_active_generating(): int {
+		if ( ! $this->schema_health->is_available() ) {
+			return 0;
+		}
+
+		global $wpdb;
+
+		$drafts_table = $wpdb->prefix . Migrator::AI_DRAFTS_TABLE;
+		$now          = current_time( 'mysql', true );
+
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$drafts_table} WHERE status = 'generating' AND generation_lease_expires_at > %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$now
+			)
+		);
+	}
+
+	/**
+	 * Claims a `queued` (or expired-lease `generating`) draft for
+	 * generation, without opening its own transaction or taking the
+	 * config-row lock — the candidate-select-and-claim half of
+	 * claim_for_generation()'s own logic, extracted so
+	 * AI\Provider\ProviderConcurrencyGate can invoke it after the gate's
+	 * own admission check has already passed, inside the same transaction
+	 * the gate opened (§3). The caller is responsible for having already
+	 * verified admission (count_active_generating() below the cap) under
+	 * the same lock/transaction this call executes within.
+	 *
+	 * @param string $draft_uuid    The draft to claim.
+	 * @param int    $lease_seconds The lease duration.
+	 *
+	 * @return array{draft_id: int, lease_token: string, attempt_count: int}|null Null if the row is not currently claimable.
+	 */
+	public function claim_candidate_row( string $draft_uuid, int $lease_seconds ): ?array {
+		if ( ! $this->schema_health->is_available() ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$drafts_table = $wpdb->prefix . Migrator::AI_DRAFTS_TABLE;
+		$now          = current_time( 'mysql', true );
+
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT id, attempt_count FROM {$drafts_table} WHERE draft_uuid = %s AND (status = 'queued' OR (status = 'generating' AND generation_lease_expires_at <= %s)) FOR UPDATE", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$draft_uuid,
+				$now
+			),
+			ARRAY_A
+		);
+
+		if ( null === $row ) {
+			return null;
+		}
+
+		$lease_token   = wp_generate_uuid4();
+		$attempt_count = (int) $row['attempt_count'] + 1;
+		$lease_expiry  = gmdate( 'Y-m-d H:i:s', time() + $lease_seconds );
+
+		$wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$drafts_table} SET status = 'generating', lease_token = %s, generation_lease_expires_at = %s, claimed_at = %s, attempt_count = %d, updated_at = %s WHERE id = %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$lease_token,
+				$lease_expiry,
+				$now,
+				$attempt_count,
+				$now,
+				$row['id']
+			)
+		);
+
+		return array(
+			'draft_id'      => (int) $row['id'],
+			'lease_token'   => $lease_token,
+			'attempt_count' => $attempt_count,
+		);
+	}
+
+	/**
 	 * Compare-and-set success write: only the claimant whose lease_token
 	 * still matches may complete the row — a stale, delayed worker's
 	 * completion after its lease was reclaimed is silently discarded

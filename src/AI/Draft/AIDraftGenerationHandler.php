@@ -14,6 +14,7 @@ use UniversalTelegram\AI\Config\AIProviderRepository;
 use UniversalTelegram\AI\Provider\AiFailureClassification;
 use UniversalTelegram\AI\Provider\AiFailureClassifier;
 use UniversalTelegram\AI\Provider\OpenAi\OpenAiAdapter;
+use UniversalTelegram\AI\Provider\ProviderConcurrencyGate;
 use UniversalTelegram\Core\Security\CredentialState;
 use UniversalTelegram\Queue\RetryPolicy;
 use UniversalTelegram\Queue\WorkerRunner;
@@ -50,12 +51,14 @@ class AIDraftGenerationHandler {
 	/**
 	 * Constructor.
 	 *
-	 * @param AiDraftRepository    $drafts          Draft persistence, claim, and lease.
-	 * @param AIProviderRepository $provider_config Reads enablement/model/credential.
-	 * @param PromptBuilder        $prompt_builder  Assembles the bounded, source-grounded prompt.
-	 * @param CircuitBreaker       $circuit_breaker Per-provider breaker, 'ai_provider' scope.
-	 * @param AiFailureClassifier  $classifier      Classifies a failed provider result.
-	 * @param RetryPolicy          $retry_policy    Consulted only for its own max_attempts().
+	 * @param AiDraftRepository       $drafts                          Draft persistence, claim, and lease.
+	 * @param AIProviderRepository    $provider_config                 Reads enablement/model/credential.
+	 * @param PromptBuilder           $prompt_builder                  Assembles the bounded, source-grounded prompt.
+	 * @param CircuitBreaker          $circuit_breaker                 Per-provider breaker, 'ai_provider' scope.
+	 * @param AiFailureClassifier     $classifier                      Classifies a failed provider result.
+	 * @param RetryPolicy             $retry_policy                    Consulted only for its own max_attempts().
+	 * @param ProviderConcurrencyGate $concurrency_gate                The shared, cross-feature admission mutex (M11B plan §3) — replaces this handler's own prior direct call to AiDraftRepository::claim_for_generation(), which remains present, unchanged, for backward compatibility with existing direct callers/tests only.
+	 * @param array<int, callable(): int> $external_active_count_providers Additional domains' own active-generation counts to sum against the shared cap (e.g. M11B's operational-summary AI drafts). Empty by default.
 	 */
 	public function __construct(
 		private readonly AiDraftRepository $drafts,
@@ -63,7 +66,9 @@ class AIDraftGenerationHandler {
 		private readonly PromptBuilder $prompt_builder,
 		private readonly CircuitBreaker $circuit_breaker,
 		private readonly AiFailureClassifier $classifier,
-		private readonly RetryPolicy $retry_policy
+		private readonly RetryPolicy $retry_policy,
+		private readonly ProviderConcurrencyGate $concurrency_gate,
+		private readonly array $external_active_count_providers = array()
 	) {}
 
 	/**
@@ -97,7 +102,14 @@ class AIDraftGenerationHandler {
 			return;
 		}
 
-		$claim = $this->drafts->claim_for_generation( $draft_uuid, self::LEASE_SECONDS, self::MAX_CONCURRENT );
+		$claim = $this->concurrency_gate->claim_or_defer(
+			self::MAX_CONCURRENT,
+			array_merge(
+				array( fn() => $this->drafts->count_active_generating() ),
+				$this->external_active_count_providers
+			),
+			fn() => $this->drafts->claim_candidate_row( $draft_uuid, self::LEASE_SECONDS )
+		);
 
 		if ( null === $claim ) {
 			// Either the concurrency cap is currently reached, or another
