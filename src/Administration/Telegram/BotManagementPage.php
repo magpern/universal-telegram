@@ -357,13 +357,28 @@ final class BotManagementPage {
 			echo '<table class="widefat striped"><thead><tr><th>' .
 				esc_html__( 'Label', 'universal-telegram' ) . '</th><th>' .
 				esc_html__( 'Kind', 'universal-telegram' ) . '</th><th>' .
-				esc_html__( 'Chat ID', 'universal-telegram' ) . '</th></tr></thead><tbody>';
+				esc_html__( 'Chat ID', 'universal-telegram' ) . '</th><th>' .
+				esc_html__( 'Conversation', 'universal-telegram' ) . '</th></tr></thead><tbody>';
 
 			foreach ( $conversation_destinations as $destination ) {
 				echo '<tr>';
 				printf( '<td>%s</td>', esc_html( $destination->label() ) );
 				printf( '<td>%s</td>', esc_html( $destination->kind()->value ) );
 				printf( '<td>%s</td>', esc_html( $destination->chat_id() ) );
+				$owned = $this->conversations->find_by_destination_id( $destination->id() );
+				if ( null !== $owned ) {
+					printf(
+						'<td><a href="%s">%s</a></td>',
+						esc_url(
+							admin_url(
+								'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox&conversation_id=' . $owned->id()
+							)
+						),
+						esc_html__( 'Open conversation', 'universal-telegram' )
+					);
+				} else {
+					echo '<td></td>';
+				}
 				echo '</tr>';
 			}
 			echo '</tbody></table>';

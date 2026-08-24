@@ -129,6 +129,29 @@ class TelegramApiClient {
 	}
 
 	/**
+	 * Calls deleteForumTopic. Used only by Conversations\TopicDeletionHandler
+	 * for eligible plugin-created conversation topics (M07.1, docs/adr/0031).
+	 *
+	 * @param string $token             The bot token.
+	 * @param string $chat_id           The supergroup chat ID.
+	 * @param int    $message_thread_id The forum topic id to delete (must be > 1).
+	 *
+	 * @return TelegramApiResult
+	 *
+	 * @throws TelegramApiException If the response cannot be parsed at all.
+	 */
+	public function delete_forum_topic( string $token, string $chat_id, int $message_thread_id ): TelegramApiResult {
+		return $this->call(
+			$token,
+			'deleteForumTopic',
+			array(
+				'chat_id'           => $chat_id,
+				'message_thread_id' => $message_thread_id,
+			)
+		);
+	}
+
+	/**
 	 * Calls deleteWebhook. Used by Uninstaller, best-effort, bounded-timeout.
 	 *
 	 * @param string $token The bot token.

@@ -144,4 +144,36 @@ final class BotProfileRepositoryTest extends WP_UnitTestCase {
 		$this->assertTrue( $repository->delete( $bot->id() ) );
 		$this->assertNull( $repository->find( $bot->id() ) );
 	}
+
+	/**
+	 * CHANGED_ACTION (M11A, docs/plans/m11a-visitor-activity-digests-plan-v1.md
+	 * §3.1) must fire from every successful mutating write in this
+	 * repository — create, any field update, and delete — so a listener
+	 * such as Automations\Digest\DigestEligibility is notified regardless
+	 * of which caller (Bots tab, setup wizard, webhook registration,
+	 * cleanup) triggered the write.
+	 */
+	public function test_changed_action_fires_on_create_update_and_delete(): void {
+		$repository = $this->repository();
+		$fired      = 0;
+		$listener   = function () use ( &$fired ) {
+			++$fired;
+		};
+
+		add_action( BotProfileRepository::CHANGED_ACTION, $listener );
+
+		$bot = $repository->create( 'Bot', 'token' );
+		$this->assertSame( 1, $fired );
+
+		$repository->set_status( $bot->id(), BotStatus::ACTIVE );
+		$this->assertSame( 2, $fired );
+
+		$repository->mark_unregistered( $bot->id() );
+		$this->assertSame( 3, $fired );
+
+		$repository->delete( $bot->id() );
+		$this->assertSame( 4, $fired );
+
+		remove_action( BotProfileRepository::CHANGED_ACTION, $listener );
+	}
 }

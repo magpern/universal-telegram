@@ -74,6 +74,23 @@ final class Settings {
 			'chat_widget_participant_label_visitor'       => 'You',
 			'chat_widget_participant_label_operator'      => 'Support',
 			'chat_widget_allow_anonymous'                 => false,
+			'visitor_digest_enabled'                      => false,
+			'visitor_digest_bot_id'                       => null,
+			'visitor_digest_destination_id'                => null,
+			'visitor_digest_threshold'                     => 50,
+			'visitor_digest_max_wait_minutes'              => 15,
+			'operational_summary_enabled'                  => false,
+			'operational_summary_bot_id'                   => null,
+			'operational_summary_destination_id'           => null,
+			'operational_summary_hour_utc'                 => 6,
+			'alert_bot_id'                                 => null,
+			'alert_destination_id'                         => null,
+			'alert_checkout_failure_count_enabled'         => false,
+			'alert_checkout_failure_count_threshold'       => 10,
+			'alert_order_failure_spike_enabled'            => false,
+			'alert_order_failure_spike_threshold'          => 10,
+			'alert_js_error_spike_enabled'                 => false,
+			'alert_js_error_spike_threshold'               => 50,
 		);
 	}
 
@@ -111,6 +128,11 @@ final class Settings {
 			'visitor_exclude_administrators',
 			'chat_widget_enabled',
 			'chat_widget_allow_anonymous',
+			'visitor_digest_enabled',
+			'operational_summary_enabled',
+			'alert_checkout_failure_count_enabled',
+			'alert_order_failure_spike_enabled',
+			'alert_js_error_spike_enabled',
 		);
 
 		foreach ( $boolean_fields as $field ) {
@@ -147,6 +169,57 @@ final class Settings {
 
 		if ( isset( $input['visitor_sampling_percent'] ) && is_numeric( $input['visitor_sampling_percent'] ) ) {
 			$sanitized['visitor_sampling_percent'] = max( 1, min( 100, (int) $input['visitor_sampling_percent'] ) );
+		}
+
+		// visitor_digest_bot_id/visitor_digest_destination_id are stored as
+		// plain int references only; existence and eligibility (an active
+		// bot, an eligible, non-conversation-linked, enabled destination
+		// belonging to that bot) are re-validated live on every read by
+		// Automations\Digest\DigestEligibility, never assumed correct here
+		// (docs/plans/m11a-visitor-activity-digests-plan-v1.md §4).
+		foreach ( array( 'visitor_digest_bot_id', 'visitor_digest_destination_id' ) as $reference_field ) {
+			if ( isset( $input[ $reference_field ] ) && is_numeric( $input[ $reference_field ] ) && (int) $input[ $reference_field ] > 0 ) {
+				$sanitized[ $reference_field ] = (int) $input[ $reference_field ];
+			} else {
+				$sanitized[ $reference_field ] = null;
+			}
+		}
+
+		if ( isset( $input['visitor_digest_threshold'] ) && is_numeric( $input['visitor_digest_threshold'] ) ) {
+			$sanitized['visitor_digest_threshold'] = max( 10, min( 500, (int) $input['visitor_digest_threshold'] ) );
+		}
+
+		if ( isset( $input['visitor_digest_max_wait_minutes'] ) && is_numeric( $input['visitor_digest_max_wait_minutes'] ) ) {
+			$sanitized['visitor_digest_max_wait_minutes'] = max( 5, min( 60, (int) $input['visitor_digest_max_wait_minutes'] ) );
+		}
+
+		// operational_summary_bot_id/operational_summary_destination_id and
+		// alert_bot_id/alert_destination_id are stored as plain int
+		// references only, re-validated live on every read by the same
+		// Automations\Digest\DigestEligibility eligibility rule M11A already
+		// established (docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md §5).
+		foreach ( array( 'operational_summary_bot_id', 'operational_summary_destination_id', 'alert_bot_id', 'alert_destination_id' ) as $reference_field ) {
+			if ( isset( $input[ $reference_field ] ) && is_numeric( $input[ $reference_field ] ) && (int) $input[ $reference_field ] > 0 ) {
+				$sanitized[ $reference_field ] = (int) $input[ $reference_field ];
+			} else {
+				$sanitized[ $reference_field ] = null;
+			}
+		}
+
+		if ( isset( $input['operational_summary_hour_utc'] ) && is_numeric( $input['operational_summary_hour_utc'] ) ) {
+			$sanitized['operational_summary_hour_utc'] = max( 0, min( 23, (int) $input['operational_summary_hour_utc'] ) );
+		}
+
+		if ( isset( $input['alert_checkout_failure_count_threshold'] ) && is_numeric( $input['alert_checkout_failure_count_threshold'] ) ) {
+			$sanitized['alert_checkout_failure_count_threshold'] = max( 3, min( 100, (int) $input['alert_checkout_failure_count_threshold'] ) );
+		}
+
+		if ( isset( $input['alert_order_failure_spike_threshold'] ) && is_numeric( $input['alert_order_failure_spike_threshold'] ) ) {
+			$sanitized['alert_order_failure_spike_threshold'] = max( 3, min( 100, (int) $input['alert_order_failure_spike_threshold'] ) );
+		}
+
+		if ( isset( $input['alert_js_error_spike_threshold'] ) && is_numeric( $input['alert_js_error_spike_threshold'] ) ) {
+			$sanitized['alert_js_error_spike_threshold'] = max( 5, min( 500, (int) $input['alert_js_error_spike_threshold'] ) );
 		}
 
 		$positive_integer_fields = array(

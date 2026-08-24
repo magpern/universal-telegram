@@ -40,6 +40,12 @@ class Migrator {
 	public const OPERATOR_AVAILABILITY_TABLE = 'universal_telegram_operator_availability';
 	public const AI_CONFIG_TABLE             = 'universal_telegram_ai_config';
 	public const AI_DRAFTS_TABLE             = 'universal_telegram_ai_drafts';
+	public const VISITOR_DIGEST_COUNTERS_TABLE = 'universal_telegram_visitor_digest_counters';
+	public const VISITOR_DIGEST_STATE_TABLE    = 'universal_telegram_visitor_digest_state';
+	public const OPERATIONAL_SUMMARY_RUNS_TABLE       = 'universal_telegram_operational_summary_runs';
+	public const INTELLIGENCE_SETTINGS_STATE_TABLE    = 'universal_telegram_intelligence_settings_state';
+	public const OPERATIONAL_ALERT_STATE_TABLE        = 'universal_telegram_operational_alert_state';
+	public const OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE  = 'universal_telegram_operational_summary_ai_drafts';
 
 	private const DB_VERSION_OPTION = 'universal_telegram_db_version';
 
@@ -66,7 +72,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 22;
+		return 29;
 	}
 
 	/**
@@ -157,6 +163,13 @@ class Migrator {
 			20 => array( array( $this, 'step_20_create_ai_drafts_table' ), array( $this, 'verify_step_20' ) ),
 			21 => array( array( $this, 'step_21_add_conversation_ai_ack_column' ), array( $this, 'verify_step_21' ) ),
 			22 => array( array( $this, 'step_22_make_ai_draft_requester_nullable' ), array( $this, 'verify_step_22' ) ),
+			23 => array( array( $this, 'step_23_create_visitor_digest_counters_table' ), array( $this, 'verify_step_23' ) ),
+			24 => array( array( $this, 'step_24_create_visitor_digest_state_table' ), array( $this, 'verify_step_24' ) ),
+			25 => array( array( $this, 'step_25_create_operational_summary_runs_table' ), array( $this, 'verify_step_25' ) ),
+			26 => array( array( $this, 'step_26_create_intelligence_settings_state_table' ), array( $this, 'verify_step_26' ) ),
+			27 => array( array( $this, 'step_27_create_operational_alert_state_table' ), array( $this, 'verify_step_27' ) ),
+			28 => array( array( $this, 'step_28_create_operational_summary_ai_drafts_table' ), array( $this, 'verify_step_28' ) ),
+			29 => array( array( $this, 'step_29_add_conversation_topic_lifecycle_columns' ), array( $this, 'verify_step_29' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -1443,6 +1456,439 @@ class Migrator {
 		global $wpdb;
 
 		return 'YES' === $this->column_is_nullable( $wpdb->prefix . self::AI_DRAFTS_TABLE, 'requested_by_user_id' );
+	}
+
+	/**
+	 * Creates the visitor-digest aggregation-window counters table (M11A,
+	 * docs/plans/m11a-visitor-activity-digests-plan-v1.md §5): one row per
+	 * (window, category, page_type) bucket, incremented synchronously by
+	 * Automations\Digest\VisitorDigestCounterRepository from
+	 * Events\EventDispatcher::handle() while a digest window is open. Never
+	 * one row per event.
+	 */
+	private function step_23_create_visitor_digest_counters_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::VISITOR_DIGEST_COUNTERS_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				window_started_at DATETIME NOT NULL,
+				category VARCHAR(32) NOT NULL,
+				page_type VARCHAR(16) NULL,
+				event_count BIGINT UNSIGNED NOT NULL DEFAULT 0,
+				last_event_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY window_category_page (window_started_at, category, page_type),
+				KEY idx_window_started_at (window_started_at)
+			) {$charset_collate}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_23(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::VISITOR_DIGEST_COUNTERS_TABLE,
+			array( 'id', 'window_started_at', 'category', 'page_type', 'event_count', 'last_event_at' )
+		);
+	}
+
+	/**
+	 * Creates the visitor-digest singleton state/checkpoint row (M11A §5):
+	 * one seeded row (id=1), the same "singleton row as mutex/checkpoint"
+	 * pattern step_19_create_ai_config_table already established for
+	 * universal_telegram_ai_config (docs/adr/0028 decision 5). Locked
+	 * (SELECT ... FOR UPDATE) by Automations\Digest\VisitorDigestSweep as
+	 * its sole admission mutex.
+	 */
+	private function step_24_create_visitor_digest_state_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::VISITOR_DIGEST_STATE_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id TINYINT UNSIGNED NOT NULL,
+				window_started_at DATETIME NULL,
+				last_digest_sent_at DATETIME NULL,
+				last_digest_status VARCHAR(32) NULL,
+				claim_token CHAR(36) NULL,
+				claim_expires_at DATETIME NULL,
+				PRIMARY KEY (id)
+			) {$charset_collate}"
+		);
+
+		$wpdb->query( "INSERT IGNORE INTO {$table} (id) VALUES (1)" );
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_24(): bool {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::VISITOR_DIGEST_STATE_TABLE;
+
+		if ( ! $this->table_has_columns(
+			$table,
+			array( 'id', 'window_started_at', 'last_digest_sent_at', 'last_digest_status', 'claim_token', 'claim_expires_at' )
+		) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return null !== $wpdb->get_var( "SELECT id FROM {$table} WHERE id = 1" );
+	}
+
+	/**
+	 * Creates the operational-summary daily aggregate table (M11B plan §4,
+	 * step 25): one row per UTC calendar day, keyed by summary_date's own
+	 * UNIQUE constraint — the sole row-creation-idempotency mechanism a
+	 * crash or retried sweep tick relies on (never an application-level
+	 * lock alone).
+	 */
+	private function step_25_create_operational_summary_runs_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::OPERATIONAL_SUMMARY_RUNS_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				summary_date DATE NOT NULL,
+				window_started_at DATETIME NOT NULL,
+				window_ended_at DATETIME NOT NULL,
+				orders_created INT UNSIGNED NOT NULL DEFAULT 0,
+				payments_completed INT UNSIGNED NOT NULL DEFAULT 0,
+				orders_failed INT UNSIGNED NOT NULL DEFAULT 0,
+				orders_cancelled INT UNSIGNED NOT NULL DEFAULT 0,
+				checkout_failures INT UNSIGNED NOT NULL DEFAULT 0,
+				js_error_runtime INT UNSIGNED NOT NULL DEFAULT 0,
+				js_error_promise INT UNSIGNED NOT NULL DEFAULT 0,
+				js_error_resource INT UNSIGNED NOT NULL DEFAULT 0,
+				funnel_product_views INT UNSIGNED NOT NULL DEFAULT 0,
+				funnel_cart_intents INT UNSIGNED NOT NULL DEFAULT 0,
+				funnel_checkout_starts INT UNSIGNED NOT NULL DEFAULT 0,
+				funnel_orders_created INT UNSIGNED NOT NULL DEFAULT 0,
+				woocommerce_active_at_run TINYINT(1) UNSIGNED NOT NULL DEFAULT 0,
+				sent_at DATETIME NULL,
+				send_status VARCHAR(32) NULL,
+				created_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY uq_summary_date (summary_date)
+			) {$charset_collate}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_25(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::OPERATIONAL_SUMMARY_RUNS_TABLE,
+			array( 'id', 'summary_date', 'window_started_at', 'window_ended_at', 'orders_created', 'payments_completed', 'orders_failed', 'orders_cancelled', 'checkout_failures', 'sent_at', 'send_status' )
+		);
+	}
+
+	/**
+	 * Creates the Intelligence sweep's singleton claim-lease mutex row
+	 * (M11B plan §4, step 26) — the same "singleton row as mutex/checkpoint"
+	 * pattern step_24_create_visitor_digest_state_table already established
+	 * for the visitor digest. Ordered ahead of the alert-state table (step
+	 * 27) so the sweep's mutex exists before either the summary or the
+	 * alerts it also evaluates ever run.
+	 */
+	private function step_26_create_intelligence_settings_state_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::INTELLIGENCE_SETTINGS_STATE_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id TINYINT UNSIGNED NOT NULL,
+				claim_token CHAR(36) NULL,
+				claim_expires_at DATETIME NULL,
+				PRIMARY KEY (id)
+			) {$charset_collate}"
+		);
+
+		$wpdb->query( "INSERT IGNORE INTO {$table} (id) VALUES (1)" );
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_26(): bool {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::INTELLIGENCE_SETTINGS_STATE_TABLE;
+
+		if ( ! $this->table_has_columns( $table, array( 'id', 'claim_token', 'claim_expires_at' ) ) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return null !== $wpdb->get_var( "SELECT id FROM {$table} WHERE id = 1" );
+	}
+
+	/**
+	 * Creates the fixed three-row threshold-alert cooldown/checkpoint table
+	 * (M11B plan §2.2/§4, step 27), seeded with the three fixed alert-type
+	 * rows during migration — the same "singleton-row(s) as checkpoint"
+	 * pattern step_24_create_visitor_digest_state_table already established,
+	 * here with a fixed cardinality of three rather than one.
+	 */
+	private function step_27_create_operational_alert_state_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::OPERATIONAL_ALERT_STATE_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				alert_type VARCHAR(32) NOT NULL,
+				last_fired_at DATETIME NULL,
+				last_evaluated_at DATETIME NULL,
+				PRIMARY KEY (alert_type)
+			) {$charset_collate}"
+		);
+
+		foreach ( array( 'checkout_failure_count', 'order_failure_spike', 'js_error_spike' ) as $alert_type ) {
+			$wpdb->query(
+				$wpdb->prepare(
+					"INSERT IGNORE INTO {$table} (alert_type) VALUES (%s)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					$alert_type
+				)
+			);
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_27(): bool {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::OPERATIONAL_ALERT_STATE_TABLE;
+
+		if ( ! $this->table_has_columns( $table, array( 'alert_type', 'last_fired_at', 'last_evaluated_at' ) ) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return 3 === (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
+	}
+
+	/**
+	 * Creates the operational-summary AI-draft table (M11B plan §2.6/§3/§4,
+	 * step 28). UNIQUE(summary_run_id) is the entire per-summary
+	 * idempotency mechanism — a database constraint, not an
+	 * application-level row lock: at most one draft row can ever exist per
+	 * summary. requested_by_user_id/reviewed_by_user_id are nullable from
+	 * creation (matching universal_telegram_ai_drafts' own nullable-
+	 * widening precedent, applied here from the start rather than as a
+	 * later corrective migration) so account-deletion anonymization can
+	 * null them without ever deleting the row.
+	 */
+	private function step_28_create_operational_summary_ai_drafts_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				summary_run_id BIGINT UNSIGNED NOT NULL,
+				draft_uuid CHAR(36) NOT NULL,
+				status VARCHAR(16) NOT NULL,
+				provider VARCHAR(32) NOT NULL,
+				model VARCHAR(191) NOT NULL,
+				prompt_policy_version VARCHAR(32) NOT NULL,
+				body_ciphertext LONGTEXT NULL,
+				failure_class VARCHAR(32) NULL,
+				requested_by_user_id BIGINT UNSIGNED NULL,
+				reviewed_by_user_id BIGINT UNSIGNED NULL,
+				lease_token CHAR(36) NULL,
+				generation_lease_expires_at DATETIME NULL,
+				attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
+				created_at DATETIME NOT NULL,
+				generated_at DATETIME NULL,
+				updated_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY uq_summary_run (summary_run_id),
+				UNIQUE KEY uq_draft_uuid (draft_uuid),
+				KEY idx_status (status),
+				KEY idx_lease (status, generation_lease_expires_at)
+			) {$charset_collate}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_28(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE,
+			array( 'id', 'summary_run_id', 'draft_uuid', 'status', 'provider', 'model', 'body_ciphertext', 'requested_by_user_id', 'reviewed_by_user_id', 'lease_token', 'generation_lease_expires_at', 'attempt_count' )
+		);
+	}
+
+	/**
+	 * Adds topic-lifecycle columns and exclusive destination_id ownership
+	 * (M07.1, docs/adr/0031): topic_lifecycle_state/code, delete claim
+	 * lease, backfill active for created topics, null duplicate
+	 * destination_id references, then UNIQUE(destination_id).
+	 */
+	private function step_29_add_conversation_topic_lifecycle_columns(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::CONVERSATIONS_TABLE;
+		$destinations    = $wpdb->prefix . self::DESTINATIONS_TABLE;
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( ! $this->table_has_columns( $table, array( 'topic_lifecycle_state' ) ) ) {
+			$wpdb->query(
+				"ALTER TABLE {$table}
+					ADD COLUMN topic_lifecycle_state VARCHAR(16) NOT NULL DEFAULT 'none'"
+			);
+		}
+
+		if ( ! $this->table_has_columns( $table, array( 'topic_lifecycle_code' ) ) ) {
+			$wpdb->query(
+				"ALTER TABLE {$table}
+					ADD COLUMN topic_lifecycle_code VARCHAR(64) NULL"
+			);
+		}
+
+		if ( ! $this->table_has_columns( $table, array( 'topic_delete_claim_expires_at' ) ) ) {
+			$wpdb->query(
+				"ALTER TABLE {$table}
+					ADD COLUMN topic_delete_claim_expires_at DATETIME NULL"
+			);
+		}
+
+		if ( ! $this->table_has_index( $table, 'topic_lifecycle_state' ) ) {
+			$wpdb->query( "ALTER TABLE {$table} ADD KEY topic_lifecycle_state (topic_lifecycle_state)" );
+		}
+
+		$wpdb->query(
+			"UPDATE {$table}
+				SET topic_lifecycle_state = 'active'
+				WHERE topic_creation_state = 'created'
+				  AND topic_lifecycle_state = 'none'"
+		);
+
+		// Exclusive destination ownership: keep one owner per destination_id
+		// (prefer created topic matching the destination's thread; else lowest id),
+		// then UNIQUE. Extras become remote-ineligible.
+		$duplicates = $wpdb->get_col(
+			"SELECT destination_id FROM {$table}
+				WHERE destination_id IS NOT NULL
+				GROUP BY destination_id
+				HAVING COUNT(*) > 1"
+		);
+
+		if ( is_array( $duplicates ) ) {
+			foreach ( $duplicates as $destination_id ) {
+				$destination_id = (int) $destination_id;
+				$owner_id       = $wpdb->get_var(
+					$wpdb->prepare(
+						"SELECT c.id FROM {$table} c
+							INNER JOIN {$destinations} d ON d.id = c.destination_id
+							WHERE c.destination_id = %d
+							  AND c.topic_creation_state = 'created'
+							  AND c.telegram_topic_id IS NOT NULL
+							  AND c.telegram_topic_id = d.message_thread_id
+							ORDER BY c.id ASC
+							LIMIT 1",
+						$destination_id
+					)
+				);
+
+				if ( null === $owner_id ) {
+					$owner_id = $wpdb->get_var(
+						$wpdb->prepare(
+							"SELECT id FROM {$table} WHERE destination_id = %d ORDER BY id ASC LIMIT 1",
+							$destination_id
+						)
+					);
+				}
+
+				if ( null === $owner_id ) {
+					continue;
+				}
+
+				$wpdb->query(
+					$wpdb->prepare(
+						"UPDATE {$table}
+							SET destination_id = NULL
+							WHERE destination_id = %d AND id <> %d",
+						$destination_id,
+						(int) $owner_id
+					)
+				);
+			}
+		}
+
+		if ( ! $this->table_has_index( $table, 'destination_id' ) ) {
+			$wpdb->query( "ALTER TABLE {$table} ADD UNIQUE KEY destination_id (destination_id)" );
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_29(): bool {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::CONVERSATIONS_TABLE;
+
+		return $this->table_has_columns(
+			$table,
+			array( 'topic_lifecycle_state', 'topic_lifecycle_code', 'topic_delete_claim_expires_at' )
+		) && $this->table_has_index( $table, 'topic_lifecycle_state' )
+			&& $this->table_has_index( $table, 'destination_id' );
 	}
 
 	/**

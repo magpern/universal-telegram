@@ -74,6 +74,18 @@ final class Uninstaller {
 		Migrator::AI_DRAFTS_TABLE,
 	);
 
+	private const M11A_TABLES = array(
+		Migrator::VISITOR_DIGEST_COUNTERS_TABLE,
+		Migrator::VISITOR_DIGEST_STATE_TABLE,
+	);
+
+	private const M11B_TABLES = array(
+		Migrator::OPERATIONAL_SUMMARY_RUNS_TABLE,
+		Migrator::INTELLIGENCE_SETTINGS_STATE_TABLE,
+		Migrator::OPERATIONAL_ALERT_STATE_TABLE,
+		Migrator::OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE,
+	);
+
 	/**
 	 * Runs the uninstall routine.
 	 */
@@ -102,6 +114,8 @@ final class Uninstaller {
 		$this->drop_m05_tables();
 		$this->drop_m07_tables();
 		$this->drop_m09_tables();
+		$this->drop_m11a_tables();
+		$this->drop_m11b_tables();
 		delete_option( Settings::OPTION_NAME );
 		delete_option( 'universal_telegram_db_version' );
 
@@ -212,6 +226,39 @@ final class Uninstaller {
 		global $wpdb;
 
 		foreach ( self::M09_TABLES as $table_name ) {
+			$table = $wpdb->prefix . $table_name;
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
+			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
+		}
+	}
+
+	/**
+	 * Drops the two tables M11A added
+	 * (docs/plans/m11a-visitor-activity-digests-plan-v1.md §5). Aggregate-
+	 * only, no visitor-identifying data — dropped unconditionally, the same
+	 * as every other plugin-owned table.
+	 */
+	private function drop_m11a_tables(): void {
+		global $wpdb;
+
+		foreach ( self::M11A_TABLES as $table_name ) {
+			$table = $wpdb->prefix . $table_name;
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
+			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
+		}
+	}
+
+	/**
+	 * Drops the four tables M11B added
+	 * (docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md §4).
+	 * operational_summary_ai_drafts' body_ciphertext is encrypted AI output,
+	 * not visitor content — dropped unconditionally, the same as every
+	 * other plugin-owned table.
+	 */
+	private function drop_m11b_tables(): void {
+		global $wpdb;
+
+		foreach ( self::M11B_TABLES as $table_name ) {
 			$table = $wpdb->prefix . $table_name;
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
 			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );

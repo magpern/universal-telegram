@@ -9,10 +9,14 @@ use UniversalTelegram\Conversations\ConversationPurgeService;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Conversations\ConversationStatus;
+use UniversalTelegram\Conversations\ConversationTopicEligibility;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\RetentionCleanupHandler;
+use UniversalTelegram\Conversations\TopicDeletionDispatcher;
+use UniversalTelegram\Conversations\TopicLifecycleState;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
+use UniversalTelegram\Queue\Dispatcher;
 use UniversalTelegram\Telegram\Configuration\DestinationKind;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use WP_UnitTestCase;
@@ -24,6 +28,8 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 	private MessageRepository $messages;
 	private DestinationRepository $destinations;
 	private ConversationPurgeService $purge_service;
+	private ConversationTopicEligibility $eligibility;
+	private TopicDeletionDispatcher $topic_deletion;
 	private RetentionCleanupHandler $handler;
 
 	protected function setUp(): void {
@@ -34,8 +40,16 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 		$this->messages      = new MessageRepository( $this->schema_health, new CredentialVault() );
 		$this->destinations  = new DestinationRepository( $this->schema_health );
 		$this->purge_service = new ConversationPurgeService( $this->conversations, $this->messages, $this->destinations );
+		$this->eligibility   = new ConversationTopicEligibility( $this->conversations, $this->destinations );
+		$this->topic_deletion = new TopicDeletionDispatcher( $this->conversations, new Dispatcher( $this->schema_health ) );
 
-		$this->handler = new RetentionCleanupHandler( $this->conversations, $this->messages, $this->purge_service );
+		$this->handler = new RetentionCleanupHandler(
+			$this->conversations,
+			$this->messages,
+			$this->purge_service,
+			$this->eligibility,
+			$this->topic_deletion
+		);
 	}
 
 	private function set_conversation_updated_at( int $conversation_id, int $days_ago ): void {
@@ -120,7 +134,7 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 		$this->assertNotNull( $reloaded->body_ciphertext() );
 	}
 
-	public function test_run_deletes_the_conversation_its_messages_and_its_destination_ninety_days_after_archival(): void {
+	public function test_run_deletes_ineligible_conversation_locally_without_dropping_unrelated_dest(): void {
 		$conversation = $this->resolved_conversation();
 		$destination  = $this->destinations->create( 1, DestinationKind::SUPERGROUP, '-100123', 55, 'Topic' );
 		$this->conversations->set_destination( $conversation->id(), $destination->id() );
@@ -134,7 +148,55 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 
 		$this->assertNull( $this->conversations->find( $conversation->id() ) );
 		$this->assertNull( $this->messages->find( $message->id() ) );
-		$this->assertNull( $this->destinations->find( $destination->id() ) );
+		// Ineligible (topic_creation_state never created) — dest row retained.
+		$this->assertNotNull( $this->destinations->find( $destination->id() ) );
+	}
+
+	public function test_run_queues_remote_delete_for_eligible_conversation_topic(): void {
+		$conversation = $this->resolved_conversation();
+		$destination  = $this->destinations->create( 1, DestinationKind::SUPERGROUP, '-100elig-ret', 66, 'Topic' );
+		$this->conversations->mark_topic_created( $conversation->id(), 66, $destination->id() );
+
+		$this->handler->run();
+		$this->set_conversation_updated_at( $conversation->id(), 91 );
+		$this->handler->run();
+
+		$fresh = $this->conversations->find( $conversation->id() );
+		$this->assertNotNull( $fresh );
+		$this->assertSame( TopicLifecycleState::DELETE_PENDING, $fresh->topic_lifecycle_state() );
+		$this->assertNotNull( $this->destinations->find( $destination->id() ) );
+	}
+
+	public function test_run_shared_destination_purges_conversation_but_keeps_dest(): void {
+		$conversation = $this->resolved_conversation();
+		$destination  = $this->destinations->create( 1, DestinationKind::SUPERGROUP, '-100share-ret', 77, 'Topic' );
+		$this->conversations->mark_topic_created( $conversation->id(), 77, $destination->id() );
+		$this->handler->run();
+
+		global $wpdb;
+		$table = $wpdb->prefix . 'universal_telegram_conversations';
+		$wpdb->query( "ALTER TABLE {$table} DROP INDEX destination_id" );
+		$other = $this->conversations->create( wp_generate_uuid4(), 'hash', 1, null );
+		$wpdb->update(
+			$table,
+			array(
+				'destination_id'        => $destination->id(),
+				'telegram_topic_id'     => 77,
+				'topic_creation_state'  => 'created',
+				'topic_lifecycle_state' => TopicLifecycleState::ACTIVE,
+				'status'                => ConversationStatus::ARCHIVED,
+			),
+			array( 'id' => $other->id() ),
+			array( '%d', '%d', '%s', '%s', '%s' ),
+			array( '%d' )
+		);
+
+		$this->set_conversation_updated_at( $conversation->id(), 91 );
+		$this->handler->run();
+
+		$this->assertNull( $this->conversations->find( $conversation->id() ) );
+		$this->assertNotNull( $this->destinations->find( $destination->id() ) );
+		$wpdb->query( "ALTER TABLE {$table} ADD UNIQUE KEY destination_id (destination_id)" );
 	}
 
 	public function test_run_is_idempotent_on_rerun_against_already_cleaned_data(): void {
@@ -240,7 +302,16 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 	}
 
 	public function test_custom_inactivity_days_is_honored(): void {
-		$handler = new RetentionCleanupHandler( $this->conversations, $this->messages, $this->purge_service, 30, 90, 10 );
+		$handler = new RetentionCleanupHandler(
+			$this->conversations,
+			$this->messages,
+			$this->purge_service,
+			$this->eligibility,
+			$this->topic_deletion,
+			30,
+			90,
+			10
+		);
 
 		$conversation = $this->conversations->create( 'uuid-custom-inactivity', 'hash', 1, null );
 		$this->conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );

@@ -983,4 +983,26 @@ final class ConversationsControllerTest extends WP_UnitTestCase {
 
 		$this->assertSame( 401, $response->get_status() );
 	}
+
+	public function test_post_message_when_topic_unavailable_returns_409_without_storing(): void {
+		$started = $this->started_conversation();
+		$conversation = $this->conversations->find_by_uuid( $started['conversation_uuid'] );
+		$this->conversations->mark_topic_lifecycle(
+			$conversation->id(),
+			\UniversalTelegram\Conversations\TopicLifecycleState::UNAVAILABLE,
+			'telegram_topic_closed'
+		);
+
+		$response = $this->controller->handle_post_message(
+			$this->messages_request( $started['conversation_uuid'], $started['secret'], wp_json_encode( array( 'text' => 'Still here?' ) ) )
+		);
+
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 'conversation_unavailable', $response->get_data()['reason'] );
+		$this->assertSame( array(), $this->messages->messages_since( $conversation->id(), 0 ) );
+
+		$poll = $this->controller->handle_poll( $this->poll_request( $started['conversation_uuid'], $started['secret'] ) );
+		$this->assertSame( 200, $poll->get_status() );
+		$this->assertSame( 'unavailable', $poll->get_data()['topic_state'] );
+	}
 }

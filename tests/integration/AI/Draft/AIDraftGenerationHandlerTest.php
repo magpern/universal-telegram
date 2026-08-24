@@ -103,7 +103,8 @@ final class AIDraftGenerationHandlerTest extends WP_UnitTestCase {
 			new PromptBuilder( $messages, $approved_content ),
 			new CircuitBreaker( new SchemaHealth(), new RetryPolicy() ),
 			new AiFailureClassifier(),
-			$retry_policy ?? new RetryPolicy()
+			$retry_policy ?? new RetryPolicy(),
+			new \UniversalTelegram\AI\Provider\ProviderConcurrencyGate( new SchemaHealth() )
 		);
 	}
 

@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.11.1
+Stable tag: 0.14.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,45 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.14.0 =
+* Conversation topic lifecycle and repair (M07.1, ADR-0031): local Archive (secret
+  revoked, Telegram topic retained); permanent delete only from the archived Operator
+  Inbox detail with a second confirming POST; queued `deleteForumTopic` for eligible
+  plugin-created topics only (exclusive destination ownership); topic-unavailable
+  recognition via exact `(bot_id, chat_id, message_thread_id)` identity; truthful
+  visitor `delivery_state` (`routed` vs `sent`); open-but-unavailable POST returns
+  409 `conversation_unavailable`. Adds topic lifecycle columns and UNIQUE
+  `conversations.destination_id` (db_version 28 -> 29). Implemented on the combined
+  M11 feature branch; validation, PR, merge, and release remain deferred to that gate.
+
+= 0.13.0 =
+* Digests and Operational Intelligence, remainder (M11B, ADR-0030, completing M11 together with
+  M11A/ADR-0029 as one combined release): a daily Operational Summary (orders, payments, checkout
+  failures, JavaScript-error categories, and a visitor-to-order funnel, all aggregate counts only);
+  three fixed threshold alerts (checkout failure count, order failure spike, JS-error category
+  spike), default disabled, each independently configurable and bounded by a fixed one-hour re-fire
+  cooldown so a persisting condition can never flood Telegram; and an operator-triggered,
+  operator-reviewed AI-assisted rendering of the Operational Summary's own aggregate counts,
+  reusing the AI Draft Assistant's provider configuration (M09) but never auto-sent to Telegram or
+  any visitor — displayed in wp-admin only, with a fixed "NOT SENT" notice. AI-summary generation
+  shares M09's existing site-wide two-slot provider-concurrency cap rather than introducing a second
+  one. Every destination reuses the same conversation-topic-exclusion eligibility rule M11A already
+  established. Adds four new database tables (db_version 24 -> 28).
+
+= 0.12.0 =
+* Visitor Activity Digest (M11A, ADR-0029, first non-AI slice of M11): routine visitor activity —
+  page views, navigation, search, product views, and cart/checkout intent — is batched into a single
+  periodic aggregate Telegram summary instead of one message per event, once an administrator
+  explicitly enables it and selects a bot and destination on the Visitor Tracking settings screen. A
+  digest sends as soon as either an administrator-configured event threshold (default 50, range
+  10-500) or a maximum wait (default 15 minutes, range 5-60) is reached. Digest content is aggregate
+  counts by fixed category and page type only — never a URL, path, search term, or any
+  visitor-identifying value. Batching is opt-in and self-healing: while disabled, or if the selected
+  bot/destination becomes invalid (including a website-chat conversation topic, which can never be
+  selected as a target), affected notification rules keep sending individually exactly as before,
+  with the condition surfaced in Diagnostics rather than failing silently. Adds two new database
+  tables (db_version 22 -> 24).
 
 = 0.11.1 =
 * Corrective fix: unchecking a Visitor Tracking checkbox (most visibly "Exclude administrators")

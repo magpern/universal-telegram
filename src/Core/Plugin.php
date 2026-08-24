@@ -13,6 +13,7 @@ use UniversalTelegram\Administration\AI\ApprovedContentPage;
 use UniversalTelegram\Administration\AI\ConversationDraftPanel;
 use UniversalTelegram\Administration\Automations\EventCatalogPage;
 use UniversalTelegram\Administration\Automations\EventHistoryPage;
+use UniversalTelegram\Administration\Automations\IntelligencePanel;
 use UniversalTelegram\Administration\Automations\RuleBuilderPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderRequestHandler;
 use UniversalTelegram\Administration\Automations\RuleSimulatorPage;
@@ -45,8 +46,27 @@ use UniversalTelegram\AI\Draft\AiDraftRepository;
 use UniversalTelegram\AI\Draft\DraftRequestHandler;
 use UniversalTelegram\AI\Draft\PromptBuilder;
 use UniversalTelegram\AI\Provider\AiFailureClassifier;
+use UniversalTelegram\AI\Provider\ProviderConcurrencyGate;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
+use UniversalTelegram\Automations\Digest\DigestEligibility;
+use UniversalTelegram\Automations\Intelligence\AlertEvaluator;
+use UniversalTelegram\Automations\Intelligence\AlertRepository;
+use UniversalTelegram\Automations\Intelligence\IntelligenceSettings;
+use UniversalTelegram\Automations\Intelligence\IntelligenceStateRepository;
+use UniversalTelegram\Automations\Intelligence\OperationalSummaryPromptBuilder;
+use UniversalTelegram\Automations\Intelligence\OperationalSummaryRenderer;
+use UniversalTelegram\Automations\Intelligence\OperationalSummaryRepository;
+use UniversalTelegram\Automations\Intelligence\OperationalSummarySweep;
+use UniversalTelegram\Automations\Intelligence\SummaryAiGenerationHandler;
+use UniversalTelegram\Automations\Intelligence\SummaryAiLeaseSweep;
+use UniversalTelegram\Automations\Intelligence\SummaryAiRepository;
+use UniversalTelegram\Automations\Intelligence\SummaryAiRequestHandler;
+use UniversalTelegram\Automations\Digest\VisitorDigestAggregator;
+use UniversalTelegram\Automations\Digest\VisitorDigestCounterRepository;
+use UniversalTelegram\Automations\Digest\VisitorDigestRenderer;
+use UniversalTelegram\Automations\Digest\VisitorDigestStateRepository;
+use UniversalTelegram\Automations\Digest\VisitorDigestSweep;
 use UniversalTelegram\Automations\DispatchLogRepository;
 use UniversalTelegram\Automations\NotificationDispatcher;
 use UniversalTelegram\Automations\NotificationRuleRepository;
@@ -62,15 +82,19 @@ use UniversalTelegram\Conversations\ConversationOutboundDispatcher;
 use UniversalTelegram\Conversations\ConversationOutboundHandler;
 use UniversalTelegram\Conversations\ConversationPurgeService;
 use UniversalTelegram\Conversations\ConversationRepository;
+use UniversalTelegram\Conversations\ConversationTopicEligibility;
 use UniversalTelegram\Conversations\ImmediateDeliveryAttempt;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\OperatorAvailabilityRepository;
 use UniversalTelegram\Conversations\OperatorIdentityRepository;
+use UniversalTelegram\Conversations\OutboundDeliveryBridge;
 use UniversalTelegram\Conversations\PromptDeliveryFallback;
 use UniversalTelegram\Conversations\Rest\ConversationsController;
 use UniversalTelegram\Conversations\RetentionCleanupHandler as ConversationRetentionCleanupHandler;
 use UniversalTelegram\Conversations\TopicCreationDispatcher;
 use UniversalTelegram\Conversations\TopicCreationHandler;
+use UniversalTelegram\Conversations\TopicDeletionDispatcher;
+use UniversalTelegram\Conversations\TopicDeletionHandler;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
@@ -454,6 +478,10 @@ final class Plugin {
 	 */
 	private ?TopicCreationDispatcher $topic_creation_dispatcher = null;
 
+	private ?TopicDeletionDispatcher $topic_deletion_dispatcher = null;
+
+	private ?ConversationTopicEligibility $conversation_topic_eligibility = null;
+
 	/**
 	 * The per-bot/per-destination circuit breaker, constructed by init().
 	 *
@@ -539,6 +567,13 @@ final class Plugin {
 	 * @var NotificationRuleRepository|null
 	 */
 	private ?NotificationRuleRepository $notification_rule_repository = null;
+
+	/**
+	 * The M11A visitor digest shared eligibility gate, constructed by init().
+	 *
+	 * @var DigestEligibility|null
+	 */
+	private ?DigestEligibility $digest_eligibility = null;
 
 	/**
 	 * The idempotent dispatch-log repository, constructed by init().
@@ -759,6 +794,35 @@ final class Plugin {
 		);
 		$this->handler_registry->register( TopicCreationHandler::JOB_TYPE, array( $topic_creation_handler, 'handle_job' ) );
 
+		$this->conversation_topic_eligibility = new ConversationTopicEligibility(
+			$this->conversation_repository,
+			$this->destination_repository
+		);
+		$this->conversation_purge_service     = new ConversationPurgeService(
+			$this->conversation_repository,
+			$this->message_repository,
+			$this->destination_repository,
+			$this->conversation_note_repository
+		);
+		$this->topic_deletion_dispatcher      = new TopicDeletionDispatcher( $this->conversation_repository, $this->dispatcher );
+		$topic_deletion_handler               = new TopicDeletionHandler(
+			$this->conversation_repository,
+			$this->bot_profile_repository,
+			$this->conversation_topic_eligibility,
+			$this->conversation_purge_service,
+			$this->telegram_api_client,
+			new RetryPolicy()
+		);
+		$this->handler_registry->register( TopicDeletionHandler::JOB_TYPE, array( $topic_deletion_handler, 'handle_job' ) );
+
+		$outbound_delivery_bridge = new OutboundDeliveryBridge(
+			$this->message_repository,
+			$this->conversation_repository,
+			$this->outbound_message_repository,
+			$this->destination_repository
+		);
+		$outbound_delivery_bridge->register();
+
 		$conversation_outbound_dispatcher = new ConversationOutboundDispatcher( $this->dispatcher );
 		$conversation_outbound_handler    = new ConversationOutboundHandler(
 			$this->message_repository,
@@ -826,16 +890,12 @@ final class Plugin {
 			}
 		);
 
-		$this->conversation_purge_service = new ConversationPurgeService(
-			$this->conversation_repository,
-			$this->message_repository,
-			$this->destination_repository
-		);
-
 		$this->conversation_retention_cleanup_handler = new ConversationRetentionCleanupHandler(
 			$this->conversation_repository,
 			$this->message_repository,
-			$this->conversation_purge_service
+			$this->conversation_purge_service,
+			$this->conversation_topic_eligibility,
+			$this->topic_deletion_dispatcher
 		);
 		add_action( ConversationRetentionCleanupHandler::HOOK, array( $this->conversation_retention_cleanup_handler, 'run' ) );
 
@@ -886,6 +946,10 @@ final class Plugin {
 				// M09, docs/adr/0028 §4: AI draft content is untouched — only
 				// the requester/reviewer identity is anonymized.
 				$this->ai_draft_repository->anonymize_operator( $user_id );
+				// M11B plan §4 step 28: identical anonymize-only-never-delete
+				// treatment for operational-summary AI drafts — the owning
+				// summary row is never touched by this path.
+				( new SummaryAiRepository( $this->schema_health, $this->credential_vault ) )->anonymize_operator( $user_id );
 
 				$this->audit_logger->record(
 					'conversation.operator_identity.account_deleted_cleanup',
@@ -960,6 +1024,13 @@ final class Plugin {
 		$this->notification_rule_repository = new NotificationRuleRepository( $this->schema_health, $this->event_registry );
 		$this->dispatch_log_repository      = new DispatchLogRepository( $this->schema_health );
 
+		// M11A visitor activity digest (docs/plans/m11a-visitor-activity-digests-plan-v1.md):
+		// the shared is_active()/eligibility gate, constructed once, ahead
+		// of DiagnosticsReport (below), RuleEvaluator, and the Visitor
+		// Tracking settings page, all of which reuse this same instance.
+		$this->digest_eligibility = new DigestEligibility( $settings, $this->bot_profile_repository, $this->destination_repository, $this->conversation_repository );
+		$this->digest_eligibility->register();
+
 		$report                 = new DiagnosticsReport(
 			$this->queue_health,
 			$this->audit_log_repository,
@@ -972,8 +1043,15 @@ final class Plugin {
 			$this->notification_rule_repository,
 			$this->dispatch_log_repository,
 			$settings,
+			$this->digest_eligibility,
+			new VisitorDigestCounterRepository( $this->schema_health ),
+			new VisitorDigestStateRepository( $this->schema_health ),
 			(int) $settings_values['telegram_stale_pending_alert_seconds'],
-			(int) $settings_values['telegram_webhook_rotation_max_pending_hours']
+			(int) $settings_values['telegram_webhook_rotation_max_pending_hours'],
+			new IntelligenceSettings( $settings ),
+			new OperationalSummaryRepository( $this->schema_health ),
+			new AlertRepository( $this->schema_health ),
+			new SummaryAiRepository( $this->schema_health, $this->credential_vault )
 		);
 		$this->diagnostics_page = new DiagnosticsPage(
 			$report,
@@ -1018,8 +1096,9 @@ final class Plugin {
 			new TemplateRenderer(),
 			$this->message_dispatcher
 		);
-		$rule_evaluator          = new RuleEvaluator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher );
-		$this->event_dispatcher  = new EventDispatcher( $this->event_history_repository, $rule_evaluator );
+		$rule_evaluator          = new RuleEvaluator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher, $this->digest_eligibility );
+		$digest_aggregator       = new VisitorDigestAggregator( $this->digest_eligibility, new VisitorDigestCounterRepository( $this->schema_health ), new VisitorDigestStateRepository( $this->schema_health ) );
+		$this->event_dispatcher  = new EventDispatcher( $this->event_history_repository, $rule_evaluator, $digest_aggregator );
 		$this->event_emitter     = new EventEmitter( $this->event_registry, $this->event_dispatcher, $this->audit_logger );
 
 		// Core WordPress event emitters (M02 plan §8): constructed and
@@ -1182,11 +1261,23 @@ final class Plugin {
 			new Tab( 'events', __( 'Events', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_catalog_page, 'render_tab_content' ) )
 		);
 
+		$intelligence_settings = new IntelligenceSettings( $settings );
+		$intelligence_panel    = new IntelligencePanel(
+			new SummaryAiRepository( $this->schema_health, $this->credential_vault ),
+			new OperationalSummaryRepository( $this->schema_health ),
+			$this->ai_provider_repository
+		);
+		add_action( 'admin_post_' . IntelligencePanel::ADMIN_POST_ACTION, array( $intelligence_panel, 'handle_request' ) );
+
 		$this->rule_builder_page = new RuleBuilderPage(
 			$this->notification_rule_repository,
 			$this->event_registry,
 			$this->bot_profile_repository,
-			$this->destination_repository
+			$this->destination_repository,
+			$this->digest_eligibility,
+			$settings,
+			$intelligence_settings,
+			$intelligence_panel
 		);
 		$this->hub_tab_registry->register(
 			new Tab( 'rules', __( 'Rules', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_builder_page, 'render_tab_content' ) )
@@ -1194,12 +1285,13 @@ final class Plugin {
 
 		$this->rule_builder_request_handler = new RuleBuilderRequestHandler( $this->notification_rule_repository );
 		add_action( 'admin_post_' . RuleBuilderRequestHandler::ADMIN_POST_ACTION, array( $this->rule_builder_request_handler, 'handle_request' ) );
+		add_action( 'admin_post_' . RuleBuilderPage::INTELLIGENCE_ADMIN_POST_ACTION, array( $this->rule_builder_page, 'handle_intelligence_settings_request' ) );
 
 		if ( defined( 'UNIVERSAL_TELEGRAM_PLUGIN_FILE' ) ) {
 			( new PluginActionLinks( plugin_basename( UNIVERSAL_TELEGRAM_PLUGIN_FILE ) ) )->register();
 		}
 
-		$rule_simulator = new RuleSimulator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher );
+		$rule_simulator = new RuleSimulator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher, $this->digest_eligibility );
 
 		$this->rule_simulator_page = new RuleSimulatorPage( $rule_simulator, $this->event_registry );
 		$this->hub_tab_registry->register(
@@ -1211,7 +1303,9 @@ final class Plugin {
 			new Tab( EventHistoryPage::TAB_ID, __( 'Event History', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_history_page, 'render_tab_content' ) )
 		);
 
-		$this->visitor_tracking_page = new VisitorTrackingPage( $settings );
+		// $this->digest_eligibility is already constructed above, ahead of
+		// RuleEvaluator; reused unchanged here.
+		$this->visitor_tracking_page = new VisitorTrackingPage( $settings, $this->bot_profile_repository, $this->digest_eligibility );
 		$this->hub_tab_registry->register(
 			new Tab( VisitorTrackingPage::TAB_ID, __( 'Visitor Tracking', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->visitor_tracking_page, 'render_tab_content' ) )
 		);
@@ -1249,7 +1343,9 @@ final class Plugin {
 			$this->conversation_repository,
 			$this->conversation_note_repository,
 			$this->conversation_purge_service,
-			$this->audit_logger
+			$this->audit_logger,
+			$this->conversation_topic_eligibility,
+			$this->topic_deletion_dispatcher
 		);
 		add_action( 'admin_post_' . ConversationActionHandler::ADMIN_POST_ACTION, array( $this->conversation_action_handler, 'handle_request' ) );
 
@@ -1300,6 +1396,13 @@ final class Plugin {
 		);
 		add_action( 'admin_post_' . ApprovedContentPage::ADMIN_POST_ACTION, array( $this->approved_content_page, 'handle_request' ) );
 
+		// Shared, cross-feature provider-concurrency admission mutex (M11B
+		// plan §3): the single instance both AIDraftGenerationHandler and
+		// SummaryAiGenerationHandler claim through, so M09's site-wide cap
+		// of 2 is enforced once, across both features, never duplicated.
+		$provider_concurrency_gate = new ProviderConcurrencyGate( $this->schema_health );
+		$summary_ai_repository     = new SummaryAiRepository( $this->schema_health, $this->credential_vault );
+
 		// AI draft generation queue worker + stale-lease recovery sweep
 		// (M09, docs/adr/0028 decisions 4–5). No Hub tab of its own — reached
 		// only via the queue and the recurring sweep action.
@@ -1310,13 +1413,79 @@ final class Plugin {
 			$prompt_builder,
 			$this->circuit_breaker,
 			new AiFailureClassifier(),
-			new RetryPolicy()
+			new RetryPolicy(),
+			$provider_concurrency_gate,
+			array( fn() => $summary_ai_repository->count_active_generating() )
 		);
 		$this->handler_registry->register( AIDraftGenerationHandler::JOB_TYPE, array( $ai_draft_handler, 'handle_job' ) );
 
 		$ai_lease_sweep = new AiDraftLeaseSweep( $this->ai_draft_repository );
 		add_action( AiDraftLeaseSweep::JOB_TYPE, array( $ai_lease_sweep, 'run' ) );
 		add_action( 'init', array( $ai_lease_sweep, 'register' ) );
+
+		// M11B operational-summary AI generation queue worker + stale-lease
+		// recovery sweep (docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md
+		// §3), mirroring the AI draft assistant's own structure above and
+		// sharing its admission mutex via $provider_concurrency_gate.
+		$operational_summary_prompt_builder = new OperationalSummaryPromptBuilder();
+		$summary_ai_handler                 = new SummaryAiGenerationHandler(
+			$summary_ai_repository,
+			$this->ai_provider_repository,
+			$operational_summary_prompt_builder,
+			new OperationalSummaryRepository( $this->schema_health ),
+			$this->circuit_breaker,
+			new AiFailureClassifier(),
+			new RetryPolicy(),
+			$provider_concurrency_gate,
+			array( fn() => $this->ai_draft_repository->count_active_generating() )
+		);
+		$this->handler_registry->register( SummaryAiGenerationHandler::JOB_TYPE, array( $summary_ai_handler, 'handle_job' ) );
+
+		$summary_ai_lease_sweep = new SummaryAiLeaseSweep( $summary_ai_repository );
+		add_action( SummaryAiLeaseSweep::JOB_TYPE, array( $summary_ai_lease_sweep, 'run' ) );
+		add_action( 'init', array( $summary_ai_lease_sweep, 'register' ) );
+
+		$summary_ai_request_handler = new SummaryAiRequestHandler( $summary_ai_repository, $this->ai_provider_repository, $this->dispatcher );
+		add_action( 'admin_post_' . SummaryAiRequestHandler::ADMIN_POST_ACTION, array( $summary_ai_request_handler, 'handle_request' ) );
+
+		// M11A visitor digest evaluation sweep (docs/plans/m11a-visitor-activity-digests-plan-v1.md §5).
+		$visitor_digest_sweep = new VisitorDigestSweep(
+			$settings,
+			$this->digest_eligibility,
+			new VisitorDigestStateRepository( $this->schema_health ),
+			new VisitorDigestCounterRepository( $this->schema_health ),
+			new VisitorDigestRenderer(),
+			$this->message_dispatcher,
+			$this->woocommerce_support
+		);
+		add_action( VisitorDigestSweep::JOB_TYPE, array( $visitor_digest_sweep, 'run' ) );
+		add_action( 'init', array( $visitor_digest_sweep, 'register' ) );
+
+		// M11B operational summary evaluation sweep
+		// (docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md §2.1/§6) —
+		// a wholly independent recurring action from VisitorDigestSweep above
+		// (different job type, table, state row); no shared lock.
+		$operational_summary_repository = new OperationalSummaryRepository( $this->schema_health );
+		$alert_evaluator                = new AlertEvaluator(
+			$intelligence_settings,
+			$this->digest_eligibility,
+			$operational_summary_repository,
+			new AlertRepository( $this->schema_health ),
+			$this->message_dispatcher,
+			$this->woocommerce_support
+		);
+		$operational_summary_sweep = new OperationalSummarySweep(
+			$intelligence_settings,
+			$this->digest_eligibility,
+			$operational_summary_repository,
+			new IntelligenceStateRepository( $this->schema_health ),
+			new OperationalSummaryRenderer(),
+			$this->message_dispatcher,
+			$this->woocommerce_support,
+			$alert_evaluator
+		);
+		add_action( OperationalSummarySweep::JOB_TYPE, array( $operational_summary_sweep, 'run' ) );
+		add_action( 'init', array( $operational_summary_sweep, 'register' ) );
 
 		// Operator draft-request endpoint (M09, docs/adr/0028 decisions 1
 		// and 5): the only path that ever enqueues an ai_draft_generate job.
@@ -1616,6 +1785,24 @@ final class Plugin {
 	}
 
 	/**
+	 * Topic deletion dispatcher (M07.1).
+	 *
+	 * @return TopicDeletionDispatcher|null
+	 */
+	public function topic_deletion_dispatcher(): ?TopicDeletionDispatcher {
+		return $this->topic_deletion_dispatcher;
+	}
+
+	/**
+	 * Conversation topic remote-delete eligibility gate (M07.1).
+	 *
+	 * @return ConversationTopicEligibility|null
+	 */
+	public function conversation_topic_eligibility(): ?ConversationTopicEligibility {
+		return $this->conversation_topic_eligibility;
+	}
+
+	/**
 	 * The per-bot/per-destination circuit breaker. Available only after init() has run.
 	 */
 	public function circuit_breaker(): ?CircuitBreaker {
@@ -1697,6 +1884,13 @@ final class Plugin {
 	 */
 	public function notification_rule_repository(): ?NotificationRuleRepository {
 		return $this->notification_rule_repository;
+	}
+
+	/**
+	 * The M11A visitor digest shared eligibility gate. Available only after init() has run.
+	 */
+	public function digest_eligibility(): ?DigestEligibility {
+		return $this->digest_eligibility;
 	}
 
 	/**

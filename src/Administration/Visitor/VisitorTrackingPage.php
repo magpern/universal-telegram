@@ -10,8 +10,11 @@ declare( strict_types=1 );
 namespace UniversalTelegram\Administration\Visitor;
 
 use UniversalTelegram\Administration\Hub\HubPage;
+use UniversalTelegram\Automations\Digest\DigestEligibility;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
+use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
+use UniversalTelegram\Telegram\Configuration\BotStatus;
 
 /**
  * Gated on the existing CapabilityRegistrar::MANAGE capability (ADR-0010)
@@ -46,14 +49,21 @@ class VisitorTrackingPage {
 		'visitor_family_errors',
 		'visitor_family_commerce',
 		'visitor_exclude_administrators',
+		'visitor_digest_enabled',
 	);
 
 	/**
 	 * Constructor.
 	 *
-	 * @param Settings $settings Reads/writes the current visitor tracking configuration.
+	 * @param Settings              $settings           Reads/writes the current visitor tracking configuration.
+	 * @param BotProfileRepository  $bots               Populates the digest bot dropdown.
+	 * @param DigestEligibility     $digest_eligibility Populates the eligible-destination dropdown and invalidates its cache on save.
 	 */
-	public function __construct( private readonly Settings $settings ) {}
+	public function __construct(
+		private readonly Settings $settings,
+		private readonly BotProfileRepository $bots,
+		private readonly DigestEligibility $digest_eligibility
+	) {}
 
 	/**
 	 * The admin-post save handler.
@@ -87,6 +97,13 @@ class VisitorTrackingPage {
 
 		$sanitized = $this->settings->sanitize( array_merge( $this->settings->get(), $input ) );
 		update_option( Settings::OPTION_NAME, $sanitized );
+
+		// The five visitor_digest_* fields above just changed; the shared
+		// DigestEligibility::is_active() gate (RuleEvaluator suppression and
+		// the counter increment both consult it) must reflect this save
+		// immediately, not after its own transient's TTL expires
+		// (docs/plans/m11a-visitor-activity-digests-plan-v1.md §3.1).
+		$this->digest_eligibility->invalidate();
 
 		$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . self::TAB_ID ) );
 	}
@@ -137,6 +154,8 @@ class VisitorTrackingPage {
 			'universal-telegram'
 		) . '</p>';
 
+		$this->render_digest_fieldset( $values );
+
 		submit_button();
 		echo '</form>';
 	}
@@ -155,6 +174,75 @@ class VisitorTrackingPage {
 			checked( ! empty( $values[ $field ] ), true, false ),
 			esc_html( $label )
 		);
+	}
+
+	/**
+	 * Renders the Visitor Digest fieldset: enable checkbox, bot dropdown,
+	 * destination dropdown scoped to that bot and filtered to
+	 * DigestEligibility's own eligibility rule (never lists a
+	 * conversation-linked destination — §4), and the threshold/max-wait
+	 * numeric fields.
+	 *
+	 * @param array<string, mixed> $values Current settings values.
+	 */
+	private function render_digest_fieldset( array $values ): void {
+		echo '<h3>' . esc_html__( 'Visitor Activity Digest', 'universal-telegram' ) . '</h3>';
+		echo '<p class="description">' . esc_html__(
+			'When enabled, routine page-view, navigation, search, and cart-intent activity is batched into a periodic aggregate summary instead of one Telegram message per event. Existing notification rules for these event types stop sending individually while this is enabled with a valid target below; if the target becomes invalid, they resume automatically.',
+			'universal-telegram'
+		) . '</p>';
+
+		$this->checkbox( $values, 'visitor_digest_enabled', __( 'Enable Visitor Activity Digest', 'universal-telegram' ) );
+
+		$selected_bot_id = null === $values['visitor_digest_bot_id'] ? 0 : (int) $values['visitor_digest_bot_id'];
+
+		echo '<p><label>' . esc_html__( 'Bot', 'universal-telegram' ) . ' ';
+		echo '<select name="visitor_settings[visitor_digest_bot_id]">';
+		echo '<option value="">' . esc_html__( '— Select a bot —', 'universal-telegram' ) . '</option>';
+		foreach ( $this->bots->all() as $bot ) {
+			if ( BotStatus::ACTIVE !== $bot->status() ) {
+				continue;
+			}
+			printf(
+				'<option value="%1$d" %2$s>%3$s</option>',
+				$bot->id(),
+				selected( $selected_bot_id, $bot->id(), false ),
+				esc_html( $bot->name() )
+			);
+		}
+		echo '</select></label></p>';
+
+		$selected_destination_id = null === $values['visitor_digest_destination_id'] ? 0 : (int) $values['visitor_digest_destination_id'];
+		$eligible_destinations   = $selected_bot_id > 0 ? $this->digest_eligibility->eligible_destinations_for_bot( $selected_bot_id ) : array();
+
+		echo '<p><label>' . esc_html__( 'Destination', 'universal-telegram' ) . ' ';
+		echo '<select name="visitor_settings[visitor_digest_destination_id]">';
+		echo '<option value="">' . esc_html__( '— Select a destination —', 'universal-telegram' ) . '</option>';
+		foreach ( $eligible_destinations as $destination ) {
+			printf(
+				'<option value="%1$d" %2$s>%3$s</option>',
+				$destination->id(),
+				selected( $selected_destination_id, $destination->id(), false ),
+				esc_html( $destination->label() )
+			);
+		}
+		echo '</select></label></p>';
+		echo '<p class="description">' . esc_html__(
+			'Only enabled, manually configured destinations belonging to the selected bot appear here — a destination created automatically for a website chat conversation can never be selected.',
+			'universal-telegram'
+		) . '</p>';
+
+		echo '<p><label>' . esc_html__( 'Event threshold', 'universal-telegram' ) . ' ';
+		echo '<input type="number" min="10" max="500" name="visitor_settings[visitor_digest_threshold]" value="' . esc_attr( (string) $values['visitor_digest_threshold'] ) . '" />';
+		echo '</label></p>';
+
+		echo '<p><label>' . esc_html__( 'Maximum wait (minutes)', 'universal-telegram' ) . ' ';
+		echo '<input type="number" min="5" max="60" name="visitor_settings[visitor_digest_max_wait_minutes]" value="' . esc_attr( (string) $values['visitor_digest_max_wait_minutes'] ) . '" />';
+		echo '</label></p>';
+		echo '<p class="description">' . esc_html__(
+			'A digest sends as soon as either the event threshold or the maximum wait is reached.',
+			'universal-telegram'
+		) . '</p>';
 	}
 
 	/**

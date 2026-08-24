@@ -6,6 +6,7 @@
 namespace UniversalTelegram\Tests\Automations;
 
 use PHPUnit\Framework\TestCase;
+use UniversalTelegram\Automations\Digest\DigestEligibility;
 use UniversalTelegram\Automations\DispatchLogRepository;
 use UniversalTelegram\Automations\NotificationDispatcher;
 use UniversalTelegram\Automations\NotificationRule;
@@ -205,6 +206,112 @@ final class RuleEvaluatorTest extends TestCase {
 
 		$this->assertSame( array(), $matched );
 		$this->assertSame( array( 1 ), $rejected );
+	}
+
+	private function visitor_registry(): Registry {
+		$registry = new Registry();
+		$registry->register(
+			'visitor.page_viewed',
+			1,
+			array( 'subject.path' => Classification::PUBLIC ),
+			array( 'subject.path' ),
+			array( 'subject.path' )
+		);
+
+		return $registry;
+	}
+
+	private function visitor_rule( int $id ): NotificationRule {
+		return new NotificationRule( $id, "Rule {$id}", 'visitor.page_viewed', 1, array(), 1, 1, 'x', true, 100, 0, 'now', 'now' );
+	}
+
+	private function visitor_envelope( Registry $registry ): EventEnvelope {
+		return new EventEnvelope( $registry, 'visitor.page_viewed', 'key-1', EventSource::VISITOR, array(), array( 'path' => '/' ), array(), array() );
+	}
+
+	/**
+	 * When DigestEligibility::is_active() is true for a digest-eligible
+	 * visitor event type, no rule for that type reaches
+	 * NotificationDispatcher::dispatch() — each is instead recorded
+	 * rejected with RuleEvaluator::SUPPRESSED_BY_DIGEST_REASON_CODE
+	 * (M11A §3.1).
+	 */
+	public function test_a_digest_eligible_rule_is_suppressed_while_the_digest_is_active(): void {
+		$registry = $this->visitor_registry();
+		$rule     = $this->visitor_rule( 1 );
+
+		$repo = $this->createMock( NotificationRuleRepository::class );
+		$repo->method( 'for_event_type' )->willReturn( array( $rule ) );
+
+		$dispatch_log = $this->createMock( DispatchLogRepository::class );
+		$dispatch_log->expects( $this->once() )
+			->method( 'record_rejected' )
+			->with( 1, $this->anything(), RuleEvaluator::SUPPRESSED_BY_DIGEST_REASON_CODE );
+
+		$dispatcher = $this->fake_dispatcher();
+		$dispatcher->expects( $this->never() )->method( 'dispatch' );
+
+		$eligibility = $this->createMock( DigestEligibility::class );
+		$eligibility->method( 'is_active' )->willReturn( true );
+
+		$evaluator = new RuleEvaluator( $repo, $registry, $dispatch_log, $dispatcher, $eligibility );
+		$evaluator->evaluate( $this->visitor_envelope( $registry ) );
+	}
+
+	/**
+	 * When the digest is disabled (or enabled with an invalid target —
+	 * is_active() false either way), a digest-eligible rule dispatches
+	 * exactly as it did before M11A.
+	 */
+	public function test_a_digest_eligible_rule_dispatches_normally_while_the_digest_is_inactive(): void {
+		$registry = $this->visitor_registry();
+		$rule     = $this->visitor_rule( 1 );
+
+		$repo = $this->createMock( NotificationRuleRepository::class );
+		$repo->method( 'for_event_type' )->willReturn( array( $rule ) );
+
+		$dispatch_log = $this->fake_dispatch_log();
+
+		$dispatcher = $this->fake_dispatcher();
+		$dispatcher->expects( $this->once() )->method( 'dispatch' );
+
+		$eligibility = $this->createMock( DigestEligibility::class );
+		$eligibility->method( 'is_active' )->willReturn( false );
+
+		$evaluator = new RuleEvaluator( $repo, $registry, $dispatch_log, $dispatcher, $eligibility );
+		$evaluator->evaluate( $this->visitor_envelope( $registry ) );
+	}
+
+	/**
+	 * visitor.javascript_error is deliberately excluded from
+	 * DigestEligibility::SUPPRESSED_EVENT_TYPES (M11A §3.3) — its rules
+	 * must keep dispatching individually even while the digest is fully
+	 * active for every other visitor event type.
+	 */
+	public function test_javascript_error_rules_are_never_suppressed_by_the_digest(): void {
+		$registry = new Registry();
+		$registry->register(
+			'visitor.javascript_error',
+			1,
+			array( 'payload.error_category' => Classification::PUBLIC ),
+			array( 'payload.error_category' ),
+			array( 'payload.error_category' )
+		);
+		$rule = new NotificationRule( 1, 'Rule 1', 'visitor.javascript_error', 1, array(), 1, 1, 'x', true, 100, 0, 'now', 'now' );
+
+		$repo = $this->createMock( NotificationRuleRepository::class );
+		$repo->method( 'for_event_type' )->willReturn( array( $rule ) );
+
+		$dispatcher = $this->fake_dispatcher();
+		$dispatcher->expects( $this->once() )->method( 'dispatch' );
+
+		$eligibility = $this->createMock( DigestEligibility::class );
+		$eligibility->method( 'is_active' )->willReturn( true );
+
+		$evaluator = new RuleEvaluator( $repo, $registry, $this->fake_dispatch_log(), $dispatcher, $eligibility );
+		$evaluator->evaluate(
+			new EventEnvelope( $registry, 'visitor.javascript_error', 'key-1', EventSource::VISITOR, array(), array( 'error_category' => 'runtime' ), array(), array() )
+		);
 	}
 
 	private function recording_evaluator( $repo, Registry $registry, array &$matched, array &$rejected ): RuleEvaluator {

@@ -25,13 +25,13 @@ final class MigratorTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
 		$this->assertSame( $table, $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) );
 
 		// Re-running an already up-to-date schema must not error and must
 		// not change the recorded version.
 		$migrator->maybe_migrate();
-		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 
 	public function test_clean_install_creates_all_six_telegram_tables(): void {
@@ -56,7 +56,7 @@ final class MigratorTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
 
 		foreach ( $tables as $table_name ) {
 			$table = $wpdb->prefix . $table_name;
@@ -65,7 +65,7 @@ final class MigratorTest extends WP_UnitTestCase {
 
 		// Re-running an already up-to-date schema is a safe no-op.
 		$migrator->maybe_migrate();
-		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 
 	public function test_postcondition_verification_catches_a_partial_step_failure(): void {
@@ -132,7 +132,7 @@ final class MigratorTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
 
 		foreach ( $tables as $table_name ) {
 			$table = $wpdb->prefix . $table_name;
@@ -141,7 +141,7 @@ final class MigratorTest extends WP_UnitTestCase {
 
 		// Re-running an already up-to-date schema is a safe no-op.
 		$migrator->maybe_migrate();
-		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 
 	public function test_step_18_adds_operator_workflow_columns_and_index(): void {
@@ -152,7 +152,7 @@ final class MigratorTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
 
 		$conversations_table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
 		$messages_table      = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
@@ -187,6 +187,247 @@ final class MigratorTest extends WP_UnitTestCase {
 
 		// Re-running is a safe no-op.
 		$migrator->maybe_migrate();
-		$this->assertSame( 22, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
+	}
+
+	public function test_steps_23_and_24_create_the_visitor_digest_tables_with_a_seeded_state_row(): void {
+		global $wpdb;
+
+		update_option( 'universal_telegram_db_version', 22 );
+
+		$migrator = new Migrator( new MigrationLock() );
+		$migrator->maybe_migrate();
+
+		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
+
+		$counters_table = $wpdb->prefix . Migrator::VISITOR_DIGEST_COUNTERS_TABLE;
+		$state_table    = $wpdb->prefix . Migrator::VISITOR_DIGEST_STATE_TABLE;
+
+		$this->assertSame( $counters_table, $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $counters_table ) ) );
+		$this->assertSame( $state_table, $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $state_table ) ) );
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$seeded_id = $wpdb->get_var( "SELECT id FROM {$state_table} WHERE id = 1" );
+		$this->assertSame( '1', $seeded_id );
+
+		// Re-running is a safe no-op and does not duplicate the seeded row.
+		$migrator->maybe_migrate();
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$this->assertSame( 1, (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$state_table}" ) );
+	}
+
+	public function test_steps_25_and_26_create_the_operational_summary_and_intelligence_state_tables_with_a_seeded_state_row(): void {
+		global $wpdb;
+
+		update_option( 'universal_telegram_db_version', 24 );
+
+		$migrator = new Migrator( new MigrationLock() );
+		$migrator->maybe_migrate();
+
+		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
+
+		$runs_table  = $wpdb->prefix . Migrator::OPERATIONAL_SUMMARY_RUNS_TABLE;
+		$state_table = $wpdb->prefix . Migrator::INTELLIGENCE_SETTINGS_STATE_TABLE;
+
+		$this->assertSame( $runs_table, $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $runs_table ) ) );
+		$this->assertSame( $state_table, $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $state_table ) ) );
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$seeded_id = $wpdb->get_var( "SELECT id FROM {$state_table} WHERE id = 1" );
+		$this->assertSame( '1', $seeded_id );
+
+		// summary_date's own UNIQUE constraint (not application discipline
+		// alone) is what makes row creation exactly-once per UTC day —
+		// asserted directly here at the schema level.
+		$now = current_time( 'mysql', true );
+		$wpdb->query(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"INSERT INTO {$runs_table} (summary_date, window_started_at, window_ended_at, created_at) VALUES (%s, %s, %s, %s)",
+				'2026-01-01',
+				$now,
+				$now,
+				$now
+			)
+		);
+		$duplicate = $wpdb->query(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"INSERT INTO {$runs_table} (summary_date, window_started_at, window_ended_at, created_at) VALUES (%s, %s, %s, %s)",
+				'2026-01-01',
+				$now,
+				$now,
+				$now
+			)
+		);
+		$this->assertFalse( $duplicate );
+
+		// Re-running is a safe no-op and does not duplicate the seeded row.
+		$migrator->maybe_migrate();
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$this->assertSame( 1, (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$state_table}" ) );
+	}
+
+	public function test_step_27_creates_the_operational_alert_state_table_with_three_seeded_rows(): void {
+		global $wpdb;
+
+		update_option( 'universal_telegram_db_version', 26 );
+
+		$migrator = new Migrator( new MigrationLock() );
+		$migrator->maybe_migrate();
+
+		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
+
+		$table = $wpdb->prefix . Migrator::OPERATIONAL_ALERT_STATE_TABLE;
+		$this->assertSame( $table, $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) );
+
+		$alert_types = $wpdb->get_col( "SELECT alert_type FROM {$table} ORDER BY alert_type" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$this->assertSame( array( 'checkout_failure_count', 'js_error_spike', 'order_failure_spike' ), $alert_types );
+
+		// Re-running is a safe no-op and does not duplicate the seeded rows.
+		$migrator->maybe_migrate();
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$this->assertSame( 3, (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" ) );
+	}
+
+	public function test_step_28_creates_the_operational_summary_ai_drafts_table_with_a_unique_summary_run_id(): void {
+		global $wpdb;
+
+		update_option( 'universal_telegram_db_version', 27 );
+
+		$migrator = new Migrator( new MigrationLock() );
+		$migrator->maybe_migrate();
+
+		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
+
+		$table = $wpdb->prefix . Migrator::OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE;
+		$this->assertSame( $table, $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) );
+
+		$now = current_time( 'mysql', true );
+		$wpdb->query(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"INSERT INTO {$table} (summary_run_id, draft_uuid, status, provider, model, prompt_policy_version, created_at, updated_at) VALUES (%d, %s, %s, %s, %s, %s, %s, %s)",
+				42,
+				wp_generate_uuid4(),
+				'queued',
+				'openai',
+				'gpt',
+				'v1',
+				$now,
+				$now
+			)
+		);
+
+		// A second row for the same summary_run_id must be rejected at the
+		// database layer — the entire per-summary idempotency mechanism.
+		$duplicate = $wpdb->query(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"INSERT INTO {$table} (summary_run_id, draft_uuid, status, provider, model, prompt_policy_version, created_at, updated_at) VALUES (%d, %s, %s, %s, %s, %s, %s, %s)",
+				42,
+				wp_generate_uuid4(),
+				'queued',
+				'openai',
+				'gpt',
+				'v1',
+				$now,
+				$now
+			)
+		);
+		$this->assertFalse( $duplicate );
+	}
+
+	public function test_step_29_adds_topic_lifecycle_columns_unique_destination_and_backfills_active(): void {
+		global $wpdb;
+
+		update_option( 'universal_telegram_db_version', 28 );
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$dest  = $wpdb->prefix . Migrator::DESTINATIONS_TABLE;
+		$now   = current_time( 'mysql', true );
+
+		$wpdb->insert(
+			$dest,
+			array(
+				'bot_id'            => 1,
+				'kind'              => 'supergroup',
+				'chat_id'           => '-100dup',
+				'message_thread_id' => 99,
+				'label'             => 'Dup topic',
+				'enabled'           => 1,
+				'created_at'        => $now,
+			)
+		);
+		$destination_id = (int) $wpdb->insert_id;
+
+		$wpdb->insert(
+			$table,
+			array(
+				'conversation_uuid'     => wp_generate_uuid4(),
+				'bot_id'                => 1,
+				'destination_id'        => $destination_id,
+				'status'                => 'open',
+				'topic_creation_state'  => 'created',
+				'telegram_topic_id'     => 99,
+				'ai_participation_state'=> 'none',
+				'consent_state'         => 'unknown',
+				'created_at'            => $now,
+				'updated_at'            => $now,
+			)
+		);
+		$owner_id = (int) $wpdb->insert_id;
+
+		$wpdb->insert(
+			$table,
+			array(
+				'conversation_uuid'     => wp_generate_uuid4(),
+				'bot_id'                => 1,
+				'destination_id'        => $destination_id,
+				'status'                => 'open',
+				'topic_creation_state'  => 'none',
+				'ai_participation_state'=> 'none',
+				'consent_state'         => 'unknown',
+				'created_at'            => $now,
+				'updated_at'            => $now,
+			)
+		);
+		$extra_id = (int) $wpdb->insert_id;
+
+		$migrator = new Migrator( new MigrationLock() );
+		$migrator->maybe_migrate();
+
+		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
+
+		$columns = $wpdb->get_col( "SHOW COLUMNS FROM {$table}", 0 ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$this->assertContains( 'topic_lifecycle_state', $columns );
+		$this->assertContains( 'topic_lifecycle_code', $columns );
+		$this->assertContains( 'topic_delete_claim_expires_at', $columns );
+
+		$owner_state = $wpdb->get_var( $wpdb->prepare( "SELECT topic_lifecycle_state FROM {$table} WHERE id = %d", $owner_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$this->assertSame( 'active', $owner_state );
+
+		$extra_dest = $wpdb->get_var( $wpdb->prepare( "SELECT destination_id FROM {$table} WHERE id = %d", $extra_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$this->assertNull( $extra_dest );
+
+		$owner_dest = $wpdb->get_var( $wpdb->prepare( "SELECT destination_id FROM {$table} WHERE id = %d", $owner_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$this->assertSame( (string) $destination_id, (string) $owner_dest );
+
+		$duplicate = $wpdb->query(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"INSERT INTO {$table} (conversation_uuid, bot_id, destination_id, status, topic_creation_state, ai_participation_state, consent_state, created_at, updated_at) VALUES (%s, %d, %d, %s, %s, %s, %s, %s, %s)",
+				wp_generate_uuid4(),
+				1,
+				$destination_id,
+				'open',
+				'none',
+				'none',
+				'unknown',
+				$now,
+				$now
+			)
+		);
+		$this->assertFalse( $duplicate );
 	}
 }

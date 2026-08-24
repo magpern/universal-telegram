@@ -10,7 +10,14 @@ declare( strict_types=1 );
 namespace UniversalTelegram\Administration\Diagnostics;
 
 use UniversalTelegram\Audit\AuditLogRepository;
+use UniversalTelegram\Automations\Digest\DigestEligibility;
+use UniversalTelegram\Automations\Digest\VisitorDigestCounterRepository;
+use UniversalTelegram\Automations\Digest\VisitorDigestStateRepository;
 use UniversalTelegram\Automations\DispatchLogRepository;
+use UniversalTelegram\Automations\Intelligence\AlertRepository;
+use UniversalTelegram\Automations\Intelligence\IntelligenceSettings;
+use UniversalTelegram\Automations\Intelligence\OperationalSummaryRepository;
+use UniversalTelegram\Automations\Intelligence\SummaryAiRepository;
 use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Automations\RuleEvaluator;
 use UniversalTelegram\Core\Configuration\Settings;
@@ -47,6 +54,9 @@ final class DiagnosticsReport {
 	 * @param NotificationRuleRepository $notification_rules  Rule counts.
 	 * @param DispatchLogRepository      $dispatch_log        Dispatch-log failure/stuck-claim counts.
 	 * @param Settings                   $settings            Reads the current visitor tracking configuration.
+	 * @param DigestEligibility               $digest_eligibility     The M11A visitor digest shared active/eligibility gate.
+	 * @param VisitorDigestCounterRepository  $digest_counters        The M11A visitor digest counter persistence.
+	 * @param VisitorDigestStateRepository    $digest_state           The M11A visitor digest state/checkpoint persistence.
 	 * @param int                        $stale_pending_threshold_seconds The message-staleness threshold, in seconds.
 	 * @param int                        $stale_registration_threshold_hours The registration-staleness threshold, in hours.
 	 */
@@ -62,8 +72,15 @@ final class DiagnosticsReport {
 		private readonly NotificationRuleRepository $notification_rules,
 		private readonly DispatchLogRepository $dispatch_log,
 		private readonly Settings $settings,
+		private readonly DigestEligibility $digest_eligibility,
+		private readonly VisitorDigestCounterRepository $digest_counters,
+		private readonly VisitorDigestStateRepository $digest_state,
 		private readonly int $stale_pending_threshold_seconds = 1800,
-		private readonly int $stale_registration_threshold_hours = 24
+		private readonly int $stale_registration_threshold_hours = 24,
+		private readonly ?IntelligenceSettings $intelligence_settings = null,
+		private readonly ?OperationalSummaryRepository $operational_summary_repository = null,
+		private readonly ?AlertRepository $alert_repository = null,
+		private readonly ?SummaryAiRepository $summary_ai_repository = null
 	) {}
 
 	/**
@@ -104,6 +121,15 @@ final class DiagnosticsReport {
 	 *     bot_commands_active: bool,
 	 *     bot_commands_rejected_unauthorized_24h: int,
 	 *     bot_commands_rejected_wrong_context_24h: int,
+	 *     visitor_digest_enabled: bool,
+	 *     visitor_digest_target_valid: bool,
+	 *     visitor_digest_active: bool,
+	 *     visitor_digest_paused_invalid_target: bool,
+	 *     visitor_digest_pending_event_count: int,
+	 *     visitor_digest_oldest_pending_age_seconds: int|null,
+	 *     visitor_digest_last_sent_at: string|null,
+	 *     visitor_digest_last_status: string,
+	 *     visitor_digest_currently_suppressed_rules_count: int,
 	 *     recent_audit_entries: array<int, array<string, mixed>>
 	 * }
 	 */
@@ -177,6 +203,94 @@ final class DiagnosticsReport {
 			'bot_commands_rejected_unauthorized_24h'   => $this->audit_log_repository->count_by_action_24h( 'bot_command.rejected_unauthorized' ),
 			'bot_commands_rejected_wrong_context_24h'  => $this->audit_log_repository->count_by_action_24h( 'bot_command.rejected_wrong_context' ),
 			'recent_audit_entries'                     => $this->audit_log_repository->recent( 20 ),
+		) + $this->visitor_digest_diagnostics() + $this->intelligence_diagnostics();
+	}
+
+	/**
+	 * The M11B operational-intelligence diagnostics keys
+	 * (docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md §5).
+	 * Every value defaults safely (disabled/never_run) when the M11B
+	 * dependencies are not supplied (pre-M11B callers) or the schema is
+	 * unavailable.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function intelligence_diagnostics(): array {
+		if ( null === $this->intelligence_settings || null === $this->operational_summary_repository || null === $this->alert_repository || null === $this->summary_ai_repository ) {
+			return array();
+		}
+
+		$most_recent_summary = $this->schema_health->is_available() ? $this->operational_summary_repository->most_recent() : null;
+
+		$keys = array(
+			'operational_summary_enabled'      => $this->intelligence_settings->operational_summary_enabled(),
+			'operational_summary_last_status'  => null !== $most_recent_summary ? ( $most_recent_summary['send_status'] ?? 'never_run' ) : 'never_run',
+			'operational_summary_last_sent_at' => null !== $most_recent_summary ? $most_recent_summary['sent_at'] : null,
+		);
+
+		foreach ( IntelligenceSettings::ALERT_TYPES as $alert_type ) {
+			$keys[ 'alert_' . $alert_type . '_enabled' ]      = $this->intelligence_settings->alert_enabled( $alert_type );
+			$keys[ 'alert_' . $alert_type . '_last_fired_at' ] = $this->schema_health->is_available() ? $this->alert_repository->last_fired_at( $alert_type ) : null;
+		}
+
+		$most_recent_ai_draft = null !== $most_recent_summary && $this->schema_health->is_available()
+			? $this->summary_ai_repository->find_by_summary_run_id( (int) $most_recent_summary['id'] )
+			: null;
+
+		$keys['ai_summary_last_status'] = null !== $most_recent_ai_draft ? $most_recent_ai_draft->status() : 'never_run';
+
+		return $keys;
+	}
+
+	/**
+	 * The M11A visitor digest diagnostics keys
+	 * (docs/plans/m11a-visitor-activity-digests-plan-v1.md §7).
+	 *
+	 * @return array{
+	 *     visitor_digest_enabled: bool,
+	 *     visitor_digest_target_valid: bool,
+	 *     visitor_digest_active: bool,
+	 *     visitor_digest_paused_invalid_target: bool,
+	 *     visitor_digest_pending_event_count: int,
+	 *     visitor_digest_oldest_pending_age_seconds: int|null,
+	 *     visitor_digest_last_sent_at: string|null,
+	 *     visitor_digest_last_status: string,
+	 *     visitor_digest_currently_suppressed_rules_count: int
+	 * }
+	 */
+	private function visitor_digest_diagnostics(): array {
+		$active             = $this->digest_eligibility->is_active();
+		$window_started_at  = $this->schema_health->is_available() ? $this->digest_state->current_window_started_at() : null;
+		$pending_event_count = null !== $window_started_at && $this->schema_health->is_available()
+			? $this->digest_counters->sum_for_window( $window_started_at )
+			: 0;
+		$oldest_pending_age = null;
+
+		if ( null !== $window_started_at ) {
+			$started = strtotime( $window_started_at . ' UTC' );
+			if ( false !== $started ) {
+				$oldest_pending_age = max( 0, time() - $started );
+			}
+		}
+
+		$suppressed_rules_count = 0;
+
+		if ( $active && $this->schema_health->is_available() ) {
+			foreach ( DigestEligibility::SUPPRESSED_EVENT_TYPES as $event_type ) {
+				$suppressed_rules_count += count( $this->notification_rules->for_event_type( $event_type, true ) );
+			}
+		}
+
+		return array(
+			'visitor_digest_enabled'                          => $this->digest_eligibility->enabled(),
+			'visitor_digest_target_valid'                      => $this->digest_eligibility->target_valid(),
+			'visitor_digest_active'                            => $active,
+			'visitor_digest_paused_invalid_target'              => $this->digest_eligibility->paused_for_invalid_target(),
+			'visitor_digest_pending_event_count'                => $pending_event_count,
+			'visitor_digest_oldest_pending_age_seconds'         => $oldest_pending_age,
+			'visitor_digest_last_sent_at'                       => $this->schema_health->is_available() ? $this->digest_state->last_digest_sent_at() : null,
+			'visitor_digest_last_status'                        => $this->schema_health->is_available() ? ( $this->digest_state->last_digest_status() ?? 'never_run' ) : 'never_run',
+			'visitor_digest_currently_suppressed_rules_count'   => $suppressed_rules_count,
 		);
 	}
 

@@ -6,10 +6,12 @@
 namespace UniversalTelegram\Tests\Automations;
 
 use PHPUnit\Framework\TestCase;
+use UniversalTelegram\Automations\Digest\DigestEligibility;
 use UniversalTelegram\Automations\DispatchLogRepository;
 use UniversalTelegram\Automations\NotificationDispatcher;
 use UniversalTelegram\Automations\NotificationRule;
 use UniversalTelegram\Automations\NotificationRuleRepository;
+use UniversalTelegram\Automations\RuleEvaluator;
 use UniversalTelegram\Automations\RuleSimulator;
 use UniversalTelegram\Events\Registry;
 use UniversalTelegram\Privacy\Classification;
@@ -95,6 +97,51 @@ final class RuleSimulatorTest extends TestCase {
 
 		$this->assertSame( array(), $result->entries() );
 		$this->assertNull( $result->error_code() );
+	}
+
+	/**
+	 * Previewing a digest-eligible event type while the digest is active
+	 * must honestly report that the rule would be suppressed, not
+	 * "matched" — and must still never touch the dispatch log (M11A §3.1,
+	 * §9 WP2).
+	 */
+	public function test_simulating_a_digest_eligible_event_type_reports_suppression_when_the_digest_is_active(): void {
+		$registry = new Registry();
+		$registry->register(
+			'visitor.page_viewed',
+			1,
+			array( 'subject.path' => Classification::PUBLIC ),
+			array( 'subject.path' ),
+			array( 'subject.path' )
+		);
+		$rule = new NotificationRule( 1, 'Rule 1', 'visitor.page_viewed', 1, array(), 1, 1, 'x', true, 100, 0, 'now', 'now' );
+
+		$rules_repo = $this->createMock( NotificationRuleRepository::class );
+		$rules_repo->method( 'for_event_type' )->willReturn( array( $rule ) );
+
+		$dispatch_log = $this->createMock( DispatchLogRepository::class );
+		$dispatch_log->expects( $this->never() )->method( $this->anything() );
+
+		$dispatcher = $this->createMock( NotificationDispatcher::class );
+		$dispatcher->expects( $this->never() )->method( 'dispatch' );
+
+		$eligibility = $this->createMock( DigestEligibility::class );
+		$eligibility->method( 'is_active' )->willReturn( true );
+
+		$simulator = new RuleSimulator( $rules_repo, $registry, $dispatch_log, $dispatcher, $eligibility );
+		$result    = $simulator->simulate( 'visitor.page_viewed', array( 'subject' => array( 'path' => '/' ) ), 'sample-key' );
+
+		$this->assertSame(
+			array(
+				array(
+					'rule_id'     => 1,
+					'rule_name'   => 'Rule 1',
+					'outcome'     => 'rejected',
+					'reason_code' => RuleEvaluator::SUPPRESSED_BY_DIGEST_REASON_CODE,
+				),
+			),
+			$result->entries()
+		);
 	}
 
 	public function test_an_unregistered_event_type_yields_an_error_code_not_a_fatal(): void {

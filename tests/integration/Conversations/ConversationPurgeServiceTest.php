@@ -5,6 +5,7 @@
 
 namespace UniversalTelegram\Tests\Integration\Conversations;
 
+use UniversalTelegram\Conversations\ConversationNoteRepository;
 use UniversalTelegram\Conversations\ConversationPurgeService;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
@@ -20,16 +21,19 @@ final class ConversationPurgeServiceTest extends WP_UnitTestCase {
 	private ConversationRepository $conversations;
 	private MessageRepository $messages;
 	private DestinationRepository $destinations;
+	private ConversationNoteRepository $notes;
 	private ConversationPurgeService $purge_service;
 
 	protected function setUp(): void {
 		parent::setUp();
 
 		$schema_health       = new SchemaHealth();
-		$this->conversations = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );
-		$this->messages      = new MessageRepository( $schema_health, new CredentialVault() );
+		$vault               = new CredentialVault();
+		$this->conversations = new ConversationRepository( $schema_health, $vault, new VisitorTokenGenerator() );
+		$this->messages      = new MessageRepository( $schema_health, $vault );
 		$this->destinations  = new DestinationRepository( $schema_health );
-		$this->purge_service = new ConversationPurgeService( $this->conversations, $this->messages, $this->destinations );
+		$this->notes         = new ConversationNoteRepository( $schema_health, $vault );
+		$this->purge_service = new ConversationPurgeService( $this->conversations, $this->messages, $this->destinations, $this->notes );
 	}
 
 	public function test_purge_deletes_the_conversation_its_messages_and_its_destination(): void {
@@ -86,5 +90,24 @@ final class ConversationPurgeServiceTest extends WP_UnitTestCase {
 
 		$this->assertNull( $this->conversations->find( $conversation->id() ) );
 		$this->assertNull( $this->messages->find( $message->id() ) );
+	}
+
+	public function test_purge_deletes_notes_and_null_destination_retains_the_destination_row(): void {
+		global $wpdb;
+
+		$conversation = $this->conversations->create( wp_generate_uuid4(), 'hash', 1, null );
+		$destination  = $this->destinations->create( 1, DestinationKind::SUPERGROUP, '-100shared', 77, 'Shared' );
+		$this->conversations->set_destination( $conversation->id(), $destination->id() );
+		$this->notes->create( $conversation->id(), 1, 'Internal note body' );
+
+		$this->purge_service->purge( $conversation->id(), null );
+
+		$this->assertNull( $this->conversations->find( $conversation->id() ) );
+		$notes_table = $wpdb->prefix . 'universal_telegram_conversation_notes';
+		$remaining   = (int) $wpdb->get_var(
+			$wpdb->prepare( "SELECT COUNT(*) FROM {$notes_table} WHERE conversation_id = %d", $conversation->id() ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		);
+		$this->assertSame( 0, $remaining );
+		$this->assertNotNull( $this->destinations->find( $destination->id() ) );
 	}
 }

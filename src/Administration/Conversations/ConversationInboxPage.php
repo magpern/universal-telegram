@@ -24,6 +24,9 @@ use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
  * MANAGE_CONVERSATIONS-gated. Delegates to ConversationDetailPage when a
  * `conversation_id` GET parameter is present, mirroring
  * BotManagementPage's own established detail-within-tab pattern.
+ * Bulk archive-and-delete permanently is confirmation-gated and reuses
+ * the same queued remote-delete path as single-conversation delete
+ * (M07.1 follow-up).
  */
 final class ConversationInboxPage {
 
@@ -62,9 +65,119 @@ final class ConversationInboxPage {
 			return;
 		}
 
+		$this->render_notices();
 		$this->render_own_availability();
 		$this->render_unread_badge();
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only confirm navigation.
+		if ( isset( $_GET['bulk_confirm'] ) && '1' === (string) $_GET['bulk_confirm'] ) {
+			$this->render_bulk_confirm();
+			return;
+		}
+
 		$this->render_list();
+	}
+
+	/**
+	 * Flash notices from action redirects.
+	 */
+	private function render_notices(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only flash.
+		$code = isset( $_GET['ut_notice'] ) ? sanitize_key( wp_unslash( $_GET['ut_notice'] ) ) : '';
+
+		if ( 'bulk_none_selected' === $code ) {
+			echo '<div class="notice notice-warning is-dismissible"><p>' .
+				esc_html__( 'Select at least one conversation first.', 'universal-telegram' ) .
+				'</p></div>';
+			return;
+		}
+
+		if ( 'bulk_archive_delete' !== $code ) {
+			return;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$queued = isset( $_GET['bulk_queued'] ) ? max( 0, (int) $_GET['bulk_queued'] ) : 0;
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$removed = isset( $_GET['bulk_removed'] ) ? max( 0, (int) $_GET['bulk_removed'] ) : 0;
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$skipped = isset( $_GET['bulk_skipped'] ) ? max( 0, (int) $_GET['bulk_skipped'] ) : 0;
+
+		printf(
+			'<div class="notice notice-success is-dismissible"><p>%s</p></div>',
+			esc_html(
+				sprintf(
+					/* translators: 1: queued remote deletes, 2: locally removed, 3: skipped */
+					__( 'Bulk cleanup finished. Deletion queued for %1$d conversation(s); %2$d removed locally; %3$d skipped.', 'universal-telegram' ),
+					$queued,
+					$removed,
+					$skipped
+				)
+			)
+		);
+	}
+
+	/**
+	 * Second-step confirm form for bulk archive + permanent delete.
+	 */
+	private function render_bulk_confirm(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only confirm navigation.
+		$raw = isset( $_GET['ids'] ) ? sanitize_text_field( wp_unslash( $_GET['ids'] ) ) : '';
+		$ids = array();
+
+		foreach ( explode( ',', $raw ) as $piece ) {
+			$id = (int) $piece;
+			if ( $id > 0 ) {
+				$ids[] = $id;
+			}
+			if ( count( $ids ) >= 50 ) {
+				break;
+			}
+		}
+
+		$ids = array_values( array_unique( $ids ) );
+
+		if ( array() === $ids ) {
+			echo '<div class="notice notice-warning"><p>' .
+				esc_html__( 'No conversations selected.', 'universal-telegram' ) .
+				'</p></div>';
+			echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . self::TAB_ID ) ) . '">' .
+				esc_html__( 'Back to inbox', 'universal-telegram' ) . '</a></p>';
+			return;
+		}
+
+		$count = count( $ids );
+
+		echo '<div class="notice notice-warning"><p>';
+		echo esc_html(
+			sprintf(
+				/* translators: %d: number of conversations */
+				_n(
+					'You are about to archive and permanently delete %d conversation.',
+					'You are about to archive and permanently delete %d conversations.',
+					$count,
+					'universal-telegram'
+				),
+				$count
+			)
+		);
+		echo '</p><p>' . esc_html__(
+			'This archives each conversation (visitor access is revoked), queues Telegram topic deletion where the conversation owns an eligible plugin-created topic, then removes conversation data from WordPress. This cannot be undone.',
+			'universal-telegram'
+		) . '</p></div>';
+
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+		wp_nonce_field( ConversationActionHandler::NONCE_ACTION );
+		echo '<input type="hidden" name="action" value="' . esc_attr( ConversationActionHandler::ADMIN_POST_ACTION ) . '" />';
+		echo '<input type="hidden" name="op" value="bulk_archive_and_delete_permanently" />';
+		echo '<input type="hidden" name="confirm" value="1" />';
+		foreach ( $ids as $id ) {
+			echo '<input type="hidden" name="conversation_ids[]" value="' . esc_attr( (string) $id ) . '" />';
+		}
+		submit_button( __( 'Confirm archive and delete permanently', 'universal-telegram' ), 'delete', '', false );
+		echo ' <a class="button" href="' . esc_url( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . self::TAB_ID ) ) . '">' .
+			esc_html__( 'Cancel', 'universal-telegram' ) . '</a>';
+		echo '</form>';
 	}
 
 	/**
@@ -165,24 +278,34 @@ final class ConversationInboxPage {
 		submit_button( __( 'Filter', 'universal-telegram' ), '', '', false );
 		echo '</form>';
 
-		echo '<table class="widefat striped"><thead><tr><th>' .
+		$conversations = $this->conversations->for_inbox(
+			$status,
+			self::PER_PAGE,
+			$offset,
+			'' === $uuid_prefix ? null : $uuid_prefix,
+			$bot_id,
+			$assigned_operator_id,
+			'' === $created_from ? null : $created_from,
+			'' === $created_to ? null : $created_to
+		);
+
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+		wp_nonce_field( ConversationActionHandler::NONCE_ACTION );
+		echo '<input type="hidden" name="action" value="' . esc_attr( ConversationActionHandler::ADMIN_POST_ACTION ) . '" />';
+		echo '<input type="hidden" name="op" value="confirm_bulk_archive_and_delete" />';
+		echo '<p>';
+		submit_button( __( 'Archive and delete permanently…', 'universal-telegram' ), 'delete', '', false );
+		echo ' <span class="description">' . esc_html__( 'Selected conversations on this page. One confirmation for the whole batch.', 'universal-telegram' ) . '</span>';
+		echo '</p>';
+
+		echo '<table class="widefat striped"><thead><tr><th scope="col" class="check-column"><input type="checkbox" id="ut-bulk-select-all" /></th><th>' .
 			esc_html__( 'Conversation', 'universal-telegram' ) . '</th><th>' .
 			esc_html__( 'Status', 'universal-telegram' ) . '</th><th>' .
+			esc_html__( 'Telegram topic', 'universal-telegram' ) . '</th><th>' .
 			esc_html__( 'Assigned to', 'universal-telegram' ) . '</th><th>' .
 			esc_html__( 'Last activity', 'universal-telegram' ) . '</th></tr></thead><tbody>';
 
-		foreach (
-			$this->conversations->for_inbox(
-				$status,
-				self::PER_PAGE,
-				$offset,
-				'' === $uuid_prefix ? null : $uuid_prefix,
-				$bot_id,
-				$assigned_operator_id,
-				'' === $created_from ? null : $created_from,
-				'' === $created_to ? null : $created_to
-			) as $conversation
-		) {
+		foreach ( $conversations as $conversation ) {
 			$assigned_label = '';
 
 			if ( null !== $conversation->assigned_operator_id() ) {
@@ -191,15 +314,20 @@ final class ConversationInboxPage {
 			}
 
 			printf(
-				'<tr><td><a href="%s">%s</a></td><td>%s</td><td>%s</td><td>%s</td></tr>',
+				'<tr><th scope="row" class="check-column"><input type="checkbox" class="ut-bulk-conversation" name="conversation_ids[]" value="%d" /></th><td><a href="%s">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
+				$conversation->id(),
 				esc_url( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . self::TAB_ID . '&conversation_id=' . $conversation->id() ) ),
 				esc_html( substr( $conversation->conversation_uuid(), 0, 8 ) ),
 				esc_html( $conversation->status() ),
+				esc_html( ConversationDetailPage::topic_lifecycle_label( $conversation->topic_lifecycle_state() ) ),
 				esc_html( $assigned_label ),
 				esc_html( $conversation->updated_at() )
 			);
 		}
 
 		echo '</tbody></table>';
+		echo '</form>';
+
+		echo '<script>document.getElementById("ut-bulk-select-all")?.addEventListener("change",function(e){document.querySelectorAll(".ut-bulk-conversation").forEach(function(cb){cb.checked=e.target.checked;});});</script>';
 	}
 }

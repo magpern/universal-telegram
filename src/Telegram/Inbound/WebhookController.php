@@ -15,6 +15,7 @@ use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\ConversationStatus;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\OperatorIdentityRepository;
+use UniversalTelegram\Conversations\TopicLifecycleState;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Classification;
 use UniversalTelegram\Telegram\Commands\BotCommandDispatcher;
@@ -148,14 +149,15 @@ final class WebhookController {
 		$is_new_update = $this->updates->record( $bot->id(), $decoded['update_id'], $update_type, $chat_id, $message_thread_id );
 
 		if ( $is_new_update && UpdateType::MESSAGE === $update_type ) {
+			if ( $this->maybe_mark_topic_unavailable( $bot->id(), $chat_id, $message_thread_id, $decoded ) ) {
+				return new WP_REST_Response( array( 'ok' => true ), 200 );
+			}
+
 			$parsed_command = isset( $decoded['message'] ) && is_array( $decoded['message'] )
 				? CommandParser::parse( $decoded['message'], $bot->telegram_username() )
 				: null;
 
 			if ( null !== $parsed_command ) {
-				// A recognized administrative bot command (M08, docs/adr/0027)
-				// is dispatched instead of, never in addition to, reply
-				// capture — the two paths are mutually exclusive.
 				$this->bot_commands->handle( $bot, $chat_id, $message_thread_id, $parsed_command, $decoded );
 			} else {
 				$this->maybe_route_to_conversation( $bot->id(), $chat_id, $message_thread_id, $decoded );
@@ -193,7 +195,7 @@ final class WebhookController {
 			return;
 		}
 
-		$conversation = $this->conversations->find_by_topic( $bot_id, $message_thread_id );
+		$conversation = $this->conversations->find_by_bot_chat_thread( $bot_id, $chat_id, $message_thread_id );
 
 		if ( null === $conversation ) {
 			return;
@@ -247,6 +249,49 @@ final class WebhookController {
 		if ( ConversationStatus::OPEN === $conversation->status() ) {
 			$this->conversations->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::WAITING_FOR_VISITOR );
 		}
+	}
+
+	/**
+	 * Marks a conversation topic unavailable on forum_topic_closed / forum_topic_deleted
+	 * when the exact (bot_id, chat_id, message_thread_id) tuple matches. Returns true
+	 * when the update was a topic service message (handled or ignored), so callers
+	 * skip reply capture and bot commands (M07.1, docs/adr/0031).
+	 *
+	 * @param int                  $bot_id           Receiving bot primary key.
+	 * @param string|null          $chat_id          Update chat id.
+	 * @param int|null             $message_thread_id Forum topic id.
+	 * @param array<string, mixed> $decoded          Full update body.
+	 *
+	 * @return bool
+	 */
+	private function maybe_mark_topic_unavailable( int $bot_id, ?string $chat_id, ?int $message_thread_id, array $decoded ): bool {
+		$message = $decoded['message'] ?? null;
+
+		if ( ! is_array( $message ) ) {
+			return false;
+		}
+
+		$closed  = isset( $message['forum_topic_closed'] );
+		$deleted = isset( $message['forum_topic_deleted'] );
+
+		if ( ! $closed && ! $deleted ) {
+			return false;
+		}
+
+		if ( null === $chat_id || null === $message_thread_id ) {
+			return true;
+		}
+
+		$conversation = $this->conversations->find_by_bot_chat_thread( $bot_id, $chat_id, $message_thread_id );
+
+		if ( null === $conversation ) {
+			return true;
+		}
+
+		$code = $deleted ? 'telegram_topic_deleted' : 'telegram_topic_closed';
+		$this->conversations->mark_topic_lifecycle( $conversation->id(), TopicLifecycleState::UNAVAILABLE, $code );
+
+		return true;
 	}
 
 	/**

@@ -24,4 +24,5 @@ enum ResponseReason: string {
 	case REQUEST_FAILED             = 'request_failed';
 	case TEMPORARY_DELIVERY_PENDING = 'temporary_delivery_pending';
 	case AUTH_REQUIRED              = 'auth_required';
+	case CONVERSATION_UNAVAILABLE   = 'conversation_unavailable';
 }

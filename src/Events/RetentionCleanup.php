@@ -28,6 +28,12 @@ final class RetentionCleanup {
 	private const BATCH_SIZE                   = 500;
 	private const PENDING_MARKER_CEILING_HOURS = 24;
 
+	// M11B plan §4: fixed, non-configurable retention windows for the
+	// operational-summary tables — no new settings surface is introduced,
+	// matching M11A's own no-new-retention-setting precedent.
+	private const OPERATIONAL_SUMMARY_RUNS_RETENTION_DAYS       = 90;
+	private const OPERATIONAL_SUMMARY_AI_DRAFTS_RETENTION_DAYS  = 30;
+
 	/**
 	 * Constructor.
 	 *
@@ -55,6 +61,12 @@ final class RetentionCleanup {
 		$this->delete_older_than( Migrator::DISPATCH_LOG_TABLE, 'dispatched_at', $this->dispatch_log_retention_days );
 		$this->delete_promoted_markers_older_than( $this->fatal_marker_retention_days );
 		$this->delete_stale_pending_markers();
+		// M11B plan §4: operational_summary_runs (90 days) and
+		// operational_summary_ai_drafts (30 days) — both fixed windows, both
+		// a full row DELETE (never a partial null-out), independent of each
+		// other's schedule since neither references the other for deletion.
+		$this->delete_older_than( Migrator::OPERATIONAL_SUMMARY_RUNS_TABLE, 'created_at', self::OPERATIONAL_SUMMARY_RUNS_RETENTION_DAYS );
+		$this->delete_older_than( Migrator::OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE, 'created_at', self::OPERATIONAL_SUMMARY_AI_DRAFTS_RETENTION_DAYS );
 	}
 
 	/**

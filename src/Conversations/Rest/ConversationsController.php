@@ -22,6 +22,7 @@ use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\PromptDeliveryFallback;
 use UniversalTelegram\Conversations\ResponseReason;
 use UniversalTelegram\Conversations\TopicCreationDispatcher;
+use UniversalTelegram\Conversations\TopicLifecycleState;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Persistence\SchemaHealth;
@@ -565,6 +566,16 @@ final class ConversationsController {
 			return $this->rate_limited();
 		}
 
+		if ( TopicLifecycleState::UNAVAILABLE === $conversation->topic_lifecycle_state() ) {
+			return $this->respond(
+				array(
+					'ok'     => false,
+					'reason' => ResponseReason::CONVERSATION_UNAVAILABLE->value,
+				),
+				409
+			);
+		}
+
 		$content_type = (string) $request->get_header( 'Content-Type' );
 
 		if ( ! str_starts_with( $content_type, 'application/json' ) ) {
@@ -724,14 +735,17 @@ final class ConversationsController {
 			$this->messages->messages_since( $conversation->id(), $since_id )
 		);
 
-		return $this->respond(
-			array(
-				'ok'       => true,
-				'status'   => $conversation->status(),
-				'messages' => $messages,
-			),
-			200
+		$payload = array(
+			'ok'       => true,
+			'status'   => $conversation->status(),
+			'messages' => $messages,
 		);
+
+		if ( TopicLifecycleState::UNAVAILABLE === $conversation->topic_lifecycle_state() ) {
+			$payload['topic_state'] = TopicLifecycleState::UNAVAILABLE;
+		}
+
+		return $this->respond( $payload, 200 );
 	}
 
 	/**

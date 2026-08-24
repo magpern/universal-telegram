@@ -281,4 +281,137 @@ final class SettingsTest extends TestCase {
 		$this->assertFalse( $result['visitor_family_clicks'] );
 		$this->assertSame( array(), $result['visitor_click_target_allowlist'] );
 	}
+
+	public function test_defaults_disable_the_visitor_digest_with_frozen_ranges(): void {
+		$defaults = ( new Settings() )->defaults();
+
+		$this->assertFalse( $defaults['visitor_digest_enabled'] );
+		$this->assertNull( $defaults['visitor_digest_bot_id'] );
+		$this->assertNull( $defaults['visitor_digest_destination_id'] );
+		$this->assertSame( 50, $defaults['visitor_digest_threshold'] );
+		$this->assertSame( 15, $defaults['visitor_digest_max_wait_minutes'] );
+	}
+
+	public function test_sanitize_recognizes_visitor_digest_enabled(): void {
+		$settings = new Settings();
+
+		$this->assertTrue( $settings->sanitize( array( 'visitor_digest_enabled' => true ) )['visitor_digest_enabled'] );
+		$this->assertFalse( $settings->sanitize( array( 'visitor_digest_enabled' => '' ) )['visitor_digest_enabled'] );
+	}
+
+	/**
+	 * @dataProvider visitor_digest_reference_field_provider
+	 */
+	public function test_sanitize_accepts_a_positive_int_reference_and_rejects_anything_else( string $field ): void {
+		$settings = new Settings();
+
+		$this->assertSame( 7, $settings->sanitize( array( $field => 7 ) )[ $field ] );
+		$this->assertSame( 7, $settings->sanitize( array( $field => '7' ) )[ $field ] );
+		$this->assertNull( $settings->sanitize( array( $field => 0 ) )[ $field ] );
+		$this->assertNull( $settings->sanitize( array( $field => -1 ) )[ $field ] );
+		$this->assertNull( $settings->sanitize( array( $field => 'not-a-number' ) )[ $field ] );
+		$this->assertNull( $settings->sanitize( array() )[ $field ] );
+	}
+
+	/**
+	 * @return array<string, array{0: string}>
+	 */
+	public function visitor_digest_reference_field_provider(): array {
+		return array(
+			'visitor_digest_bot_id'         => array( 'visitor_digest_bot_id' ),
+			'visitor_digest_destination_id' => array( 'visitor_digest_destination_id' ),
+		);
+	}
+
+	public function test_sanitize_clamps_visitor_digest_threshold_to_10_500(): void {
+		$settings = new Settings();
+
+		$this->assertSame( 10, $settings->sanitize( array( 'visitor_digest_threshold' => 1 ) )['visitor_digest_threshold'] );
+		$this->assertSame( 500, $settings->sanitize( array( 'visitor_digest_threshold' => 9999 ) )['visitor_digest_threshold'] );
+		$this->assertSame( 200, $settings->sanitize( array( 'visitor_digest_threshold' => 200 ) )['visitor_digest_threshold'] );
+	}
+
+	public function test_sanitize_clamps_visitor_digest_max_wait_minutes_to_5_60(): void {
+		$settings = new Settings();
+
+		$this->assertSame( 5, $settings->sanitize( array( 'visitor_digest_max_wait_minutes' => 1 ) )['visitor_digest_max_wait_minutes'] );
+		$this->assertSame( 60, $settings->sanitize( array( 'visitor_digest_max_wait_minutes' => 9999 ) )['visitor_digest_max_wait_minutes'] );
+		$this->assertSame( 20, $settings->sanitize( array( 'visitor_digest_max_wait_minutes' => 20 ) )['visitor_digest_max_wait_minutes'] );
+	}
+
+	public function test_defaults_disable_the_intelligence_features_with_frozen_ranges(): void {
+		$defaults = ( new Settings() )->defaults();
+
+		$this->assertFalse( $defaults['operational_summary_enabled'] );
+		$this->assertNull( $defaults['operational_summary_bot_id'] );
+		$this->assertNull( $defaults['operational_summary_destination_id'] );
+		$this->assertSame( 6, $defaults['operational_summary_hour_utc'] );
+		$this->assertNull( $defaults['alert_bot_id'] );
+		$this->assertNull( $defaults['alert_destination_id'] );
+		$this->assertFalse( $defaults['alert_checkout_failure_count_enabled'] );
+		$this->assertSame( 10, $defaults['alert_checkout_failure_count_threshold'] );
+		$this->assertFalse( $defaults['alert_order_failure_spike_enabled'] );
+		$this->assertSame( 10, $defaults['alert_order_failure_spike_threshold'] );
+		$this->assertFalse( $defaults['alert_js_error_spike_enabled'] );
+		$this->assertSame( 50, $defaults['alert_js_error_spike_threshold'] );
+	}
+
+	public function test_sanitize_recognizes_operational_summary_enabled(): void {
+		$settings = new Settings();
+
+		$this->assertTrue( $settings->sanitize( array( 'operational_summary_enabled' => true ) )['operational_summary_enabled'] );
+		$this->assertFalse( $settings->sanitize( array( 'operational_summary_enabled' => '' ) )['operational_summary_enabled'] );
+	}
+
+	/**
+	 * @dataProvider intelligence_reference_field_provider
+	 */
+	public function test_sanitize_accepts_a_positive_int_reference_and_rejects_anything_else_for_intelligence_fields( string $field ): void {
+		$settings = new Settings();
+
+		$this->assertSame( 5, $settings->sanitize( array( $field => 5 ) )[ $field ] );
+		$this->assertNull( $settings->sanitize( array( $field => 0 ) )[ $field ] );
+		$this->assertNull( $settings->sanitize( array( $field => -1 ) )[ $field ] );
+		$this->assertNull( $settings->sanitize( array( $field => 'not-numeric' ) )[ $field ] );
+	}
+
+	/**
+	 * @return array<string, array{0: string}>
+	 */
+	public function intelligence_reference_field_provider(): array {
+		return array(
+			'operational_summary_bot_id'         => array( 'operational_summary_bot_id' ),
+			'operational_summary_destination_id' => array( 'operational_summary_destination_id' ),
+			'alert_bot_id'                        => array( 'alert_bot_id' ),
+			'alert_destination_id'                => array( 'alert_destination_id' ),
+		);
+	}
+
+	public function test_sanitize_clamps_operational_summary_hour_utc_to_0_23(): void {
+		$settings = new Settings();
+
+		$this->assertSame( 0, $settings->sanitize( array( 'operational_summary_hour_utc' => -5 ) )['operational_summary_hour_utc'] );
+		$this->assertSame( 23, $settings->sanitize( array( 'operational_summary_hour_utc' => 99 ) )['operational_summary_hour_utc'] );
+		$this->assertSame( 14, $settings->sanitize( array( 'operational_summary_hour_utc' => 14 ) )['operational_summary_hour_utc'] );
+	}
+
+	public function test_sanitize_clamps_alert_thresholds(): void {
+		$settings = new Settings();
+
+		$this->assertSame( 3, $settings->sanitize( array( 'alert_checkout_failure_count_threshold' => 1 ) )['alert_checkout_failure_count_threshold'] );
+		$this->assertSame( 100, $settings->sanitize( array( 'alert_checkout_failure_count_threshold' => 9999 ) )['alert_checkout_failure_count_threshold'] );
+		$this->assertSame( 3, $settings->sanitize( array( 'alert_order_failure_spike_threshold' => 1 ) )['alert_order_failure_spike_threshold'] );
+		$this->assertSame( 100, $settings->sanitize( array( 'alert_order_failure_spike_threshold' => 9999 ) )['alert_order_failure_spike_threshold'] );
+		$this->assertSame( 5, $settings->sanitize( array( 'alert_js_error_spike_threshold' => 1 ) )['alert_js_error_spike_threshold'] );
+		$this->assertSame( 500, $settings->sanitize( array( 'alert_js_error_spike_threshold' => 9999 ) )['alert_js_error_spike_threshold'] );
+	}
+
+	public function test_sanitize_recognizes_each_alert_enabled_flag(): void {
+		$settings = new Settings();
+
+		foreach ( array( 'alert_checkout_failure_count_enabled', 'alert_order_failure_spike_enabled', 'alert_js_error_spike_enabled' ) as $field ) {
+			$this->assertTrue( $settings->sanitize( array( $field => true ) )[ $field ] );
+			$this->assertFalse( $settings->sanitize( array( $field => '' ) )[ $field ] );
+		}
+	}
 }

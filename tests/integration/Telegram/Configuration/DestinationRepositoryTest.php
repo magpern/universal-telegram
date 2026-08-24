@@ -98,4 +98,38 @@ final class DestinationRepositoryTest extends WP_UnitTestCase {
 		$this->assertTrue( $repository->delete_for_bot( $bot_id ) );
 		$this->assertCount( 0, $repository->for_bot( $bot_id ) );
 	}
+
+	/**
+	 * BotProfileRepository::CHANGED_ACTION (M11A) must also fire from every
+	 * successful mutating write in this repository, so a listener such as
+	 * Automations\Digest\DigestEligibility sees a destination-only change
+	 * regardless of caller.
+	 */
+	public function test_changed_action_fires_on_create_set_enabled_delete_and_delete_for_bot(): void {
+		$repository = new DestinationRepository( new SchemaHealth() );
+		$bot_id     = $this->bot_id();
+		$fired      = 0;
+		$listener   = function () use ( &$fired ) {
+			++$fired;
+		};
+
+		add_action( BotProfileRepository::CHANGED_ACTION, $listener );
+
+		$destination = $repository->create( $bot_id, DestinationKind::CHANNEL, '@chan', null, 'Channel' );
+		$this->assertSame( 1, $fired );
+
+		$repository->set_enabled( $destination->id(), false );
+		$this->assertSame( 2, $fired );
+
+		$repository->delete( $destination->id() );
+		$this->assertSame( 3, $fired );
+
+		$second = $repository->create( $bot_id, DestinationKind::CHANNEL, '@chan2', null, 'Channel 2' );
+		$this->assertSame( 4, $fired );
+
+		$repository->delete_for_bot( $bot_id );
+		$this->assertSame( 5, $fired );
+
+		remove_action( BotProfileRepository::CHANGED_ACTION, $listener );
+	}
 }

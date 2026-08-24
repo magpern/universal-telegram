@@ -16,9 +16,9 @@ namespace UniversalTelegram\Conversations;
  * code path calls ConversationRepository::transition() in the first place.
  * `resolved` is reachable from any open/waiting state to support M07's
  * operator UI. M07 (docs/adr/0026) adds a single `resolved -> open` reopen
- * path; `archived` remains fully terminal, since an archived conversation's
- * bearer secret has already been revoked and reopening it has no coherent
- * visitor-side contract.
+ * path; M07.1 adds direct `new|open|waiting_*|resolved → archived` for
+ * manual Archive (docs/plans/m07-1-conversation-topic-lifecycle-and-repair-plan-v1.md).
+ * `archived` remains unreopenable — the bearer secret is revoked at archive.
  */
 final class ConversationStatus {
 
@@ -36,10 +36,10 @@ final class ConversationStatus {
 	 */
 	private static function map(): array {
 		return array(
-			self::NEW                  => array( self::OPEN ),
-			self::OPEN                 => array( self::WAITING_FOR_VISITOR, self::WAITING_FOR_OPERATOR, self::RESOLVED ),
-			self::WAITING_FOR_VISITOR  => array( self::OPEN, self::RESOLVED ),
-			self::WAITING_FOR_OPERATOR => array( self::OPEN, self::RESOLVED ),
+			self::NEW                  => array( self::OPEN, self::ARCHIVED ),
+			self::OPEN                 => array( self::WAITING_FOR_VISITOR, self::WAITING_FOR_OPERATOR, self::RESOLVED, self::ARCHIVED ),
+			self::WAITING_FOR_VISITOR  => array( self::OPEN, self::RESOLVED, self::ARCHIVED ),
+			self::WAITING_FOR_OPERATOR => array( self::OPEN, self::RESOLVED, self::ARCHIVED ),
 			self::RESOLVED             => array( self::ARCHIVED, self::OPEN ),
 			self::ARCHIVED             => array(),
 		);

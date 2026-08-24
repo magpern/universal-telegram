@@ -71,6 +71,8 @@ final class DestinationRepository {
 			return null;
 		}
 
+		do_action( BotProfileRepository::CHANGED_ACTION );
+
 		return $this->find( (int) $wpdb->insert_id );
 	}
 
@@ -132,7 +134,13 @@ final class DestinationRepository {
 		$table   = $wpdb->prefix . Migrator::DESTINATIONS_TABLE;
 		$updated = $wpdb->update( $table, array( 'enabled' => $enabled ? 1 : 0 ), array( 'id' => $id ), array( '%d' ), array( '%d' ) );
 
-		return false !== $updated;
+		$succeeded = false !== $updated;
+
+		if ( $succeeded ) {
+			do_action( BotProfileRepository::CHANGED_ACTION );
+		}
+
+		return $succeeded;
 	}
 
 	/**
@@ -149,9 +157,14 @@ final class DestinationRepository {
 
 		global $wpdb;
 
-		$table = $wpdb->prefix . Migrator::DESTINATIONS_TABLE;
+		$table   = $wpdb->prefix . Migrator::DESTINATIONS_TABLE;
+		$deleted = false !== $wpdb->delete( $table, array( 'id' => $id ), array( '%d' ) );
 
-		return false !== $wpdb->delete( $table, array( 'id' => $id ), array( '%d' ) );
+		if ( $deleted ) {
+			do_action( BotProfileRepository::CHANGED_ACTION );
+		}
+
+		return $deleted;
 	}
 
 	/**
@@ -169,9 +182,14 @@ final class DestinationRepository {
 
 		global $wpdb;
 
-		$table = $wpdb->prefix . Migrator::DESTINATIONS_TABLE;
+		$table   = $wpdb->prefix . Migrator::DESTINATIONS_TABLE;
+		$deleted = false !== $wpdb->delete( $table, array( 'bot_id' => $bot_id ), array( '%d' ) );
 
-		return false !== $wpdb->delete( $table, array( 'bot_id' => $bot_id ), array( '%d' ) );
+		if ( $deleted ) {
+			do_action( BotProfileRepository::CHANGED_ACTION );
+		}
+
+		return $deleted;
 	}
 
 	/**

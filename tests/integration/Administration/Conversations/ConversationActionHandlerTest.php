@@ -11,6 +11,8 @@ use UniversalTelegram\Conversations\ConversationNoteRepository;
 use UniversalTelegram\Conversations\ConversationPurgeService;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\ConversationStatus;
+use UniversalTelegram\Conversations\ConversationTopicEligibility;
+use UniversalTelegram\Conversations\TopicDeletionDispatcher;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\OperatorAvailability;
@@ -20,6 +22,7 @@ use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
+use UniversalTelegram\Queue\Dispatcher;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use WP_UnitTestCase;
 
@@ -36,7 +39,9 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 			$_POST['new_operator_id'],
 			$_POST['expected_operator_id'],
 			$_POST['override'],
-			$_POST['body']
+			$_POST['body'],
+			$_POST['confirm'],
+			$_POST['conversation_ids']
 		);
 		parent::tearDown();
 	}
@@ -53,9 +58,11 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$messages      = new MessageRepository( $schema_health, new CredentialVault() );
 		$destinations  = new DestinationRepository( $schema_health );
 		$purge_service = new ConversationPurgeService( $conversations, $messages, $destinations );
+		$eligibility   = new ConversationTopicEligibility( $conversations, $destinations );
+		$topic_deletion = new TopicDeletionDispatcher( $conversations, new Dispatcher( $schema_health ) );
 		$audit         = new AuditLogger( $schema_health, new Redactor() );
 
-		$handler = new class( $availability, $identities, $conversations, $notes, $purge_service, $audit ) extends ConversationActionHandler {
+		$handler = new class( $availability, $identities, $conversations, $notes, $purge_service, $audit, $eligibility, $topic_deletion ) extends ConversationActionHandler {
 			public ?string $redirected_to = null;
 
 			protected function redirect_and_exit( string $url ): void {
@@ -421,7 +428,35 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$this->assertSame( $operator, $saved[0]->operator_user_id() );
 	}
 
-	public function test_delete_archived_purges_an_archived_conversation(): void {
+	public function test_archive_revokes_secret_without_purging(): void {
+		$operator = self::factory()->user->create();
+		$role     = get_role( 'subscriber' );
+		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_set_current_user( $operator );
+
+		list( $handler, , , $conversations ) = $this->fixture();
+		$conversation                        = $conversations->create( 'uuid-handler-archive-1', 'hash', 1, null );
+		$conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+
+		$nonce                    = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']        = $nonce;
+		$_REQUEST['_wpnonce']     = $nonce;
+		$_POST['op']              = 'archive';
+		$_POST['conversation_id'] = (string) $conversation->id();
+
+		try {
+			$handler->handle_request();
+		} finally {
+			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		}
+
+		$fresh = $conversations->find( $conversation->id() );
+		$this->assertSame( ConversationStatus::ARCHIVED, $fresh->status() );
+		$this->assertNull( $fresh->secret_hash() );
+		$this->assertActionRecorded( 'conversation.archived' );
+	}
+
+	public function test_delete_permanently_purges_an_ineligible_archived_conversation_when_confirmed(): void {
 		$operator = self::factory()->user->create();
 		$role     = get_role( 'subscriber' );
 		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
@@ -437,7 +472,8 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$nonce                    = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
 		$_POST['_wpnonce']        = $nonce;
 		$_REQUEST['_wpnonce']     = $nonce;
-		$_POST['op']              = 'delete_archived';
+		$_POST['op']              = 'delete_permanently';
+		$_POST['confirm']         = '1';
 		$_POST['conversation_id'] = (string) $conversation->id();
 
 		try {
@@ -449,9 +485,10 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$this->assertNull( $conversations->find( $conversation->id() ) );
 		$this->assertNull( $messages->find( $message->id() ) );
 		$this->assertActionRecorded( 'conversation.deleted_manually' );
+		$this->assertStringContainsString( 'ut_notice=conversation_removed', (string) $handler->redirected_to );
 	}
 
-	public function test_delete_archived_never_deletes_a_non_archived_conversation(): void {
+	public function test_delete_permanently_without_confirm_does_not_purge(): void {
 		$operator = self::factory()->user->create();
 		$role     = get_role( 'subscriber' );
 		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
@@ -461,11 +498,39 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 		$conversation                        = $conversations->create( 'uuid-handler-delete-2', 'hash', 1, null );
 		$conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
 		$conversations->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::RESOLVED );
+		$conversations->transition( $conversation->id(), ConversationStatus::RESOLVED, ConversationStatus::ARCHIVED );
 
 		$nonce                    = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
 		$_POST['_wpnonce']        = $nonce;
 		$_REQUEST['_wpnonce']     = $nonce;
-		$_POST['op']              = 'delete_archived';
+		$_POST['op']              = 'delete_permanently';
+		$_POST['conversation_id'] = (string) $conversation->id();
+
+		try {
+			$handler->handle_request();
+		} finally {
+			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		}
+
+		$this->assertNotNull( $conversations->find( $conversation->id() ) );
+	}
+
+	public function test_delete_permanently_never_deletes_a_non_archived_conversation(): void {
+		$operator = self::factory()->user->create();
+		$role     = get_role( 'subscriber' );
+		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_set_current_user( $operator );
+
+		list( $handler, , , $conversations ) = $this->fixture();
+		$conversation                        = $conversations->create( 'uuid-handler-delete-3', 'hash', 1, null );
+		$conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+		$conversations->transition( $conversation->id(), ConversationStatus::OPEN, ConversationStatus::RESOLVED );
+
+		$nonce                    = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']        = $nonce;
+		$_REQUEST['_wpnonce']     = $nonce;
+		$_POST['op']              = 'delete_permanently';
+		$_POST['confirm']         = '1';
 		$_POST['conversation_id'] = (string) $conversation->id();
 
 		try {
@@ -476,6 +541,97 @@ final class ConversationActionHandlerTest extends WP_UnitTestCase {
 
 		$this->assertNotNull( $conversations->find( $conversation->id() ) );
 		$this->assertSame( ConversationStatus::RESOLVED, $conversations->find( $conversation->id() )->status() );
+	}
+
+	public function test_confirm_bulk_redirects_to_confirm_view_with_ids(): void {
+		$operator = self::factory()->user->create();
+		$role     = get_role( 'subscriber' );
+		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_set_current_user( $operator );
+
+		list( $handler, , , $conversations ) = $this->fixture();
+		$a                                   = $conversations->create( 'uuid-bulk-confirm-a', 'hash', 1, null );
+		$b                                   = $conversations->create( 'uuid-bulk-confirm-b', 'hash', 1, null );
+
+		$nonce                       = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']           = $nonce;
+		$_REQUEST['_wpnonce']        = $nonce;
+		$_POST['op']                 = 'confirm_bulk_archive_and_delete';
+		$_POST['conversation_ids']   = array( (string) $a->id(), (string) $b->id() );
+
+		try {
+			$handler->handle_request();
+		} finally {
+			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		}
+
+		$this->assertStringContainsString( 'bulk_confirm=1', (string) $handler->redirected_to );
+		$this->assertStringContainsString( (string) $a->id(), (string) $handler->redirected_to );
+		$this->assertStringContainsString( (string) $b->id(), (string) $handler->redirected_to );
+		$this->assertNotNull( $conversations->find( $a->id() ) );
+	}
+
+	public function test_bulk_archive_and_delete_without_confirm_does_nothing(): void {
+		$operator = self::factory()->user->create();
+		$role     = get_role( 'subscriber' );
+		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_set_current_user( $operator );
+
+		list( $handler, , , $conversations ) = $this->fixture();
+		$conversation                        = $conversations->create( 'uuid-bulk-noconfirm', 'hash', 1, null );
+		$conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+
+		$nonce                     = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']         = $nonce;
+		$_REQUEST['_wpnonce']      = $nonce;
+		$_POST['op']               = 'bulk_archive_and_delete_permanently';
+		$_POST['conversation_ids'] = array( (string) $conversation->id() );
+
+		try {
+			$handler->handle_request();
+		} finally {
+			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		}
+
+		$this->assertNotNull( $conversations->find( $conversation->id() ) );
+		$this->assertSame( ConversationStatus::OPEN, $conversations->find( $conversation->id() )->status() );
+	}
+
+	public function test_bulk_archive_and_delete_archives_then_purges_ineligible_rows(): void {
+		$operator = self::factory()->user->create();
+		$role     = get_role( 'subscriber' );
+		$role->add_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_set_current_user( $operator );
+
+		list( $handler, , , $conversations, , , $messages ) = $this->fixture();
+		$open                                               = $conversations->create( 'uuid-bulk-open', 'hash', 1, null );
+		$conversations->transition( $open->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+		$archived = $conversations->create( 'uuid-bulk-archived', 'hash', 1, null );
+		$conversations->transition( $archived->id(), ConversationStatus::NEW, ConversationStatus::OPEN );
+		$conversations->transition( $archived->id(), ConversationStatus::OPEN, ConversationStatus::RESOLVED );
+		$conversations->transition( $archived->id(), ConversationStatus::RESOLVED, ConversationStatus::ARCHIVED );
+		$messages->create( $open->id(), 'visitor', 'Hi' );
+		$messages->create( $archived->id(), 'visitor', 'Bye' );
+
+		$nonce                     = wp_create_nonce( ConversationActionHandler::NONCE_ACTION );
+		$_POST['_wpnonce']         = $nonce;
+		$_REQUEST['_wpnonce']      = $nonce;
+		$_POST['op']               = 'bulk_archive_and_delete_permanently';
+		$_POST['confirm']          = '1';
+		$_POST['conversation_ids'] = array( (string) $open->id(), (string) $archived->id() );
+
+		try {
+			$handler->handle_request();
+		} finally {
+			$role->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		}
+
+		$this->assertNull( $conversations->find( $open->id() ) );
+		$this->assertNull( $conversations->find( $archived->id() ) );
+		$this->assertStringContainsString( 'ut_notice=bulk_archive_delete', (string) $handler->redirected_to );
+		$this->assertStringContainsString( 'bulk_removed=2', (string) $handler->redirected_to );
+		$this->assertActionRecorded( 'conversation.archived' );
+		$this->assertActionRecorded( 'conversation.deleted_manually' );
 	}
 
 	private function assertActionRecorded( string $action ): void {
