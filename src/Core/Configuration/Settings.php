@@ -74,6 +74,11 @@ final class Settings {
 			'chat_widget_participant_label_visitor'       => 'You',
 			'chat_widget_participant_label_operator'      => 'Support',
 			'chat_widget_allow_anonymous'                 => false,
+			'visitor_digest_enabled'                      => false,
+			'visitor_digest_bot_id'                       => null,
+			'visitor_digest_destination_id'                => null,
+			'visitor_digest_threshold'                     => 50,
+			'visitor_digest_max_wait_minutes'              => 15,
 		);
 	}
 
@@ -111,6 +116,7 @@ final class Settings {
 			'visitor_exclude_administrators',
 			'chat_widget_enabled',
 			'chat_widget_allow_anonymous',
+			'visitor_digest_enabled',
 		);
 
 		foreach ( $boolean_fields as $field ) {
@@ -147,6 +153,28 @@ final class Settings {
 
 		if ( isset( $input['visitor_sampling_percent'] ) && is_numeric( $input['visitor_sampling_percent'] ) ) {
 			$sanitized['visitor_sampling_percent'] = max( 1, min( 100, (int) $input['visitor_sampling_percent'] ) );
+		}
+
+		// visitor_digest_bot_id/visitor_digest_destination_id are stored as
+		// plain int references only; existence and eligibility (an active
+		// bot, an eligible, non-conversation-linked, enabled destination
+		// belonging to that bot) are re-validated live on every read by
+		// Automations\Digest\DigestEligibility, never assumed correct here
+		// (docs/plans/m11a-visitor-activity-digests-plan-v1.md §4).
+		foreach ( array( 'visitor_digest_bot_id', 'visitor_digest_destination_id' ) as $reference_field ) {
+			if ( isset( $input[ $reference_field ] ) && is_numeric( $input[ $reference_field ] ) && (int) $input[ $reference_field ] > 0 ) {
+				$sanitized[ $reference_field ] = (int) $input[ $reference_field ];
+			} else {
+				$sanitized[ $reference_field ] = null;
+			}
+		}
+
+		if ( isset( $input['visitor_digest_threshold'] ) && is_numeric( $input['visitor_digest_threshold'] ) ) {
+			$sanitized['visitor_digest_threshold'] = max( 10, min( 500, (int) $input['visitor_digest_threshold'] ) );
+		}
+
+		if ( isset( $input['visitor_digest_max_wait_minutes'] ) && is_numeric( $input['visitor_digest_max_wait_minutes'] ) ) {
+			$sanitized['visitor_digest_max_wait_minutes'] = max( 5, min( 60, (int) $input['visitor_digest_max_wait_minutes'] ) );
 		}
 
 		$positive_integer_fields = array(

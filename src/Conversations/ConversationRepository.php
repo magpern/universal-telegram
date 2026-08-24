@@ -1211,4 +1211,38 @@ class ConversationRepository {
 
 		return array_map( 'intval', $ids );
 	}
+
+	/**
+	 * Whether any conversation row, of any bot or status, currently
+	 * references the given destination id. Unlike destination_ids_for_bot()
+	 * (bot-scoped, used for the Bots-tab manual-destination-list exclusion),
+	 * this is the unscoped defense-in-depth backstop
+	 * Automations\Digest\DigestEligibility uses to catch the rare case a
+	 * conversation's own bot_id does not match its destination's bot_id
+	 * (docs/plans/m11a-visitor-activity-digests-plan-v1.md §4) — a data
+	 * inconsistency destination_ids_for_bot() alone could miss.
+	 *
+	 * @param int $destination_id The destination's primary key.
+	 *
+	 * @return bool
+	 */
+	public function is_destination_referenced( int $destination_id ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+
+		$found = $wpdb->get_var(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT 1 FROM {$table} WHERE destination_id = %d LIMIT 1",
+				$destination_id
+			)
+		);
+
+		return null !== $found;
+	}
 }

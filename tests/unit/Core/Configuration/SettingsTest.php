@@ -281,4 +281,61 @@ final class SettingsTest extends TestCase {
 		$this->assertFalse( $result['visitor_family_clicks'] );
 		$this->assertSame( array(), $result['visitor_click_target_allowlist'] );
 	}
+
+	public function test_defaults_disable_the_visitor_digest_with_frozen_ranges(): void {
+		$defaults = ( new Settings() )->defaults();
+
+		$this->assertFalse( $defaults['visitor_digest_enabled'] );
+		$this->assertNull( $defaults['visitor_digest_bot_id'] );
+		$this->assertNull( $defaults['visitor_digest_destination_id'] );
+		$this->assertSame( 50, $defaults['visitor_digest_threshold'] );
+		$this->assertSame( 15, $defaults['visitor_digest_max_wait_minutes'] );
+	}
+
+	public function test_sanitize_recognizes_visitor_digest_enabled(): void {
+		$settings = new Settings();
+
+		$this->assertTrue( $settings->sanitize( array( 'visitor_digest_enabled' => true ) )['visitor_digest_enabled'] );
+		$this->assertFalse( $settings->sanitize( array( 'visitor_digest_enabled' => '' ) )['visitor_digest_enabled'] );
+	}
+
+	/**
+	 * @dataProvider visitor_digest_reference_field_provider
+	 */
+	public function test_sanitize_accepts_a_positive_int_reference_and_rejects_anything_else( string $field ): void {
+		$settings = new Settings();
+
+		$this->assertSame( 7, $settings->sanitize( array( $field => 7 ) )[ $field ] );
+		$this->assertSame( 7, $settings->sanitize( array( $field => '7' ) )[ $field ] );
+		$this->assertNull( $settings->sanitize( array( $field => 0 ) )[ $field ] );
+		$this->assertNull( $settings->sanitize( array( $field => -1 ) )[ $field ] );
+		$this->assertNull( $settings->sanitize( array( $field => 'not-a-number' ) )[ $field ] );
+		$this->assertNull( $settings->sanitize( array() )[ $field ] );
+	}
+
+	/**
+	 * @return array<string, array{0: string}>
+	 */
+	public function visitor_digest_reference_field_provider(): array {
+		return array(
+			'visitor_digest_bot_id'         => array( 'visitor_digest_bot_id' ),
+			'visitor_digest_destination_id' => array( 'visitor_digest_destination_id' ),
+		);
+	}
+
+	public function test_sanitize_clamps_visitor_digest_threshold_to_10_500(): void {
+		$settings = new Settings();
+
+		$this->assertSame( 10, $settings->sanitize( array( 'visitor_digest_threshold' => 1 ) )['visitor_digest_threshold'] );
+		$this->assertSame( 500, $settings->sanitize( array( 'visitor_digest_threshold' => 9999 ) )['visitor_digest_threshold'] );
+		$this->assertSame( 200, $settings->sanitize( array( 'visitor_digest_threshold' => 200 ) )['visitor_digest_threshold'] );
+	}
+
+	public function test_sanitize_clamps_visitor_digest_max_wait_minutes_to_5_60(): void {
+		$settings = new Settings();
+
+		$this->assertSame( 5, $settings->sanitize( array( 'visitor_digest_max_wait_minutes' => 1 ) )['visitor_digest_max_wait_minutes'] );
+		$this->assertSame( 60, $settings->sanitize( array( 'visitor_digest_max_wait_minutes' => 9999 ) )['visitor_digest_max_wait_minutes'] );
+		$this->assertSame( 20, $settings->sanitize( array( 'visitor_digest_max_wait_minutes' => 20 ) )['visitor_digest_max_wait_minutes'] );
+	}
 }

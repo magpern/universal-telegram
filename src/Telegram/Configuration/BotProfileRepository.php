@@ -34,6 +34,17 @@ final class BotProfileRepository {
 	private const SECRET_CONTEXT_PREFIX = 'telegram.webhook_secret:';
 
 	/**
+	 * Fired once, after every successful bot-row write (create, any field
+	 * update, or delete) in this repository, regardless of caller — the
+	 * manual Bots tab, the setup wizard, the webhook-registration flow, or
+	 * any future caller. Carries no arguments by design: a listener that
+	 * cares about validity (e.g. Automations\Digest\DigestEligibility)
+	 * re-reads live state itself rather than trusting a payload describing
+	 * what changed (docs/plans/m11a-visitor-activity-digests-plan-v1.md §3.1).
+	 */
+	public const CHANGED_ACTION = 'universal_telegram_bot_or_destination_changed';
+
+	/**
 	 * Constructor.
 	 *
 	 * @param SchemaHealth    $schema_health    Checked before every operation.
@@ -85,6 +96,8 @@ final class BotProfileRepository {
 		if ( false === $inserted ) {
 			return null;
 		}
+
+		do_action( self::CHANGED_ACTION );
 
 		return $this->find( (int) $wpdb->insert_id );
 	}
@@ -394,9 +407,14 @@ final class BotProfileRepository {
 
 		global $wpdb;
 
-		$table = $wpdb->prefix . Migrator::BOTS_TABLE;
+		$table   = $wpdb->prefix . Migrator::BOTS_TABLE;
+		$deleted = false !== $wpdb->delete( $table, array( 'id' => $id ), array( '%d' ) );
 
-		return false !== $wpdb->delete( $table, array( 'id' => $id ), array( '%d' ) );
+		if ( $deleted ) {
+			do_action( self::CHANGED_ACTION );
+		}
+
+		return $deleted;
 	}
 
 	/**
@@ -456,7 +474,13 @@ final class BotProfileRepository {
 		$table   = $wpdb->prefix . Migrator::BOTS_TABLE;
 		$updated = $wpdb->update( $table, $fields, array( 'id' => $id ) );
 
-		return false !== $updated;
+		$succeeded = false !== $updated;
+
+		if ( $succeeded ) {
+			do_action( self::CHANGED_ACTION );
+		}
+
+		return $succeeded;
 	}
 
 	/**

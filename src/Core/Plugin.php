@@ -47,6 +47,7 @@ use UniversalTelegram\AI\Draft\PromptBuilder;
 use UniversalTelegram\AI\Provider\AiFailureClassifier;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
+use UniversalTelegram\Automations\Digest\DigestEligibility;
 use UniversalTelegram\Automations\DispatchLogRepository;
 use UniversalTelegram\Automations\NotificationDispatcher;
 use UniversalTelegram\Automations\NotificationRuleRepository;
@@ -539,6 +540,13 @@ final class Plugin {
 	 * @var NotificationRuleRepository|null
 	 */
 	private ?NotificationRuleRepository $notification_rule_repository = null;
+
+	/**
+	 * The M11A visitor digest shared eligibility gate, constructed by init().
+	 *
+	 * @var DigestEligibility|null
+	 */
+	private ?DigestEligibility $digest_eligibility = null;
 
 	/**
 	 * The idempotent dispatch-log repository, constructed by init().
@@ -1211,7 +1219,14 @@ final class Plugin {
 			new Tab( EventHistoryPage::TAB_ID, __( 'Event History', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_history_page, 'render_tab_content' ) )
 		);
 
-		$this->visitor_tracking_page = new VisitorTrackingPage( $settings );
+		// M11A visitor activity digest (docs/plans/m11a-visitor-activity-digests-plan-v1.md):
+		// the shared is_active()/eligibility gate, constructed once and
+		// reused by the settings page, the suppression guard, and the
+		// counter increment/sweep wired further below.
+		$this->digest_eligibility = new DigestEligibility( $settings, $this->bot_profile_repository, $this->destination_repository, $this->conversation_repository );
+		$this->digest_eligibility->register();
+
+		$this->visitor_tracking_page = new VisitorTrackingPage( $settings, $this->bot_profile_repository, $this->digest_eligibility );
 		$this->hub_tab_registry->register(
 			new Tab( VisitorTrackingPage::TAB_ID, __( 'Visitor Tracking', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->visitor_tracking_page, 'render_tab_content' ) )
 		);
@@ -1697,6 +1712,13 @@ final class Plugin {
 	 */
 	public function notification_rule_repository(): ?NotificationRuleRepository {
 		return $this->notification_rule_repository;
+	}
+
+	/**
+	 * The M11A visitor digest shared eligibility gate. Available only after init() has run.
+	 */
+	public function digest_eligibility(): ?DigestEligibility {
+		return $this->digest_eligibility;
 	}
 
 	/**
