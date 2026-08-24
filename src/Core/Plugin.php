@@ -49,6 +49,10 @@ use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Automations\Digest\DigestEligibility;
 use UniversalTelegram\Automations\Intelligence\IntelligenceSettings;
+use UniversalTelegram\Automations\Intelligence\IntelligenceStateRepository;
+use UniversalTelegram\Automations\Intelligence\OperationalSummaryRenderer;
+use UniversalTelegram\Automations\Intelligence\OperationalSummaryRepository;
+use UniversalTelegram\Automations\Intelligence\OperationalSummarySweep;
 use UniversalTelegram\Automations\Digest\VisitorDigestAggregator;
 use UniversalTelegram\Automations\Digest\VisitorDigestCounterRepository;
 use UniversalTelegram\Automations\Digest\VisitorDigestRenderer;
@@ -1363,6 +1367,22 @@ final class Plugin {
 		);
 		add_action( VisitorDigestSweep::JOB_TYPE, array( $visitor_digest_sweep, 'run' ) );
 		add_action( 'init', array( $visitor_digest_sweep, 'register' ) );
+
+		// M11B operational summary evaluation sweep
+		// (docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md §2.1/§6) —
+		// a wholly independent recurring action from VisitorDigestSweep above
+		// (different job type, table, state row); no shared lock.
+		$operational_summary_sweep = new OperationalSummarySweep(
+			$intelligence_settings,
+			$this->digest_eligibility,
+			new OperationalSummaryRepository( $this->schema_health ),
+			new IntelligenceStateRepository( $this->schema_health ),
+			new OperationalSummaryRenderer(),
+			$this->message_dispatcher,
+			$this->woocommerce_support
+		);
+		add_action( OperationalSummarySweep::JOB_TYPE, array( $operational_summary_sweep, 'run' ) );
+		add_action( 'init', array( $operational_summary_sweep, 'register' ) );
 
 		// Operator draft-request endpoint (M09, docs/adr/0028 decisions 1
 		// and 5): the only path that ever enqueues an ai_draft_generate job.

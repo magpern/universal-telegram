@@ -42,6 +42,10 @@ class Migrator {
 	public const AI_DRAFTS_TABLE             = 'universal_telegram_ai_drafts';
 	public const VISITOR_DIGEST_COUNTERS_TABLE = 'universal_telegram_visitor_digest_counters';
 	public const VISITOR_DIGEST_STATE_TABLE    = 'universal_telegram_visitor_digest_state';
+	public const OPERATIONAL_SUMMARY_RUNS_TABLE       = 'universal_telegram_operational_summary_runs';
+	public const INTELLIGENCE_SETTINGS_STATE_TABLE    = 'universal_telegram_intelligence_settings_state';
+	public const OPERATIONAL_ALERT_STATE_TABLE        = 'universal_telegram_operational_alert_state';
+	public const OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE  = 'universal_telegram_operational_summary_ai_drafts';
 
 	private const DB_VERSION_OPTION = 'universal_telegram_db_version';
 
@@ -68,7 +72,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 24;
+		return 26;
 	}
 
 	/**
@@ -161,6 +165,8 @@ class Migrator {
 			22 => array( array( $this, 'step_22_make_ai_draft_requester_nullable' ), array( $this, 'verify_step_22' ) ),
 			23 => array( array( $this, 'step_23_create_visitor_digest_counters_table' ), array( $this, 'verify_step_23' ) ),
 			24 => array( array( $this, 'step_24_create_visitor_digest_state_table' ), array( $this, 'verify_step_24' ) ),
+			25 => array( array( $this, 'step_25_create_operational_summary_runs_table' ), array( $this, 'verify_step_25' ) ),
+			26 => array( array( $this, 'step_26_create_intelligence_settings_state_table' ), array( $this, 'verify_step_26' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -1539,6 +1545,109 @@ class Migrator {
 			$table,
 			array( 'id', 'window_started_at', 'last_digest_sent_at', 'last_digest_status', 'claim_token', 'claim_expires_at' )
 		) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return null !== $wpdb->get_var( "SELECT id FROM {$table} WHERE id = 1" );
+	}
+
+	/**
+	 * Creates the operational-summary daily aggregate table (M11B plan §4,
+	 * step 25): one row per UTC calendar day, keyed by summary_date's own
+	 * UNIQUE constraint — the sole row-creation-idempotency mechanism a
+	 * crash or retried sweep tick relies on (never an application-level
+	 * lock alone).
+	 */
+	private function step_25_create_operational_summary_runs_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::OPERATIONAL_SUMMARY_RUNS_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				summary_date DATE NOT NULL,
+				window_started_at DATETIME NOT NULL,
+				window_ended_at DATETIME NOT NULL,
+				orders_created INT UNSIGNED NOT NULL DEFAULT 0,
+				payments_completed INT UNSIGNED NOT NULL DEFAULT 0,
+				orders_failed INT UNSIGNED NOT NULL DEFAULT 0,
+				orders_cancelled INT UNSIGNED NOT NULL DEFAULT 0,
+				checkout_failures INT UNSIGNED NOT NULL DEFAULT 0,
+				js_error_runtime INT UNSIGNED NOT NULL DEFAULT 0,
+				js_error_promise INT UNSIGNED NOT NULL DEFAULT 0,
+				js_error_resource INT UNSIGNED NOT NULL DEFAULT 0,
+				funnel_product_views INT UNSIGNED NOT NULL DEFAULT 0,
+				funnel_cart_intents INT UNSIGNED NOT NULL DEFAULT 0,
+				funnel_checkout_starts INT UNSIGNED NOT NULL DEFAULT 0,
+				funnel_orders_created INT UNSIGNED NOT NULL DEFAULT 0,
+				woocommerce_active_at_run TINYINT(1) UNSIGNED NOT NULL DEFAULT 0,
+				sent_at DATETIME NULL,
+				send_status VARCHAR(32) NULL,
+				created_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY uq_summary_date (summary_date)
+			) {$charset_collate}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_25(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::OPERATIONAL_SUMMARY_RUNS_TABLE,
+			array( 'id', 'summary_date', 'window_started_at', 'window_ended_at', 'orders_created', 'payments_completed', 'orders_failed', 'orders_cancelled', 'checkout_failures', 'sent_at', 'send_status' )
+		);
+	}
+
+	/**
+	 * Creates the Intelligence sweep's singleton claim-lease mutex row
+	 * (M11B plan §4, step 26) — the same "singleton row as mutex/checkpoint"
+	 * pattern step_24_create_visitor_digest_state_table already established
+	 * for the visitor digest. Ordered ahead of the alert-state table (step
+	 * 27) so the sweep's mutex exists before either the summary or the
+	 * alerts it also evaluates ever run.
+	 */
+	private function step_26_create_intelligence_settings_state_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::INTELLIGENCE_SETTINGS_STATE_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id TINYINT UNSIGNED NOT NULL,
+				claim_token CHAR(36) NULL,
+				claim_expires_at DATETIME NULL,
+				PRIMARY KEY (id)
+			) {$charset_collate}"
+		);
+
+		$wpdb->query( "INSERT IGNORE INTO {$table} (id) VALUES (1)" );
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_26(): bool {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::INTELLIGENCE_SETTINGS_STATE_TABLE;
+
+		if ( ! $this->table_has_columns( $table, array( 'id', 'claim_token', 'claim_expires_at' ) ) ) {
 			return false;
 		}
 
