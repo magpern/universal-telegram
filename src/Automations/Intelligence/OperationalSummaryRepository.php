@@ -148,6 +148,60 @@ final class OperationalSummaryRepository {
 	}
 
 	/**
+	 * The most recently created row, hydrated into the typed, AI-boundary-
+	 * safe OperationalSummaryRow — the only input
+	 * OperationalSummaryPromptBuilder::build() accepts (§3).
+	 *
+	 * @return OperationalSummaryRow|null
+	 */
+	public function most_recent_typed(): ?OperationalSummaryRow {
+		$row = $this->most_recent();
+
+		return null === $row ? null : $this->hydrate( $row );
+	}
+
+	/**
+	 * The row for the given primary key, hydrated into the typed
+	 * OperationalSummaryRow.
+	 *
+	 * @param int $id The row's own id.
+	 *
+	 * @return OperationalSummaryRow|null
+	 */
+	public function find_typed( int $id ): ?OperationalSummaryRow {
+		$row = $this->find( $id );
+
+		return null === $row ? null : $this->hydrate( $row );
+	}
+
+	/**
+	 * Hydrates one raw row into the typed OperationalSummaryRow.
+	 *
+	 * @param array<string, mixed> $row The raw database row.
+	 *
+	 * @return OperationalSummaryRow
+	 */
+	private function hydrate( array $row ): OperationalSummaryRow {
+		return new OperationalSummaryRow(
+			(int) $row['id'],
+			(string) $row['summary_date'],
+			(int) $row['orders_created'],
+			(int) $row['payments_completed'],
+			(int) $row['orders_failed'],
+			(int) $row['orders_cancelled'],
+			(int) $row['checkout_failures'],
+			(int) $row['js_error_runtime'],
+			(int) $row['js_error_promise'],
+			(int) $row['js_error_resource'],
+			(int) $row['funnel_product_views'],
+			(int) $row['funnel_cart_intents'],
+			(int) $row['funnel_checkout_starts'],
+			(int) $row['funnel_orders_created'],
+			(bool) $row['woocommerce_active_at_run']
+		);
+	}
+
+	/**
 	 * Overwrites every aggregate count column on the given row.
 	 *
 	 * @param int                  $id     The row's own id.

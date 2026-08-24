@@ -72,7 +72,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 27;
+		return 28;
 	}
 
 	/**
@@ -168,6 +168,7 @@ class Migrator {
 			25 => array( array( $this, 'step_25_create_operational_summary_runs_table' ), array( $this, 'verify_step_25' ) ),
 			26 => array( array( $this, 'step_26_create_intelligence_settings_state_table' ), array( $this, 'verify_step_26' ) ),
 			27 => array( array( $this, 'step_27_create_operational_alert_state_table' ), array( $this, 'verify_step_27' ) ),
+			28 => array( array( $this, 'step_28_create_operational_summary_ai_drafts_table' ), array( $this, 'verify_step_28' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -1706,6 +1707,67 @@ class Migrator {
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		return 3 === (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
+	}
+
+	/**
+	 * Creates the operational-summary AI-draft table (M11B plan §2.6/§3/§4,
+	 * step 28). UNIQUE(summary_run_id) is the entire per-summary
+	 * idempotency mechanism — a database constraint, not an
+	 * application-level row lock: at most one draft row can ever exist per
+	 * summary. requested_by_user_id/reviewed_by_user_id are nullable from
+	 * creation (matching universal_telegram_ai_drafts' own nullable-
+	 * widening precedent, applied here from the start rather than as a
+	 * later corrective migration) so account-deletion anonymization can
+	 * null them without ever deleting the row.
+	 */
+	private function step_28_create_operational_summary_ai_drafts_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				summary_run_id BIGINT UNSIGNED NOT NULL,
+				draft_uuid CHAR(36) NOT NULL,
+				status VARCHAR(16) NOT NULL,
+				provider VARCHAR(32) NOT NULL,
+				model VARCHAR(191) NOT NULL,
+				prompt_policy_version VARCHAR(32) NOT NULL,
+				body_ciphertext LONGTEXT NULL,
+				failure_class VARCHAR(32) NULL,
+				requested_by_user_id BIGINT UNSIGNED NULL,
+				reviewed_by_user_id BIGINT UNSIGNED NULL,
+				lease_token CHAR(36) NULL,
+				generation_lease_expires_at DATETIME NULL,
+				attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
+				created_at DATETIME NOT NULL,
+				generated_at DATETIME NULL,
+				updated_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY uq_summary_run (summary_run_id),
+				UNIQUE KEY uq_draft_uuid (draft_uuid),
+				KEY idx_status (status),
+				KEY idx_lease (status, generation_lease_expires_at)
+			) {$charset_collate}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_28(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE,
+			array( 'id', 'summary_run_id', 'draft_uuid', 'status', 'provider', 'model', 'body_ciphertext', 'requested_by_user_id', 'reviewed_by_user_id', 'lease_token', 'generation_lease_expires_at', 'attempt_count' )
+		);
 	}
 
 	/**

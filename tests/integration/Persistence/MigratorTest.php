@@ -25,13 +25,13 @@ final class MigratorTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 27, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 28, (int) get_option( 'universal_telegram_db_version' ) );
 		$this->assertSame( $table, $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) );
 
 		// Re-running an already up-to-date schema must not error and must
 		// not change the recorded version.
 		$migrator->maybe_migrate();
-		$this->assertSame( 27, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 28, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 
 	public function test_clean_install_creates_all_six_telegram_tables(): void {
@@ -56,7 +56,7 @@ final class MigratorTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 27, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 28, (int) get_option( 'universal_telegram_db_version' ) );
 
 		foreach ( $tables as $table_name ) {
 			$table = $wpdb->prefix . $table_name;
@@ -65,7 +65,7 @@ final class MigratorTest extends WP_UnitTestCase {
 
 		// Re-running an already up-to-date schema is a safe no-op.
 		$migrator->maybe_migrate();
-		$this->assertSame( 27, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 28, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 
 	public function test_postcondition_verification_catches_a_partial_step_failure(): void {
@@ -132,7 +132,7 @@ final class MigratorTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 27, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 28, (int) get_option( 'universal_telegram_db_version' ) );
 
 		foreach ( $tables as $table_name ) {
 			$table = $wpdb->prefix . $table_name;
@@ -141,7 +141,7 @@ final class MigratorTest extends WP_UnitTestCase {
 
 		// Re-running an already up-to-date schema is a safe no-op.
 		$migrator->maybe_migrate();
-		$this->assertSame( 27, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 28, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 
 	public function test_step_18_adds_operator_workflow_columns_and_index(): void {
@@ -152,7 +152,7 @@ final class MigratorTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 27, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 28, (int) get_option( 'universal_telegram_db_version' ) );
 
 		$conversations_table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
 		$messages_table      = $wpdb->prefix . Migrator::CONVERSATION_MESSAGES_TABLE;
@@ -187,7 +187,7 @@ final class MigratorTest extends WP_UnitTestCase {
 
 		// Re-running is a safe no-op.
 		$migrator->maybe_migrate();
-		$this->assertSame( 27, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 28, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 
 	public function test_steps_23_and_24_create_the_visitor_digest_tables_with_a_seeded_state_row(): void {
@@ -198,7 +198,7 @@ final class MigratorTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 27, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 28, (int) get_option( 'universal_telegram_db_version' ) );
 
 		$counters_table = $wpdb->prefix . Migrator::VISITOR_DIGEST_COUNTERS_TABLE;
 		$state_table    = $wpdb->prefix . Migrator::VISITOR_DIGEST_STATE_TABLE;
@@ -224,7 +224,7 @@ final class MigratorTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 27, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 28, (int) get_option( 'universal_telegram_db_version' ) );
 
 		$runs_table  = $wpdb->prefix . Migrator::OPERATIONAL_SUMMARY_RUNS_TABLE;
 		$state_table = $wpdb->prefix . Migrator::INTELLIGENCE_SETTINGS_STATE_TABLE;
@@ -276,7 +276,7 @@ final class MigratorTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 27, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 28, (int) get_option( 'universal_telegram_db_version' ) );
 
 		$table = $wpdb->prefix . Migrator::OPERATIONAL_ALERT_STATE_TABLE;
 		$this->assertSame( $table, $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) );
@@ -288,5 +288,53 @@ final class MigratorTest extends WP_UnitTestCase {
 		$migrator->maybe_migrate();
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$this->assertSame( 3, (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" ) );
+	}
+
+	public function test_step_28_creates_the_operational_summary_ai_drafts_table_with_a_unique_summary_run_id(): void {
+		global $wpdb;
+
+		update_option( 'universal_telegram_db_version', 27 );
+
+		$migrator = new Migrator( new MigrationLock() );
+		$migrator->maybe_migrate();
+
+		$this->assertSame( 28, (int) get_option( 'universal_telegram_db_version' ) );
+
+		$table = $wpdb->prefix . Migrator::OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE;
+		$this->assertSame( $table, $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) );
+
+		$now = current_time( 'mysql', true );
+		$wpdb->query(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"INSERT INTO {$table} (summary_run_id, draft_uuid, status, provider, model, prompt_policy_version, created_at, updated_at) VALUES (%d, %s, %s, %s, %s, %s, %s, %s)",
+				42,
+				wp_generate_uuid4(),
+				'queued',
+				'openai',
+				'gpt',
+				'v1',
+				$now,
+				$now
+			)
+		);
+
+		// A second row for the same summary_run_id must be rejected at the
+		// database layer — the entire per-summary idempotency mechanism.
+		$duplicate = $wpdb->query(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"INSERT INTO {$table} (summary_run_id, draft_uuid, status, provider, model, prompt_policy_version, created_at, updated_at) VALUES (%d, %s, %s, %s, %s, %s, %s, %s)",
+				42,
+				wp_generate_uuid4(),
+				'queued',
+				'openai',
+				'gpt',
+				'v1',
+				$now,
+				$now
+			)
+		);
+		$this->assertFalse( $duplicate );
 	}
 }
