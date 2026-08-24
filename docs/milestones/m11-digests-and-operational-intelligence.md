@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started (full milestone). **M11A, a non-AI first slice covering scheduled visitor-activity digests and threshold/timeout batching, is frozen and implementation-authorized** per ADR-0029 and `docs/plans/m11a-visitor-activity-digests-plan-v1.md`. M11A does not require M09 acceptance and does not close this milestone; the remainder of M11 (checkout-failure detection, funnel summaries, error clustering, AI-assisted internal summaries, destination-specific reporting beyond the one visitor-digest target) remains Not Started and still depends on M09 exactly as below.
+Not Started (full milestone). **M11A, a non-AI first slice covering scheduled visitor-activity digests and threshold/timeout batching, is frozen and implementation-authorized** per ADR-0029 and `docs/plans/m11a-visitor-activity-digests-plan-v1.md`. M11A does not require M09 acceptance and does not close this milestone. **M11B, the remainder of this milestone (scheduled operational summaries, threshold alerts, checkout-failure detection, funnel summaries, JS-error clustering, AI-assisted internal summaries, and destination-specific reporting beyond M11A's one visitor-digest target), is frozen per ADR-0030 and `docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md`, but implementation-blocked until M09 has recorded Product Owner acceptance** (`docs/closure/m09-ai-draft-assistant-closure.md`), exactly as this charter and ADR-0029 already require. M11A and M11B validate and release together as one combined M11 outcome; M11A is not independently validated, released, or closed.
 
 ## Dependencies
 
