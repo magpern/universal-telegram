@@ -45,7 +45,7 @@ final class RuleBuilderPage {
 	 * @param BotProfileRepository       $bots                 Bot profiles.
 	 * @param DestinationRepository      $destinations         Destinations.
 	 * @param DigestEligibility|null     $digest_eligibility   Live "currently batched by Visitor Digest" state (M11A §3.1); also supplies the shared destination-eligibility filter (§5) for the Intelligence section's dropdowns. Null only for pre-M11A callers.
-	 * @param Settings|null              $settings             Reads/writes the operational_summary_*/alert_* fields (§5). Null only for pre-M11B callers.
+	 * @param Settings|null              $settings             Reads/writes the operational_summary_* and alert_* fields (§5). Null only for pre-M11B callers.
 	 * @param IntelligenceSettings|null  $intelligence_settings Typed reader over the same fields. Null only for pre-M11B callers.
 	 * @param IntelligencePanel|null     $intelligence_panel    The AI-summary review UI (§2.6/§5), composed after the settings form. Null only for pre-WP7 callers.
 	 */

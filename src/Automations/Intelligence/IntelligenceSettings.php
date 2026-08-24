@@ -12,7 +12,7 @@ namespace UniversalTelegram\Automations\Intelligence;
 use UniversalTelegram\Core\Configuration\Settings;
 
 /**
- * Thin, typed accessor over the operational_summary_*/alert_* fields
+ * Thin, typed accessor over the operational_summary_* and alert_* fields
  * Core\Configuration\Settings owns (docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md
  * §5), used by OperationalSummarySweep, AlertEvaluator, and the
  * Intelligence admin panel so none of them read the raw settings array
@@ -32,7 +32,7 @@ final class IntelligenceSettings {
 	/**
 	 * Constructor.
 	 *
-	 * @param Settings $settings Supplies the operational_summary_*/alert_* fields.
+	 * @param Settings $settings Supplies the operational_summary_* and alert_* fields.
 	 */
 	public function __construct( private readonly Settings $settings ) {}
 
