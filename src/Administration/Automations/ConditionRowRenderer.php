@@ -234,4 +234,15 @@ final class ConditionRowRenderer {
 	public static function operator_labels(): array {
 		return self::OPERATOR_LABELS;
 	}
+
+	/**
+	 * The friendly boolean-value label map, exposed for reuse by
+	 * FailingConditionExplainer (M08.2) alongside operator_labels()'s own
+	 * existing reuse precedent.
+	 *
+	 * @return array<string, string>
+	 */
+	public static function boolean_value_labels(): array {
+		return self::BOOLEAN_VALUE_LABELS;
+	}
 }
