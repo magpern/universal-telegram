@@ -1303,7 +1303,8 @@ final class Plugin {
 			$this->digest_eligibility,
 			$settings,
 			$intelligence_settings,
-			$intelligence_panel
+			$intelligence_panel,
+			$this->woocommerce_support
 		);
 		$this->hub_tab_registry->register(
 			new Tab( 'rules', __( 'Rules', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_builder_page, 'render_tab_content' ) )

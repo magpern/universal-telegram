@@ -89,14 +89,12 @@ final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 		$_POST['template']           = 'x';
 		$_POST['priority']           = '100';
 		$_POST['cooldown_seconds']   = '0';
-		$_POST['conditions_json']    = wp_json_encode(
+		$_POST['conditions']         = array(
 			array(
-				array(
-					'field'    => 'subject.not_allowed',
-					'operator' => 'equals',
-					'value'    => 'x',
-				),
-			)
+				'field'    => 'subject.not_allowed',
+				'operator' => 'equals',
+				'value'    => 'x',
+			),
 		);
 
 		$registry = $this->registry();
@@ -125,14 +123,12 @@ final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 		$_POST['template']           = 'x';
 		$_POST['priority']           = '100';
 		$_POST['cooldown_seconds']   = '0';
-		$_POST['conditions_json']    = wp_json_encode(
+		$_POST['conditions']         = array(
 			array(
-				array(
-					'field'    => 'subject.user_id',
-					'operator' => 'equals',
-					'value'    => 1,
-				),
-			)
+				'field'    => 'subject.user_id',
+				'operator' => 'equals',
+				'value'    => '1',
+			),
 		);
 
 		$registry = $this->registry();
@@ -142,5 +138,48 @@ final class RuleBuilderRequestHandlerTest extends WP_UnitTestCase {
 		$handler->handle_request();
 
 		$this->assertCount( 1, $rules->all() );
+	}
+
+	public function test_match_mode_any_is_saved_and_an_incomplete_condition_row_is_dropped(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		$nonce                       = wp_create_nonce( RuleBuilderRequestHandler::NONCE_ACTION );
+		$_POST['_wpnonce']           = $nonce;
+		$_REQUEST['_wpnonce']        = $nonce;
+		$_POST['op']                 = 'save_rule';
+		$_POST['name']               = 'Test';
+		$_POST['event_type']         = 'wordpress.user_registered';
+		$_POST['schema_version_min'] = '1';
+		$_POST['bot_id']             = '1';
+		$_POST['destination_id']     = '1';
+		$_POST['template']           = 'x';
+		$_POST['priority']           = '100';
+		$_POST['cooldown_seconds']   = '0';
+		$_POST['match_mode']         = 'any';
+		$_POST['conditions']         = array(
+			array(
+				'field'    => 'subject.user_id',
+				'operator' => 'equals',
+				'value'    => '1',
+			),
+			array(
+				'field'    => '',
+				'operator' => '',
+				'value'    => '',
+			),
+		);
+
+		$registry = $this->registry();
+		$rules    = new NotificationRuleRepository( new SchemaHealth(), $registry );
+		$handler  = $this->handler( $rules );
+
+		$handler->handle_request();
+
+		$saved = $rules->all();
+		$this->assertCount( 1, $saved );
+		$this->assertSame( 'any', $saved[0]->match_mode() );
+		$this->assertCount( 1, $saved[0]->conditions() );
 	}
 }

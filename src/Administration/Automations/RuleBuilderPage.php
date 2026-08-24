@@ -16,18 +16,22 @@ use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Events\Registry;
+use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 
 /**
- * CRUD over NotificationRuleRepository. The condition-clause editor here is
- * a JSON textarea constrained, authoritatively, only by
- * NotificationRuleRepository::save()'s own server-side allowlist check
- * (M02 plan §9.1) — this page's own rendering is advisory only. Also
- * composes the M11B "Intelligence" settings section (operational summary +
- * threshold alerts) — the natural existing home for automation-adjacent
- * configuration, per docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md
- * §5, rather than a new Hub tab.
+ * CRUD over NotificationRuleRepository. The Add Rule form is a friendly,
+ * WordPress-native flow (M08.1): a grouped plain-language event picker and
+ * a visual "Only when…" condition-row builder, with no JSON textarea and
+ * no technical identifier ever shown as visible text — constrained,
+ * authoritatively, only by NotificationRuleRepository::save()'s own
+ * server-side allowlist check (M02 plan §9.1, unchanged); this page's own
+ * rendering is advisory only. Also composes the M11B "Intelligence"
+ * settings section (operational summary + threshold alerts) — the natural
+ * existing home for automation-adjacent configuration, per
+ * docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md §5,
+ * rather than a new Hub tab.
  */
 final class RuleBuilderPage {
 
@@ -48,6 +52,7 @@ final class RuleBuilderPage {
 	 * @param Settings|null              $settings             Reads/writes the operational_summary_* and alert_* fields (§5). Null only for pre-M11B callers.
 	 * @param IntelligenceSettings|null  $intelligence_settings Typed reader over the same fields. Null only for pre-M11B callers.
 	 * @param IntelligencePanel|null     $intelligence_panel    The AI-summary review UI (§2.6/§5), composed after the settings form. Null only for pre-WP7 callers.
+	 * @param WooCommerceSupport|null    $woocommerce_support    Gates WooCommerce-only event families and presets (M08.1). Null only for pre-M08.1 callers, treated as WooCommerce-inactive.
 	 */
 	public function __construct(
 		private readonly NotificationRuleRepository $rules,
@@ -57,8 +62,86 @@ final class RuleBuilderPage {
 		private readonly ?DigestEligibility $digest_eligibility = null,
 		private readonly ?Settings $settings = null,
 		private readonly ?IntelligenceSettings $intelligence_settings = null,
-		private readonly ?IntelligencePanel $intelligence_panel = null
+		private readonly ?IntelligencePanel $intelligence_panel = null,
+		private readonly ?WooCommerceSupport $woocommerce_support = null
 	) {}
+
+	/**
+	 * Plain-language event families (M08.1 plan "Friendly labels"): grouping
+	 * only, derived from the existing event_type list — no Registry change.
+	 * `visitor.click` is deliberately excluded from every family (task
+	 * requirement); it keeps its EventCatalogLabels entry for other read
+	 * paths (Events tab, history) unaffected.
+	 *
+	 * @var array<string, array{label: string, requires_woocommerce: bool, event_types: array<int, string>}>
+	 */
+	private const EVENT_FAMILIES = array(
+		'website_and_users'   => array(
+			'label'                => 'Website and users',
+			'requires_woocommerce' => false,
+			'event_types'          => array(
+				'wordpress.login_succeeded',
+				'wordpress.admin_login',
+				'wordpress.login_failed',
+				'wordpress.user_registered',
+				'wordpress.user_role_changed',
+				'wordpress.password_reset',
+				'wordpress.post_published',
+				'wordpress.comment_submitted',
+				'wordpress.plugin_activated',
+				'wordpress.plugin_deactivated',
+				'wordpress.update_available',
+				'wordpress.update_completed',
+			),
+		),
+		'store_orders'        => array(
+			'label'                => 'Store orders and payments',
+			'requires_woocommerce' => true,
+			'event_types'          => array(
+				'woocommerce.order_created',
+				'woocommerce.order_status_changed',
+				'woocommerce.payment_completed',
+				'woocommerce.order_failed',
+				'woocommerce.order_cancelled',
+				'woocommerce.refund_created',
+			),
+		),
+		'stock_and_checkout'  => array(
+			'label'                => 'Stock and checkout',
+			'requires_woocommerce' => true,
+			'event_types'          => array(
+				'woocommerce.stock_threshold_crossed',
+				'woocommerce.cart_item_added',
+				'woocommerce.coupon_applied',
+				'woocommerce.coupon_rejected',
+				'woocommerce.checkout_validation_failed',
+			),
+		),
+		'website_health'      => array(
+			'label'                => 'Website health',
+			'requires_woocommerce' => false,
+			'event_types'          => array(
+				'wordpress.scheduled_task_failed',
+				'wordpress.rest_request_failed',
+				'wordpress.email_sending_failed',
+				'wordpress.fatal_error',
+			),
+		),
+		'visitor_activity'    => array(
+			'label'                => 'Visitor activity',
+			'requires_woocommerce' => false,
+			'event_types'          => array(
+				'visitor.session_started',
+				'visitor.page_viewed',
+				'visitor.navigation',
+				'visitor.search_performed',
+				'visitor.javascript_error',
+				'visitor.product_viewed',
+				'visitor.add_to_cart_intent',
+				'visitor.checkout_started_intent',
+			),
+		),
+	);
 
 	/**
 	 * Renders this tab's content only (no outer .wrap/<h1> — owned by
@@ -279,7 +362,20 @@ final class RuleBuilderPage {
 	}
 
 	/**
-	 * Renders the create-rule form.
+	 * Whether WooCommerce is currently active. Treated as inactive when no
+	 * WooCommerceSupport was supplied (pre-M08.1 test doubles).
+	 *
+	 * @return bool
+	 */
+	private function woocommerce_active(): bool {
+		return null !== $this->woocommerce_support && $this->woocommerce_support->is_active();
+	}
+
+	/**
+	 * Renders the create-rule form: the friendly, grouped event picker and
+	 * the visual "Only when…" condition builder (M08.1). Message editor,
+	 * delivery-options disclosure, and preset cards are added by later
+	 * work packages in this same milestone.
 	 */
 	private function render_rule_form(): void {
 		echo '<h2>' . esc_html__( 'Add rule', 'universal-telegram' ) . '</h2>';
@@ -292,18 +388,15 @@ final class RuleBuilderPage {
 
 		echo '<tr><th><label for="ut-rule-name">' . esc_html__( 'Name', 'universal-telegram' ) . '</label></th><td><input type="text" id="ut-rule-name" name="name" class="regular-text" /></td></tr>';
 
-		echo '<tr><th><label for="ut-rule-event-type">' . esc_html__( 'Event type', 'universal-telegram' ) . '</label></th><td><select id="ut-rule-event-type" name="event_type">';
-		foreach ( $this->registry->all() as $entry ) {
-			printf( '<option value="%s">%s</option>', esc_attr( $entry['event_type'] ), esc_html( $entry['event_type'] ) );
-		}
-		echo '</select>';
-		if ( null !== $this->digest_eligibility && $this->digest_eligibility->is_active() ) {
-			echo '<p class="description">' . esc_html__(
-				'Visitor Digest is currently enabled and active: page view, navigation, search, product view, and cart/checkout-intent event types will not send individually while that remains the case.',
-				'universal-telegram'
-			) . '</p>';
-		}
-		echo '</td></tr>';
+		echo '</tbody></table>';
+
+		echo '<h3>' . esc_html__( '1. When this happens', 'universal-telegram' ) . '</h3>';
+		$this->render_event_picker();
+
+		echo '<h3>' . esc_html__( '2. Only when…', 'universal-telegram' ) . '</h3>';
+		$this->render_condition_builder();
+
+		echo '<table class="form-table"><tbody>';
 
 		echo '<tr><th><label for="ut-rule-bot">' . esc_html__( 'Bot', 'universal-telegram' ) . '</label></th><td><select id="ut-rule-bot" name="bot_id">';
 		foreach ( $this->bots->all() as $bot ) {
@@ -313,14 +406,11 @@ final class RuleBuilderPage {
 
 		echo '<tr><th><label for="ut-rule-destination">' . esc_html__( 'Destination', 'universal-telegram' ) . '</label></th><td><select id="ut-rule-destination" name="destination_id">';
 		foreach ( $this->bots->all() as $bot ) {
-			foreach ( $this->destinations->for_bot( $bot->id() ) as $destination ) {
+			foreach ( $this->eligible_destinations( $bot->id() ) as $destination ) {
 				printf( '<option value="%d">%s</option>', (int) $destination->id(), esc_html( $bot->name() . ' / ' . $destination->label() ) );
 			}
 		}
 		echo '</select></td></tr>';
-
-		echo '<tr><th><label for="ut-rule-conditions">' . esc_html__( 'Conditions (JSON)', 'universal-telegram' ) . '</label></th><td><textarea id="ut-rule-conditions" name="conditions_json" class="large-text code" rows="4">[]</textarea>' .
-			'<p class="description">' . esc_html__( 'A flat JSON array of {"field", "operator", "value"} clauses. Every rule is validated server-side against the selected event type\'s own allowed fields.', 'universal-telegram' ) . '</p></td></tr>';
 
 		echo '<tr><th><label for="ut-rule-template">' . esc_html__( 'Message template', 'universal-telegram' ) . '</label></th><td><textarea id="ut-rule-template" name="template" class="large-text" rows="3"></textarea></td></tr>';
 
@@ -334,5 +424,231 @@ final class RuleBuilderPage {
 
 		submit_button( __( 'Save rule', 'universal-telegram' ) );
 		echo '</form>';
+
+		$this->render_condition_builder_script();
+	}
+
+	/**
+	 * The destinations eligible for one bot: reuses DigestEligibility's own
+	 * "enabled, never conversation-linked" rule (M08.1 plan §4 "reuse
+	 * existing eligibility and destination safety rules") when available,
+	 * falling back to an enabled-only filter for pre-M11A callers.
+	 *
+	 * @param int $bot_id The bot's primary key.
+	 *
+	 * @return array<int, \UniversalTelegram\Telegram\Configuration\Destination>
+	 */
+	private function eligible_destinations( int $bot_id ): array {
+		if ( null !== $this->digest_eligibility ) {
+			return $this->digest_eligibility->eligible_destinations_for_bot( $bot_id );
+		}
+
+		return array_values( array_filter( $this->destinations->for_bot( $bot_id ), static fn( $destination ) => $destination->enabled() ) );
+	}
+
+	/**
+	 * Renders the family-grouped, friendly event-type picker. A
+	 * WooCommerce-only family is disabled with a clear explanation when
+	 * WooCommerce is inactive, rather than omitted (task requirement — an
+	 * admin should understand why options are missing).
+	 */
+	private function render_event_picker(): void {
+		$woocommerce_active = $this->woocommerce_active();
+
+		echo '<p><label for="ut-rule-event-type" class="screen-reader-text">' . esc_html__( 'Event type', 'universal-telegram' ) . '</label>';
+		echo '<select id="ut-rule-event-type" name="event_type">';
+
+		foreach ( self::EVENT_FAMILIES as $family ) {
+			$family_disabled = $family['requires_woocommerce'] && ! $woocommerce_active;
+
+			printf(
+				'<optgroup label="%s"%s>',
+				esc_attr( $family['label'] ),
+				$family_disabled ? ' disabled="disabled"' : ''
+			);
+
+			foreach ( $family['event_types'] as $event_type ) {
+				if ( ! $this->registry->is_registered( $event_type ) ) {
+					continue;
+				}
+
+				printf(
+					'<option value="%s"%s>%s</option>',
+					esc_attr( $event_type ),
+					$family_disabled ? ' disabled="disabled"' : '',
+					esc_html( EventCatalogLabels::event_type_label( $event_type ) )
+				);
+			}
+
+			echo '</optgroup>';
+		}
+
+		echo '</select></p>';
+
+		foreach ( self::EVENT_FAMILIES as $family ) {
+			if ( $family['requires_woocommerce'] && ! $woocommerce_active ) {
+				printf(
+					'<p class="description">%s: %s</p>',
+					esc_html( $family['label'] ),
+					esc_html__( 'Requires WooCommerce, which is not currently active on this site.', 'universal-telegram' )
+				);
+			}
+		}
+
+		if ( null !== $this->digest_eligibility && $this->digest_eligibility->is_active() ) {
+			echo '<p class="description">' . esc_html__(
+				'Visitor Digest is currently enabled and active: page view, navigation, search, product view, and cart/checkout-intent event types will not send individually while that remains the case.',
+				'universal-telegram'
+			) . '</p>';
+		}
+	}
+
+	/**
+	 * Renders the visual "Only when…" condition builder: hidden by default
+	 * (zero-state — no rows, no all/any control) until "Add a condition" is
+	 * clicked, per the frozen plan's progressive-disclosure requirement.
+	 */
+	private function render_condition_builder(): void {
+		echo '<div id="ut-conditions-wrap" style="display:none">';
+
+		echo '<fieldset><legend class="screen-reader-text">' . esc_html__( 'How conditions combine', 'universal-telegram' ) . '</legend>';
+		echo '<label><input type="radio" name="match_mode" value="all" checked="checked" /> ' . esc_html__( 'All conditions must match', 'universal-telegram' ) . '</label> ';
+		echo '<label><input type="radio" name="match_mode" value="any" /> ' . esc_html__( 'Any condition may match', 'universal-telegram' ) . '</label>';
+		echo '</fieldset>';
+
+		echo '<div id="ut-condition-rows">';
+		echo '</div>';
+
+		echo '</div>';
+
+		echo '<p><button type="button" id="ut-add-condition" class="button">' . esc_html__( '+ Add a condition', 'universal-telegram' ) . '</button></p>';
+		echo '<p class="description">' . esc_html__( 'A rule with no conditions notifies every time its event happens.', 'universal-telegram' ) . '</p>';
+
+		echo '<div id="ut-condition-row-template" style="display:none">';
+		ConditionRowRenderer::render( 0, '', $this->registry );
+		echo '</div>';
+	}
+
+	/**
+	 * Embeds the per-event-type friendly field/operator/choice metadata as
+	 * JSON and the small vanilla-JS behavior for the event picker and
+	 * condition builder: row add/remove, and rebuilding a row's own
+	 * operator/value controls when its field (or the event type) changes.
+	 * No build pipeline, no framework — plain DOM script, matching the
+	 * frozen plan's "no SPA/React/Vue" requirement.
+	 */
+	private function render_condition_builder_script(): void {
+		$metadata = array();
+		foreach ( $this->registry->all() as $entry ) {
+			$metadata[ $entry['event_type'] ] = ConditionRowRenderer::field_metadata_for_event( $entry['event_type'], $this->registry );
+		}
+
+		echo '<script type="application/json" id="ut-condition-field-metadata">' . wp_json_encode( $metadata ) . '</script>';
+		?>
+		<script>
+		( function () {
+			var metadata = JSON.parse( document.getElementById( 'ut-condition-field-metadata' ).textContent || '{}' );
+			var eventSelect = document.getElementById( 'ut-rule-event-type' );
+			var wrap = document.getElementById( 'ut-conditions-wrap' );
+			var rows = document.getElementById( 'ut-condition-rows' );
+			var template = document.getElementById( 'ut-condition-row-template' );
+			var addButton = document.getElementById( 'ut-add-condition' );
+			var rowIndex = 0;
+
+			function optionsHtml( items, selectedValue ) {
+				var html = '';
+				for ( var i = 0; i < items.length; i++ ) {
+					var selected = items[ i ].value === selectedValue ? ' selected' : '';
+					html += '<option value="' + items[ i ].value + '"' + selected + '>' + items[ i ].label + '</option>';
+				}
+				return html;
+			}
+
+			function fieldOptionsHtml( eventType ) {
+				var fields = metadata[ eventType ] || {};
+				var html = '';
+				for ( var field in fields ) {
+					if ( Object.prototype.hasOwnProperty.call( fields, field ) ) {
+						html += '<option value="' + field + '">' + fields[ field ].label + '</option>';
+					}
+				}
+				return html;
+			}
+
+			function rebuildOperatorAndValue( row ) {
+				var eventType = eventSelect.value;
+				var fieldSelect = row.querySelector( '.ut-condition-field' );
+				var operatorSelect = row.querySelector( '.ut-condition-operator' );
+				var valueContainer = row.querySelector( '.ut-condition-value' );
+				var fields = metadata[ eventType ] || {};
+				var field = fields[ fieldSelect.value ];
+
+				if ( ! field ) {
+					return;
+				}
+
+				operatorSelect.innerHTML = optionsHtml( field.operators, '' );
+
+				var name = valueContainer.getAttribute( 'name' );
+				var newValueEl;
+
+				if ( field.type === 'choice' || field.type === 'boolean' ) {
+					newValueEl = document.createElement( 'select' );
+					newValueEl.innerHTML = optionsHtml( field.choice_options || [], '' );
+				} else {
+					newValueEl = document.createElement( 'input' );
+					newValueEl.type = ( field.type === 'number' || field.type === 'money' ) ? 'number' : 'text';
+					if ( field.type === 'money' ) {
+						newValueEl.step = '0.01';
+					}
+				}
+
+				newValueEl.className = 'ut-condition-value regular-text';
+				newValueEl.setAttribute( 'name', name );
+				valueContainer.parentNode.replaceChild( newValueEl, valueContainer );
+			}
+
+			function rebuildFieldOptions( row ) {
+				var eventType = eventSelect.value;
+				var fieldSelect = row.querySelector( '.ut-condition-field' );
+				fieldSelect.innerHTML = fieldOptionsHtml( eventType );
+				rebuildOperatorAndValue( row );
+			}
+
+			function addRow() {
+				var row = template.firstElementChild.cloneNode( true );
+				var html = row.outerHTML.replace( /conditions\[0\]/g, 'conditions[' + rowIndex + ']' );
+				var wrapperDiv = document.createElement( 'div' );
+				wrapperDiv.innerHTML = html;
+				row = wrapperDiv.firstElementChild;
+				rowIndex++;
+
+				row.querySelector( '.ut-remove-condition' ).addEventListener( 'click', function () {
+					row.parentNode.removeChild( row );
+					if ( ! rows.children.length ) {
+						wrap.style.display = 'none';
+					}
+				} );
+
+				row.querySelector( '.ut-condition-field' ).addEventListener( 'change', function () {
+					rebuildOperatorAndValue( row );
+				} );
+
+				rows.appendChild( row );
+				rebuildFieldOptions( row );
+				wrap.style.display = '';
+			}
+
+			addButton.addEventListener( 'click', addRow );
+
+			eventSelect.addEventListener( 'change', function () {
+				var existingRows = rows.querySelectorAll( '.ut-condition-row' );
+				for ( var i = 0; i < existingRows.length; i++ ) {
+					rebuildFieldOptions( existingRows[ i ] );
+				}
+			} );
+		} )();
+		</script>
+		<?php
 	}
 }

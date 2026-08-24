@@ -64,7 +64,12 @@ class RuleBuilderRequestHandler {
 	}
 
 	/**
-	 * Handles the save_rule operation (create or update).
+	 * Handles the save_rule operation (create or update). Conditions arrive
+	 * as the friendly builder's own `conditions[N][field|operator|value]`
+	 * POST shape (M08.1) — never JSON — and are translated here into the
+	 * exact flat clause array NotificationRuleRepository::save() already
+	 * accepts and authoritatively validates; this translation performs no
+	 * validation of its own.
 	 */
 	private function save_rule(): void {
 		$id = isset( $_POST['id'] ) && '' !== $_POST['id'] ? (int) $_POST['id'] : null;
@@ -78,22 +83,50 @@ class RuleBuilderRequestHandler {
 		$enabled            = ! empty( $_POST['enabled'] );
 		$priority           = isset( $_POST['priority'] ) ? (int) $_POST['priority'] : 100;
 		$cooldown_seconds   = isset( $_POST['cooldown_seconds'] ) ? max( 0, (int) $_POST['cooldown_seconds'] ) : 0;
+		$match_mode         = isset( $_POST['match_mode'] ) && 'any' === $_POST['match_mode'] ? 'any' : 'all';
 
-		$conditions_raw = isset( $_POST['conditions_json'] ) ? sanitize_textarea_field( wp_unslash( $_POST['conditions_json'] ) ) : '[]';
-		$conditions     = json_decode( (string) $conditions_raw, true );
-
-		if ( ! is_array( $conditions ) ) {
-			$conditions = array();
-		}
+		$conditions = $this->parse_conditions_from_post();
 
 		try {
-			$this->rules->save( $id, $name, $event_type, $schema_version_min, $conditions, $bot_id, $destination_id, $template, $enabled, $priority, $cooldown_seconds );
+			$this->rules->save( $id, $name, $event_type, $schema_version_min, $conditions, $bot_id, $destination_id, $template, $enabled, $priority, $cooldown_seconds, $match_mode );
 		} catch ( InvalidConditionFieldException $exception ) {
 			// The authoritative, server-side rejection — a malformed or
 			// disallowed condition field is simply never saved. No raw
 			// exception detail is ever rendered.
 			return;
 		}
+	}
+
+	/**
+	 * Translates the friendly builder's `conditions[N][field|operator|value]`
+	 * POST fields into a flat clause array. A row missing a field or
+	 * operator is dropped rather than passed through — the server-side
+	 * allowlist check in NotificationRuleRepository::save() remains the
+	 * sole authority either way.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function parse_conditions_from_post(): array {
+		if ( ! isset( $_POST['conditions'] ) || ! is_array( $_POST['conditions'] ) ) {
+			return array();
+		}
+
+		$raw_conditions = wp_unslash( $_POST['conditions'] ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$conditions     = array();
+
+		foreach ( $raw_conditions as $clause ) {
+			if ( ! is_array( $clause ) || empty( $clause['field'] ) || empty( $clause['operator'] ) ) {
+				continue;
+			}
+
+			$conditions[] = array(
+				'field'    => sanitize_text_field( (string) $clause['field'] ),
+				'operator' => sanitize_text_field( (string) $clause['operator'] ),
+				'value'    => sanitize_text_field( (string) ( $clause['value'] ?? '' ) ),
+			);
+		}
+
+		return $conditions;
 	}
 
 	/**
