@@ -19,6 +19,7 @@ use UniversalTelegram\Queue\WorkerRunner;
 use UniversalTelegram\Telegram\Client\FailureClassification;
 use UniversalTelegram\Telegram\Client\TelegramApiClient;
 use UniversalTelegram\Telegram\Client\TelegramFailureClassifier;
+use UniversalTelegram\Telegram\Client\TelegramTopicError;
 use UniversalTelegram\Telegram\Client\TelegramApiResult;
 use UniversalTelegram\Telegram\Configuration\BotProfile;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
@@ -259,7 +260,14 @@ class SendMessageHandler {
 		}
 
 		if ( FailureClassification::TERMINAL === $classification ) {
-			$this->dead_letter( $message->id(), $bot->id(), $destination->id(), 'telegram_terminal_rejection' );
+			$reason = 'telegram_terminal_rejection';
+			$thread = $destination->message_thread_id();
+
+			if ( null !== $thread && $thread > 1 ) {
+				$reason = TelegramTopicError::classify_send_failure( $result->description() );
+			}
+
+			$this->dead_letter( $message->id(), $bot->id(), $destination->id(), $reason );
 			return AttemptOutcome::TERMINAL;
 		}
 
