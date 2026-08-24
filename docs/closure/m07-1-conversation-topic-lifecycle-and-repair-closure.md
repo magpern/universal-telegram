@@ -2,9 +2,11 @@
 
 ## Status
 
-**Implementation and plan freeze are complete.**
+**Implementation and plan freeze are complete. Combined validation gate is closed.**
 
-Validation, PR creation, GitHub Actions / CI wait, merge to `main`, release/tag/deployment, and Product Owner acceptance are **deferred to the combined M11 validation gate** on `feature/m11a-visitor-activity-digests`. This slice does not open a PR and does not claim M11 closure.
+M07.1 landed on `main` via the combined M11 exploratory merge (PR #26) and the follow-up CI-repair / validation-gate closure (PR #27; see `docs/closure/m11-m07-1-ci-repair-and-validation-gate-closure.md`).
+
+**Still pending:** exploratory wide / manual checklist testing, Product Owner acceptance, tag, release ZIP, and deployment. This record does **not** claim M07.1 PASS or Product Owner acceptance.
 
 ## Branch and SHAs
 
@@ -40,13 +42,16 @@ Validation, PR creation, GitHub Actions / CI wait, merge to `main`, release/tag/
 2. **No `chat not found` purge:** on `deleteForumTopic`, `chat not found` is `delete_failed` + `telegram_topic_delete_chat_not_found`; local rows are retained. Only explicit missing-topic/missing-thread responses are idempotent remote success that may purge.
 3. **Exclusive destination ownership:** remote delete and destination-row deletion require exactly one conversation referencing `destination_id`. Shared ownership → no remote call and no dest-row delete.
 
-## What was not done in this task
+## What was not done in the original deferred-validation task
 
-- No local test, linter, build, package-acceptance, or CI run.
-- No PR opened; no CI wait; no merge to `main`.
+- At that time: no local test, linter, build, package-acceptance, or CI run; no PR; no merge.
+- Those items are now closed by the combined M11 exploratory merge and CI-repair / validation-gate closure.
+
+## Still not done
+
 - No tag, release ZIP, or deployment.
-- No live Telegram, provider, bot, webhook, or destination API call.
-- Combined M11 remains unvalidated and unmerged.
+- No Product Owner acceptance of M07.1 (or combined M11).
+- Manual exploratory checklist still open: Archive; confirm Delete permanently; reopen a closed topic then retry send; delete already-removed topic; observe chat-not-found repair banner; confirm Bots-tab list has no delete control and links to inbox.
 - M12 has not started.
 
 ## Frozen plan
