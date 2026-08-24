@@ -14,7 +14,7 @@ This record documents an authorized merge of combined implementation work to `ma
 | Feature branch head | `7bcc070c7d9dccc89853f19acb7f696eb2172a93` (`feature/m11a-visitor-activity-digests`) |
 | PR | https://github.com/magpern/universal-telegram/pull/26 |
 | Merge SHA | `708804b301dab5dda0b6146c9278b4343fdc0f32` |
-| Record SHA | *(this commit on `main`)* |
+| Record SHA | `4f24a099c99a37a9944cc56cfb2f622f88de4cac` |
 
 ## Included milestones
 
