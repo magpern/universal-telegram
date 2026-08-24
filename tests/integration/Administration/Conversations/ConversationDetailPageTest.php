@@ -145,4 +145,46 @@ final class ConversationDetailPageTest extends WP_UnitTestCase {
 		$refreshed = $conversations->find( $conversation->id() );
 		$this->assertNull( $refreshed->assignee_last_seen_message_id() );
 	}
+
+	public function test_open_conversation_renders_archive_and_no_get_delete(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		list( $page, $conversations ) = $this->page();
+		$conversation                 = $conversations->create( 'uuid-detail-actions', 'hash', 1, null );
+		$conversations->transition( $conversation->id(), 'new', 'open' );
+
+		ob_start();
+		$page->render( $conversation->id() );
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'name="op" value="archive"', $output );
+		$this->assertStringContainsString( 'Archive', $output );
+		$this->assertStringNotContainsString( 'name="op" value="delete_permanently"', $output );
+	}
+
+	public function test_archived_confirm_delete_form_requires_second_post(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( $admin );
+
+		list( $page, $conversations ) = $this->page();
+		$conversation                 = $conversations->create( 'uuid-detail-confirm', 'hash', 1, null );
+		$conversations->transition( $conversation->id(), 'new', 'open' );
+		$conversations->transition( $conversation->id(), 'open', 'resolved' );
+		$conversations->transition( $conversation->id(), 'resolved', 'archived' );
+
+		$_GET['confirm_delete'] = '1';
+
+		ob_start();
+		$page->render( $conversation->id() );
+		$output = ob_get_clean();
+
+		unset( $_GET['confirm_delete'] );
+
+		$this->assertStringContainsString( 'name="op" value="delete_permanently"', $output );
+		$this->assertStringContainsString( 'name="confirm" value="1"', $output );
+		$this->assertStringContainsString( 'This deletes the Telegram topic', $output );
+	}
 }
