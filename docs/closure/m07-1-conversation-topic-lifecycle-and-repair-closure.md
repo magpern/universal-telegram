@@ -13,7 +13,7 @@ Validation, PR creation, GitHub Actions / CI wait, merge to `main`, release/tag/
 | Feature branch | `feature/m11a-visitor-activity-digests` |
 | Starting SHA (pre-M07.1) | `dee2135e1eeef4576d2d67da92a6d6e92ce49ad6` |
 | Plan freeze SHA | `305c8d1d2a098e7d5fef9a43cefb16fe3f642c2b` |
-| Final SHA (this closure commit) | *(recorded at commit time; see `git rev-parse HEAD`)* |
+| Final SHA (this closure commit) | `dced7de14aef2b28d911aabc66da953392191416` |
 | Plugin version | `0.14.0` |
 | `db_version` target | `29` |
 | ADR | ADR-0031 |
