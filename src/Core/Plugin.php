@@ -13,6 +13,7 @@ use UniversalTelegram\Administration\AI\ApprovedContentPage;
 use UniversalTelegram\Administration\AI\ConversationDraftPanel;
 use UniversalTelegram\Administration\Automations\EventCatalogPage;
 use UniversalTelegram\Administration\Automations\EventHistoryPage;
+use UniversalTelegram\Administration\Automations\IntelligencePanel;
 use UniversalTelegram\Administration\Automations\RuleBuilderPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderRequestHandler;
 use UniversalTelegram\Administration\Automations\RuleSimulatorPage;
@@ -1220,6 +1221,12 @@ final class Plugin {
 		);
 
 		$intelligence_settings = new IntelligenceSettings( $settings );
+		$intelligence_panel    = new IntelligencePanel(
+			new SummaryAiRepository( $this->schema_health, $this->credential_vault ),
+			new OperationalSummaryRepository( $this->schema_health ),
+			$this->ai_provider_repository
+		);
+		add_action( 'admin_post_' . IntelligencePanel::ADMIN_POST_ACTION, array( $intelligence_panel, 'handle_request' ) );
 
 		$this->rule_builder_page = new RuleBuilderPage(
 			$this->notification_rule_repository,
@@ -1228,7 +1235,8 @@ final class Plugin {
 			$this->destination_repository,
 			$this->digest_eligibility,
 			$settings,
-			$intelligence_settings
+			$intelligence_settings,
+			$intelligence_panel
 		);
 		$this->hub_tab_registry->register(
 			new Tab( 'rules', __( 'Rules', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_builder_page, 'render_tab_content' ) )
