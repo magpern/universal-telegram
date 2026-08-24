@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+Not Started (full milestone). **M11A, a non-AI first slice covering scheduled visitor-activity digests and threshold/timeout batching, is frozen and implementation-authorized** per ADR-0029 and `docs/plans/m11a-visitor-activity-digests-plan-v1.md`. M11A does not require M09 acceptance and does not close this milestone; the remainder of M11 (checkout-failure detection, funnel summaries, error clustering, AI-assisted internal summaries, destination-specific reporting beyond the one visitor-digest target) remains Not Started and still depends on M09 exactly as below.
 
 ## Dependencies
 
