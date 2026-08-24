@@ -913,6 +913,10 @@ final class Plugin {
 				// M09, docs/adr/0028 §4: AI draft content is untouched — only
 				// the requester/reviewer identity is anonymized.
 				$this->ai_draft_repository->anonymize_operator( $user_id );
+				// M11B plan §4 step 28: identical anonymize-only-never-delete
+				// treatment for operational-summary AI drafts — the owning
+				// summary row is never touched by this path.
+				( new SummaryAiRepository( $this->schema_health, $this->credential_vault ) )->anonymize_operator( $user_id );
 
 				$this->audit_logger->record(
 					'conversation.operator_identity.account_deleted_cleanup',

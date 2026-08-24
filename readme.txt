@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.12.0
+Stable tag: 0.13.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,20 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.13.0 =
+* Digests and Operational Intelligence, remainder (M11B, ADR-0030, completing M11 together with
+  M11A/ADR-0029 as one combined release): a daily Operational Summary (orders, payments, checkout
+  failures, JavaScript-error categories, and a visitor-to-order funnel, all aggregate counts only);
+  three fixed threshold alerts (checkout failure count, order failure spike, JS-error category
+  spike), default disabled, each independently configurable and bounded by a fixed one-hour re-fire
+  cooldown so a persisting condition can never flood Telegram; and an operator-triggered,
+  operator-reviewed AI-assisted rendering of the Operational Summary's own aggregate counts,
+  reusing the AI Draft Assistant's provider configuration (M09) but never auto-sent to Telegram or
+  any visitor — displayed in wp-admin only, with a fixed "NOT SENT" notice. AI-summary generation
+  shares M09's existing site-wide two-slot provider-concurrency cap rather than introducing a second
+  one. Every destination reuses the same conversation-topic-exclusion eligibility rule M11A already
+  established. Adds four new database tables (db_version 24 -> 28).
 
 = 0.12.0 =
 * Visitor Activity Digest (M11A, ADR-0029, first non-AI slice of M11): routine visitor activity —

@@ -173,13 +173,13 @@ if [ -z "$(m06_column_exists "conversations" "owner_active_slot")" ]; then
 fi
 echo "OK: universal_telegram_conversations.owner_user_id and owner_active_slot columns exist."
 
-echo "== Verifying db_version reached 24 =="
+echo "== Verifying db_version reached 28 =="
 DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "24" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=24, got ${DB_VERSION}" >&2
+if [ "28" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=28, got ${DB_VERSION}" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 24."
+echo "OK: universal_telegram_db_version is 28."
 
 echo "== Verifying M07 operator-workflow tables and columns exist =="
 for TABLE in operator_identities conversation_notes operator_availability; do
