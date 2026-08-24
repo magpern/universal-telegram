@@ -50,16 +50,16 @@ final class DigestEligibilityTest extends WP_UnitTestCase {
 	}
 
 	public function test_is_active_is_false_when_digest_disabled(): void {
-		$bot_id         = $this->active_bot();
-		$destination    = $this->destinations()->create( $bot_id, DestinationKind::CHANNEL, '@chan', null, 'Channel' );
+		$bot_id      = $this->active_bot();
+		$destination = $this->destinations()->create( $bot_id, DestinationKind::CHANNEL, '@chan', null, 'Channel' );
 
 		update_option(
 			Settings::OPTION_NAME,
 			( new Settings() )->sanitize(
 				array(
-					'visitor_digest_enabled'         => false,
-					'visitor_digest_bot_id'          => $bot_id,
-					'visitor_digest_destination_id'  => $destination->id(),
+					'visitor_digest_enabled'        => false,
+					'visitor_digest_bot_id'         => $bot_id,
+					'visitor_digest_destination_id' => $destination->id(),
 				)
 			)
 		);
@@ -145,16 +145,16 @@ final class DigestEligibilityTest extends WP_UnitTestCase {
 	}
 
 	public function test_eligible_destinations_for_bot_excludes_conversation_linked_destinations(): void {
-		$bot_id        = $this->active_bot();
-		$destinations  = $this->destinations();
-		$manual        = $destinations->create( $bot_id, DestinationKind::CHANNEL, '@manual', null, 'Manual' );
+		$bot_id                   = $this->active_bot();
+		$destinations             = $this->destinations();
+		$manual                   = $destinations->create( $bot_id, DestinationKind::CHANNEL, '@manual', null, 'Manual' );
 		$conversation_destination = $destinations->create( $bot_id, DestinationKind::SUPERGROUP, '-100999', 7, 'Conversation topic' );
 
 		$conversations = $this->conversations();
 		$conversation  = $conversations->create( wp_generate_uuid4(), hash( 'sha256', 'secret2' ), $bot_id, null );
 		$conversations->set_destination( $conversation->id(), $conversation_destination->id() );
 
-		$eligible    = $this->eligibility( $conversations )->eligible_destinations_for_bot( $bot_id );
+		$eligible     = $this->eligibility( $conversations )->eligible_destinations_for_bot( $bot_id );
 		$eligible_ids = array_map( static fn( $destination ) => $destination->id(), $eligible );
 
 		$this->assertContains( $manual->id(), $eligible_ids );

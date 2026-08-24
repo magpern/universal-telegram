@@ -70,6 +70,20 @@ final class MigrationLock {
 		);
 
 		wp_cache_delete( self::OPTION_NAME, 'options' );
+
+		// WP_UnitTestCase runs with autocommit off and ROLLBACKs after each
+		// test. Migration steps issue DDL, which implicitly commits the lock
+		// INSERT; the matching DELETE (and the final db_version update_option
+		// sitting in the same open transaction) would otherwise be rolled
+		// back — restoring a live lock and a stale version for every later
+		// test. Persist both under the test bootstrap only. Production uses
+		// autocommit and must not open a transaction here.
+		if ( defined( 'WP_TESTS_DOMAIN' ) ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- transactional control, no user input.
+			$wpdb->query( 'COMMIT' );
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- transactional control, no user input.
+			$wpdb->query( 'START TRANSACTION' );
+		}
 	}
 
 	/**

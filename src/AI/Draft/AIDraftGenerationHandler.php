@@ -51,13 +51,13 @@ class AIDraftGenerationHandler {
 	/**
 	 * Constructor.
 	 *
-	 * @param AiDraftRepository       $drafts                          Draft persistence, claim, and lease.
-	 * @param AIProviderRepository    $provider_config                 Reads enablement/model/credential.
-	 * @param PromptBuilder           $prompt_builder                  Assembles the bounded, source-grounded prompt.
-	 * @param CircuitBreaker          $circuit_breaker                 Per-provider breaker, 'ai_provider' scope.
-	 * @param AiFailureClassifier     $classifier                      Classifies a failed provider result.
-	 * @param RetryPolicy             $retry_policy                    Consulted only for its own max_attempts().
-	 * @param ProviderConcurrencyGate $concurrency_gate                The shared, cross-feature admission mutex (M11B plan §3) — replaces this handler's own prior direct call to AiDraftRepository::claim_for_generation(), which remains present, unchanged, for backward compatibility with existing direct callers/tests only.
+	 * @param AiDraftRepository           $drafts                          Draft persistence, claim, and lease.
+	 * @param AIProviderRepository        $provider_config                 Reads enablement/model/credential.
+	 * @param PromptBuilder               $prompt_builder                  Assembles the bounded, source-grounded prompt.
+	 * @param CircuitBreaker              $circuit_breaker                 Per-provider breaker, 'ai_provider' scope.
+	 * @param AiFailureClassifier         $classifier                      Classifies a failed provider result.
+	 * @param RetryPolicy                 $retry_policy                    Consulted only for its own max_attempts().
+	 * @param ProviderConcurrencyGate     $concurrency_gate                The shared, cross-feature admission mutex (M11B plan §3) — replaces this handler's own prior direct call to AiDraftRepository::claim_for_generation(), which remains present, unchanged, for backward compatibility with existing direct callers/tests only.
 	 * @param array<int, callable(): int> $external_active_count_providers Additional domains' own active-generation counts to sum against the shared cap (e.g. M11B's operational-summary AI drafts). Empty by default.
 	 */
 	public function __construct(

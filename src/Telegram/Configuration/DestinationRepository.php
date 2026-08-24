@@ -71,7 +71,12 @@ final class DestinationRepository {
 			return null;
 		}
 
-		do_action( BotProfileRepository::CHANGED_ACTION );
+		/**
+		 * Fires after a bot or destination row changes.
+		 *
+		 * @since 0.5.0
+		 */
+		do_action( BotProfileRepository::CHANGED_ACTION ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- constant value is universal_telegram_bot_or_destination_changed.
 
 		return $this->find( (int) $wpdb->insert_id );
 	}
@@ -137,7 +142,12 @@ final class DestinationRepository {
 		$succeeded = false !== $updated;
 
 		if ( $succeeded ) {
-			do_action( BotProfileRepository::CHANGED_ACTION );
+			/**
+			 * Fires after a bot or destination row changes.
+			 *
+			 * @since 0.5.0
+			 */
+			do_action( BotProfileRepository::CHANGED_ACTION ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- constant value is universal_telegram_bot_or_destination_changed.
 		}
 
 		return $succeeded;
@@ -161,7 +171,12 @@ final class DestinationRepository {
 		$deleted = false !== $wpdb->delete( $table, array( 'id' => $id ), array( '%d' ) );
 
 		if ( $deleted ) {
-			do_action( BotProfileRepository::CHANGED_ACTION );
+			/**
+			 * Fires after a bot or destination row changes.
+			 *
+			 * @since 0.5.0
+			 */
+			do_action( BotProfileRepository::CHANGED_ACTION ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- constant value is universal_telegram_bot_or_destination_changed.
 		}
 
 		return $deleted;
@@ -186,7 +201,12 @@ final class DestinationRepository {
 		$deleted = false !== $wpdb->delete( $table, array( 'bot_id' => $bot_id ), array( '%d' ) );
 
 		if ( $deleted ) {
-			do_action( BotProfileRepository::CHANGED_ACTION );
+			/**
+			 * Fires after a bot or destination row changes.
+			 *
+			 * @since 0.5.0
+			 */
+			do_action( BotProfileRepository::CHANGED_ACTION ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- constant value is universal_telegram_bot_or_destination_changed.
 		}
 
 		return $deleted;

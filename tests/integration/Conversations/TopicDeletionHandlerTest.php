@@ -56,7 +56,7 @@ final class TopicDeletionHandlerTest extends WP_UnitTestCase {
 		DestinationRepository $destinations
 	): TopicDeletionHandler {
 		$eligibility = new ConversationTopicEligibility( $conversations, $destinations );
-		$purge       = new ConversationPurgeService( $conversations, new MessageRepository( new SchemaHealth() ), $destinations );
+		$purge       = new ConversationPurgeService( $conversations, new MessageRepository( new SchemaHealth(), new CredentialVault() ), $destinations );
 
 		return new TopicDeletionHandler(
 			$conversations,
@@ -103,7 +103,13 @@ final class TopicDeletionHandlerTest extends WP_UnitTestCase {
 	public function test_success_purges_conversation_and_destination(): void {
 		[ $conversations, $bots, $destinations, $cid, $did, $lease ] = $this->setup_eligible();
 
-		$this->fake_telegram_response( 200, array( 'ok' => true, 'result' => true ) );
+		$this->fake_telegram_response(
+			200,
+			array(
+				'ok'     => true,
+				'result' => true,
+			)
+		);
 		$this->handler( $conversations, $bots, $destinations )->handle_job( $this->job( $cid, 1, $lease ) );
 
 		$this->assertNull( $conversations->find( $cid ) );

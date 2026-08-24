@@ -22,20 +22,20 @@ final class ConversationStatusTest extends TestCase {
 	 */
 	public function allowed_transitions_provider(): array {
 		return array(
-			'new to open'                       => array( ConversationStatus::NEW, ConversationStatus::OPEN ),
-			'open to waiting_for_visitor'       => array( ConversationStatus::OPEN, ConversationStatus::WAITING_FOR_VISITOR ),
-			'open to waiting_for_operator'      => array( ConversationStatus::OPEN, ConversationStatus::WAITING_FOR_OPERATOR ),
-			'waiting_for_visitor back to open'  => array( ConversationStatus::WAITING_FOR_VISITOR, ConversationStatus::OPEN ),
-			'waiting_for_operator back to open' => array( ConversationStatus::WAITING_FOR_OPERATOR, ConversationStatus::OPEN ),
-			'open to resolved'                  => array( ConversationStatus::OPEN, ConversationStatus::RESOLVED ),
-			'waiting_for_visitor to resolved'   => array( ConversationStatus::WAITING_FOR_VISITOR, ConversationStatus::RESOLVED ),
-			'waiting_for_operator to resolved'  => array( ConversationStatus::WAITING_FOR_OPERATOR, ConversationStatus::RESOLVED ),
-			'resolved to archived'                  => array( ConversationStatus::RESOLVED, ConversationStatus::ARCHIVED ),
-			'resolved reopens to open'              => array( ConversationStatus::RESOLVED, ConversationStatus::OPEN ),
-			'new archives directly'                 => array( ConversationStatus::NEW, ConversationStatus::ARCHIVED ),
-			'open archives directly'                => array( ConversationStatus::OPEN, ConversationStatus::ARCHIVED ),
-			'waiting_for_visitor archives directly' => array( ConversationStatus::WAITING_FOR_VISITOR, ConversationStatus::ARCHIVED ),
-			'waiting_for_operator archives directly'=> array( ConversationStatus::WAITING_FOR_OPERATOR, ConversationStatus::ARCHIVED ),
+			'new to open'                            => array( ConversationStatus::NEW, ConversationStatus::OPEN ),
+			'open to waiting_for_visitor'            => array( ConversationStatus::OPEN, ConversationStatus::WAITING_FOR_VISITOR ),
+			'open to waiting_for_operator'           => array( ConversationStatus::OPEN, ConversationStatus::WAITING_FOR_OPERATOR ),
+			'waiting_for_visitor back to open'       => array( ConversationStatus::WAITING_FOR_VISITOR, ConversationStatus::OPEN ),
+			'waiting_for_operator back to open'      => array( ConversationStatus::WAITING_FOR_OPERATOR, ConversationStatus::OPEN ),
+			'open to resolved'                       => array( ConversationStatus::OPEN, ConversationStatus::RESOLVED ),
+			'waiting_for_visitor to resolved'        => array( ConversationStatus::WAITING_FOR_VISITOR, ConversationStatus::RESOLVED ),
+			'waiting_for_operator to resolved'       => array( ConversationStatus::WAITING_FOR_OPERATOR, ConversationStatus::RESOLVED ),
+			'resolved to archived'                   => array( ConversationStatus::RESOLVED, ConversationStatus::ARCHIVED ),
+			'resolved reopens to open'               => array( ConversationStatus::RESOLVED, ConversationStatus::OPEN ),
+			'new archives directly'                  => array( ConversationStatus::NEW, ConversationStatus::ARCHIVED ),
+			'open archives directly'                 => array( ConversationStatus::OPEN, ConversationStatus::ARCHIVED ),
+			'waiting_for_visitor archives directly'  => array( ConversationStatus::WAITING_FOR_VISITOR, ConversationStatus::ARCHIVED ),
+			'waiting_for_operator archives directly' => array( ConversationStatus::WAITING_FOR_OPERATOR, ConversationStatus::ARCHIVED ),
 		);
 	}
 

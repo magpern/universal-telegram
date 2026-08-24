@@ -15,11 +15,11 @@ namespace UniversalTelegram\Conversations;
  */
 final class TopicLifecycleState {
 
-	public const NONE          = 'none';
-	public const ACTIVE        = 'active';
-	public const UNAVAILABLE   = 'unavailable';
+	public const NONE           = 'none';
+	public const ACTIVE         = 'active';
+	public const UNAVAILABLE    = 'unavailable';
 	public const DELETE_PENDING = 'delete_pending';
-	public const DELETE_FAILED = 'delete_failed';
+	public const DELETE_FAILED  = 'delete_failed';
 
 	/**
 	 * Every recognized topic-lifecycle state.

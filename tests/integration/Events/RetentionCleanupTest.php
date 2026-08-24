@@ -132,8 +132,24 @@ final class RetentionCleanupTest extends WP_UnitTestCase {
 		$old   = gmdate( 'Y-m-d H:i:s', time() - ( 100 * DAY_IN_SECONDS ) );
 		$new   = gmdate( 'Y-m-d H:i:s', time() - DAY_IN_SECONDS );
 
-		$wpdb->insert( $table, array( 'summary_date' => '2020-01-01', 'window_started_at' => $old, 'window_ended_at' => $old, 'created_at' => $old ) );
-		$wpdb->insert( $table, array( 'summary_date' => gmdate( 'Y-m-d' ), 'window_started_at' => $new, 'window_ended_at' => $new, 'created_at' => $new ) );
+		$wpdb->insert(
+			$table,
+			array(
+				'summary_date'      => '2020-01-01',
+				'window_started_at' => $old,
+				'window_ended_at'   => $old,
+				'created_at'        => $old,
+			)
+		);
+		$wpdb->insert(
+			$table,
+			array(
+				'summary_date'      => gmdate( 'Y-m-d' ),
+				'window_started_at' => $new,
+				'window_ended_at'   => $new,
+				'created_at'        => $new,
+			)
+		);
 
 		( new RetentionCleanup( new SchemaHealth(), 90, 90, 30 ) )->run();
 
@@ -149,8 +165,32 @@ final class RetentionCleanupTest extends WP_UnitTestCase {
 		$old   = gmdate( 'Y-m-d H:i:s', time() - ( 40 * DAY_IN_SECONDS ) );
 		$new   = gmdate( 'Y-m-d H:i:s', time() - DAY_IN_SECONDS );
 
-		$wpdb->insert( $table, array( 'summary_run_id' => 1, 'draft_uuid' => wp_generate_uuid4(), 'status' => 'discarded', 'provider' => 'openai', 'model' => 'gpt', 'prompt_policy_version' => 'v1', 'created_at' => $old, 'updated_at' => $old ) );
-		$wpdb->insert( $table, array( 'summary_run_id' => 2, 'draft_uuid' => wp_generate_uuid4(), 'status' => 'discarded', 'provider' => 'openai', 'model' => 'gpt', 'prompt_policy_version' => 'v1', 'created_at' => $new, 'updated_at' => $new ) );
+		$wpdb->insert(
+			$table,
+			array(
+				'summary_run_id'        => 1,
+				'draft_uuid'            => wp_generate_uuid4(),
+				'status'                => 'discarded',
+				'provider'              => 'openai',
+				'model'                 => 'gpt',
+				'prompt_policy_version' => 'v1',
+				'created_at'            => $old,
+				'updated_at'            => $old,
+			)
+		);
+		$wpdb->insert(
+			$table,
+			array(
+				'summary_run_id'        => 2,
+				'draft_uuid'            => wp_generate_uuid4(),
+				'status'                => 'discarded',
+				'provider'              => 'openai',
+				'model'                 => 'gpt',
+				'prompt_policy_version' => 'v1',
+				'created_at'            => $new,
+				'updated_at'            => $new,
+			)
+		);
 
 		( new RetentionCleanup( new SchemaHealth(), 90, 90, 30 ) )->run();
 

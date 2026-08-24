@@ -70,7 +70,8 @@ final class ConversationInboxPage {
 		$this->render_unread_badge();
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only confirm navigation.
-		if ( isset( $_GET['bulk_confirm'] ) && '1' === (string) $_GET['bulk_confirm'] ) {
+		$bulk_confirm = isset( $_GET['bulk_confirm'] ) ? sanitize_text_field( wp_unslash( $_GET['bulk_confirm'] ) ) : '';
+		if ( '1' === $bulk_confirm ) {
 			$this->render_bulk_confirm();
 			return;
 		}
@@ -314,8 +315,8 @@ final class ConversationInboxPage {
 			}
 
 			printf(
-				'<tr><th scope="row" class="check-column"><input type="checkbox" class="ut-bulk-conversation" name="conversation_ids[]" value="%d" /></th><td><a href="%s">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
-				$conversation->id(),
+				'<tr><th scope="row" class="check-column"><input type="checkbox" class="ut-bulk-conversation" name="conversation_ids[]" value="%s" /></th><td><a href="%s">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
+				esc_attr( (string) $conversation->id() ),
 				esc_url( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . self::TAB_ID . '&conversation_id=' . $conversation->id() ) ),
 				esc_html( substr( $conversation->conversation_uuid(), 0, 8 ) ),
 				esc_html( $conversation->status() ),

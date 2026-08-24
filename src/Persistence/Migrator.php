@@ -22,30 +22,30 @@ namespace UniversalTelegram\Persistence;
  */
 class Migrator {
 
-	public const AUDIT_LOG_TABLE             = 'universal_telegram_audit_log';
-	public const BOTS_TABLE                  = 'universal_telegram_bots';
-	public const DESTINATIONS_TABLE          = 'universal_telegram_destinations';
-	public const OUTBOUND_MESSAGES_TABLE     = 'universal_telegram_outbound_messages';
-	public const INBOUND_UPDATES_TABLE       = 'universal_telegram_inbound_updates';
-	public const CIRCUIT_BREAKER_TABLE       = 'universal_telegram_circuit_breaker_state';
-	public const RATE_LIMIT_TABLE            = 'universal_telegram_rate_limit_state';
-	public const EVENT_HISTORY_TABLE         = 'universal_telegram_event_history';
-	public const FATAL_ERROR_MARKERS_TABLE   = 'universal_telegram_fatal_error_markers';
-	public const NOTIFICATION_RULES_TABLE    = 'universal_telegram_notification_rules';
-	public const DISPATCH_LOG_TABLE          = 'universal_telegram_notification_dispatch_log';
-	public const CONVERSATIONS_TABLE         = 'universal_telegram_conversations';
-	public const CONVERSATION_MESSAGES_TABLE = 'universal_telegram_conversation_messages';
-	public const OPERATOR_IDENTITIES_TABLE   = 'universal_telegram_operator_identities';
-	public const CONVERSATION_NOTES_TABLE    = 'universal_telegram_conversation_notes';
-	public const OPERATOR_AVAILABILITY_TABLE = 'universal_telegram_operator_availability';
-	public const AI_CONFIG_TABLE             = 'universal_telegram_ai_config';
-	public const AI_DRAFTS_TABLE             = 'universal_telegram_ai_drafts';
-	public const VISITOR_DIGEST_COUNTERS_TABLE = 'universal_telegram_visitor_digest_counters';
-	public const VISITOR_DIGEST_STATE_TABLE    = 'universal_telegram_visitor_digest_state';
-	public const OPERATIONAL_SUMMARY_RUNS_TABLE       = 'universal_telegram_operational_summary_runs';
-	public const INTELLIGENCE_SETTINGS_STATE_TABLE    = 'universal_telegram_intelligence_settings_state';
-	public const OPERATIONAL_ALERT_STATE_TABLE        = 'universal_telegram_operational_alert_state';
-	public const OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE  = 'universal_telegram_operational_summary_ai_drafts';
+	public const AUDIT_LOG_TABLE                     = 'universal_telegram_audit_log';
+	public const BOTS_TABLE                          = 'universal_telegram_bots';
+	public const DESTINATIONS_TABLE                  = 'universal_telegram_destinations';
+	public const OUTBOUND_MESSAGES_TABLE             = 'universal_telegram_outbound_messages';
+	public const INBOUND_UPDATES_TABLE               = 'universal_telegram_inbound_updates';
+	public const CIRCUIT_BREAKER_TABLE               = 'universal_telegram_circuit_breaker_state';
+	public const RATE_LIMIT_TABLE                    = 'universal_telegram_rate_limit_state';
+	public const EVENT_HISTORY_TABLE                 = 'universal_telegram_event_history';
+	public const FATAL_ERROR_MARKERS_TABLE           = 'universal_telegram_fatal_error_markers';
+	public const NOTIFICATION_RULES_TABLE            = 'universal_telegram_notification_rules';
+	public const DISPATCH_LOG_TABLE                  = 'universal_telegram_notification_dispatch_log';
+	public const CONVERSATIONS_TABLE                 = 'universal_telegram_conversations';
+	public const CONVERSATION_MESSAGES_TABLE         = 'universal_telegram_conversation_messages';
+	public const OPERATOR_IDENTITIES_TABLE           = 'universal_telegram_operator_identities';
+	public const CONVERSATION_NOTES_TABLE            = 'universal_telegram_conversation_notes';
+	public const OPERATOR_AVAILABILITY_TABLE         = 'universal_telegram_operator_availability';
+	public const AI_CONFIG_TABLE                     = 'universal_telegram_ai_config';
+	public const AI_DRAFTS_TABLE                     = 'universal_telegram_ai_drafts';
+	public const VISITOR_DIGEST_COUNTERS_TABLE       = 'universal_telegram_visitor_digest_counters';
+	public const VISITOR_DIGEST_STATE_TABLE          = 'universal_telegram_visitor_digest_state';
+	public const OPERATIONAL_SUMMARY_RUNS_TABLE      = 'universal_telegram_operational_summary_runs';
+	public const INTELLIGENCE_SETTINGS_STATE_TABLE   = 'universal_telegram_intelligence_settings_state';
+	public const OPERATIONAL_ALERT_STATE_TABLE       = 'universal_telegram_operational_alert_state';
+	public const OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE = 'universal_telegram_operational_summary_ai_drafts';
 
 	private const DB_VERSION_OPTION = 'universal_telegram_db_version';
 
@@ -1780,32 +1780,37 @@ class Migrator {
 	private function step_29_add_conversation_topic_lifecycle_columns(): void {
 		global $wpdb;
 
-		$table           = $wpdb->prefix . self::CONVERSATIONS_TABLE;
-		$destinations    = $wpdb->prefix . self::DESTINATIONS_TABLE;
+		$table        = $wpdb->prefix . self::CONVERSATIONS_TABLE;
+		$destinations = $wpdb->prefix . self::DESTINATIONS_TABLE;
 
 		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		if ( ! $this->table_has_columns( $table, array( 'topic_lifecycle_state' ) ) ) {
+		// SHOW COLUMNS (this connection) — not INFORMATION_SCHEMA — so a
+		// DROP TABLE + recreate in the same PHPUnit process cannot leave a
+		// stale "column exists" view that skips the ADD and breaks DML.
+		if ( empty( $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'topic_lifecycle_state'" ) ) ) {
 			$wpdb->query(
 				"ALTER TABLE {$table}
 					ADD COLUMN topic_lifecycle_state VARCHAR(16) NOT NULL DEFAULT 'none'"
 			);
 		}
 
-		if ( ! $this->table_has_columns( $table, array( 'topic_lifecycle_code' ) ) ) {
+		if ( empty( $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'topic_lifecycle_code'" ) ) ) {
 			$wpdb->query(
 				"ALTER TABLE {$table}
 					ADD COLUMN topic_lifecycle_code VARCHAR(64) NULL"
 			);
 		}
 
-		if ( ! $this->table_has_columns( $table, array( 'topic_delete_claim_expires_at' ) ) ) {
+		if ( empty( $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'topic_delete_claim_expires_at'" ) ) ) {
 			$wpdb->query(
 				"ALTER TABLE {$table}
 					ADD COLUMN topic_delete_claim_expires_at DATETIME NULL"
 			);
 		}
 
-		if ( ! $this->table_has_index( $table, 'topic_lifecycle_state' ) ) {
+		// SHOW INDEX (this connection) — not INFORMATION_SCHEMA — for the
+		// same DROP TABLE + recreate reason as the column checks above.
+		if ( empty( $wpdb->get_results( "SHOW INDEX FROM {$table} WHERE Key_name = 'topic_lifecycle_state'" ) ) ) {
 			$wpdb->query( "ALTER TABLE {$table} ADD KEY topic_lifecycle_state (topic_lifecycle_state)" );
 		}
 
@@ -1868,7 +1873,7 @@ class Migrator {
 			}
 		}
 
-		if ( ! $this->table_has_index( $table, 'destination_id' ) ) {
+		if ( empty( $wpdb->get_results( "SHOW INDEX FROM {$table} WHERE Key_name = 'destination_id' AND Non_unique = 0" ) ) ) {
 			$wpdb->query( "ALTER TABLE {$table} ADD UNIQUE KEY destination_id (destination_id)" );
 		}
 		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
@@ -1884,11 +1889,15 @@ class Migrator {
 
 		$table = $wpdb->prefix . self::CONVERSATIONS_TABLE;
 
-		return $this->table_has_columns(
-			$table,
-			array( 'topic_lifecycle_state', 'topic_lifecycle_code', 'topic_delete_claim_expires_at' )
-		) && $this->table_has_index( $table, 'topic_lifecycle_state' )
-			&& $this->table_has_index( $table, 'destination_id' );
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$has_state     = ! empty( $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'topic_lifecycle_state'" ) );
+		$has_code      = ! empty( $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'topic_lifecycle_code'" ) );
+		$has_claim     = ! empty( $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'topic_delete_claim_expires_at'" ) );
+		$has_state_idx = ! empty( $wpdb->get_results( "SHOW INDEX FROM {$table} WHERE Key_name = 'topic_lifecycle_state'" ) );
+		$has_dest_uq   = ! empty( $wpdb->get_results( "SHOW INDEX FROM {$table} WHERE Key_name = 'destination_id' AND Non_unique = 0" ) );
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		return $has_state && $has_code && $has_claim && $has_state_idx && $has_dest_uq;
 	}
 
 	/**

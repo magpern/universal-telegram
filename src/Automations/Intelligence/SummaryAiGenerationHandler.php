@@ -46,15 +46,15 @@ class SummaryAiGenerationHandler {
 	/**
 	 * Constructor.
 	 *
-	 * @param SummaryAiRepository            $drafts                 Draft persistence, claim, and lease.
-	 * @param AIProviderRepository           $provider_config        Reads enablement/model/credential (M09's own config, reused).
+	 * @param SummaryAiRepository             $drafts                 Draft persistence, claim, and lease.
+	 * @param AIProviderRepository            $provider_config        Reads enablement/model/credential (M09's own config, reused).
 	 * @param OperationalSummaryPromptBuilder $prompt_builder         Assembles the bounded, aggregate-only prompt.
 	 * @param OperationalSummaryRepository    $summary_repository     Reads the typed source row.
-	 * @param CircuitBreaker                 $circuit_breaker        Per-provider breaker, the shared 'ai_provider' scope.
-	 * @param AiFailureClassifier            $classifier             Classifies a failed provider result.
-	 * @param RetryPolicy                    $retry_policy           Consulted only for its own max_attempts().
-	 * @param ProviderConcurrencyGate        $concurrency_gate       The shared, cross-feature admission mutex (§3).
-	 * @param array<int, callable(): int>    $external_active_count_providers Additional domains' own active-generation counts (e.g. M09's ai_drafts).
+	 * @param CircuitBreaker                  $circuit_breaker        Per-provider breaker, the shared 'ai_provider' scope.
+	 * @param AiFailureClassifier             $classifier             Classifies a failed provider result.
+	 * @param RetryPolicy                     $retry_policy           Consulted only for its own max_attempts().
+	 * @param ProviderConcurrencyGate         $concurrency_gate       The shared, cross-feature admission mutex (§3).
+	 * @param array<int, callable(): int>     $external_active_count_providers Additional domains' own active-generation counts (e.g. M09's ai_drafts).
 	 */
 	public function __construct(
 		private readonly SummaryAiRepository $drafts,

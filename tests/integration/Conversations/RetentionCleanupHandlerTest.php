@@ -35,12 +35,12 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->schema_health = new SchemaHealth();
-		$this->conversations = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
-		$this->messages      = new MessageRepository( $this->schema_health, new CredentialVault() );
-		$this->destinations  = new DestinationRepository( $this->schema_health );
-		$this->purge_service = new ConversationPurgeService( $this->conversations, $this->messages, $this->destinations );
-		$this->eligibility   = new ConversationTopicEligibility( $this->conversations, $this->destinations );
+		$this->schema_health  = new SchemaHealth();
+		$this->conversations  = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
+		$this->messages       = new MessageRepository( $this->schema_health, new CredentialVault() );
+		$this->destinations   = new DestinationRepository( $this->schema_health );
+		$this->purge_service  = new ConversationPurgeService( $this->conversations, $this->messages, $this->destinations );
+		$this->eligibility    = new ConversationTopicEligibility( $this->conversations, $this->destinations );
 		$this->topic_deletion = new TopicDeletionDispatcher( $this->conversations, new Dispatcher( $this->schema_health ) );
 
 		$this->handler = new RetentionCleanupHandler(
@@ -175,28 +175,33 @@ final class RetentionCleanupHandlerTest extends WP_UnitTestCase {
 
 		global $wpdb;
 		$table = $wpdb->prefix . 'universal_telegram_conversations';
-		$wpdb->query( "ALTER TABLE {$table} DROP INDEX destination_id" );
-		$other = $this->conversations->create( wp_generate_uuid4(), 'hash', 1, null );
-		$wpdb->update(
-			$table,
-			array(
-				'destination_id'        => $destination->id(),
-				'telegram_topic_id'     => 77,
-				'topic_creation_state'  => 'created',
-				'topic_lifecycle_state' => TopicLifecycleState::ACTIVE,
-				'status'                => ConversationStatus::ARCHIVED,
-			),
-			array( 'id' => $other->id() ),
-			array( '%d', '%d', '%s', '%s', '%s' ),
-			array( '%d' )
-		);
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name.
+		try {
+			$wpdb->query( "ALTER TABLE {$table} DROP INDEX destination_id" );
+			$other = $this->conversations->create( wp_generate_uuid4(), 'hash', 1, null );
+			$wpdb->update(
+				$table,
+				array(
+					'destination_id'        => $destination->id(),
+					'telegram_topic_id'     => 77,
+					'topic_creation_state'  => 'created',
+					'topic_lifecycle_state' => TopicLifecycleState::ACTIVE,
+					'status'                => ConversationStatus::ARCHIVED,
+				),
+				array( 'id' => $other->id() ),
+				array( '%d', '%d', '%s', '%s', '%s' ),
+				array( '%d' )
+			);
 
-		$this->set_conversation_updated_at( $conversation->id(), 91 );
-		$this->handler->run();
+			$this->set_conversation_updated_at( $conversation->id(), 91 );
+			$this->handler->run();
 
-		$this->assertNull( $this->conversations->find( $conversation->id() ) );
-		$this->assertNotNull( $this->destinations->find( $destination->id() ) );
-		$wpdb->query( "ALTER TABLE {$table} ADD UNIQUE KEY destination_id (destination_id)" );
+			$this->assertNull( $this->conversations->find( $conversation->id() ) );
+			$this->assertNotNull( $this->destinations->find( $destination->id() ) );
+		} finally {
+			$wpdb->query( "ALTER TABLE {$table} ADD UNIQUE KEY destination_id (destination_id)" );
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	}
 
 	public function test_run_is_idempotent_on_rerun_against_already_cleaned_data(): void {

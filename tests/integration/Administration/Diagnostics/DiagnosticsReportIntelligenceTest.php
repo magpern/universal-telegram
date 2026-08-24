@@ -111,7 +111,7 @@ final class DiagnosticsReportIntelligenceTest extends WP_UnitTestCase {
 		$claim = $drafts->claim_candidate_row( $draft->draft_uuid(), 90 );
 		$drafts->complete_generation( $claim['draft_id'], $draft->draft_uuid(), $claim['lease_token'], 'Secret internal summary text.' );
 
-		$data   = $this->build()->generate();
+		$data       = $this->build()->generate();
 		$serialized = wp_json_encode( $data );
 
 		$this->assertStringNotContainsString( 'Secret internal summary text.', (string) $serialized );

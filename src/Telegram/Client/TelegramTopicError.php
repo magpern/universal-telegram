@@ -16,12 +16,12 @@ namespace UniversalTelegram\Telegram\Client;
  */
 final class TelegramTopicError {
 
-	public const TOPIC_NOT_FOUND              = 'telegram_topic_not_found';
-	public const TOPIC_CLOSED                 = 'telegram_topic_closed';
-	public const TOPIC_DELETE_FORBIDDEN       = 'telegram_topic_delete_forbidden';
-	public const TOPIC_DELETE_CHAT_NOT_FOUND  = 'telegram_topic_delete_chat_not_found';
+	public const TOPIC_NOT_FOUND                 = 'telegram_topic_not_found';
+	public const TOPIC_CLOSED                    = 'telegram_topic_closed';
+	public const TOPIC_DELETE_FORBIDDEN          = 'telegram_topic_delete_forbidden';
+	public const TOPIC_DELETE_CHAT_NOT_FOUND     = 'telegram_topic_delete_chat_not_found';
 	public const TOPIC_DELETE_ATTEMPTS_EXHAUSTED = 'telegram_topic_delete_attempts_exhausted';
-	public const TERMINAL_REJECTION           = 'telegram_terminal_rejection';
+	public const TERMINAL_REJECTION              = 'telegram_terminal_rejection';
 
 	/**
 	 * Classifies a failed sendMessage description for a destination that
@@ -54,8 +54,8 @@ final class TelegramTopicError {
 	 * @return string Fixed code: success paths are not classified here.
 	 */
 	public static function classify_delete_failure( TelegramApiResult $result ): string {
-		$status      = $result->http_status();
-		$normalized  = self::normalize( $result->description() );
+		$status     = $result->http_status();
+		$normalized = self::normalize( $result->description() );
 
 		if ( 401 === $status ) {
 			return 'telegram_token_invalid';
@@ -92,6 +92,8 @@ final class TelegramTopicError {
 	}
 
 	/**
+	 * Normalizes a Telegram description for allow-list matching.
+	 *
 	 * @param string|null $description Raw description.
 	 *
 	 * @return string Lowercased trimmed description, or empty string.
@@ -101,6 +103,8 @@ final class TelegramTopicError {
 	}
 
 	/**
+	 * Whether the normalized description contains any allow-listed needle.
+	 *
 	 * @param string             $haystack Normalized description.
 	 * @param array<int, string> $needles  Lowercase substrings.
 	 *

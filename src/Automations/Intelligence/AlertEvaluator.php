@@ -29,12 +29,12 @@ final class AlertEvaluator {
 	/**
 	 * Constructor.
 	 *
-	 * @param IntelligenceSettings          $settings            Supplies the alert_* fields.
-	 * @param DigestEligibility             $eligibility         Reused destination-eligibility rule (M11A §4).
-	 * @param OperationalSummaryRepository  $repository          Bounded event_history aggregation.
-	 * @param AlertRepository               $alert_state         Cooldown/checkpoint persistence.
-	 * @param MessageDispatcher             $message_dispatcher  M01's own, unchanged outbound transport.
-	 * @param WooCommerceSupport            $woocommerce_support Governs WC-gated alert inertness.
+	 * @param IntelligenceSettings         $settings            Supplies the alert_* fields.
+	 * @param DigestEligibility            $eligibility         Reused destination-eligibility rule (M11A §4).
+	 * @param OperationalSummaryRepository $repository          Bounded event_history aggregation.
+	 * @param AlertRepository              $alert_state         Cooldown/checkpoint persistence.
+	 * @param MessageDispatcher            $message_dispatcher  M01's own, unchanged outbound transport.
+	 * @param WooCommerceSupport           $woocommerce_support Governs WC-gated alert inertness.
 	 */
 	public function __construct(
 		private readonly IntelligenceSettings $settings,

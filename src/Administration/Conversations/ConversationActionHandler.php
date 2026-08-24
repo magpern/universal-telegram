@@ -541,11 +541,11 @@ class ConversationActionHandler {
 			return;
 		}
 
-		$ids             = $this->submitted_conversation_ids();
-		$queued          = 0;
-		$removed         = 0;
-		$skipped         = 0;
-		$acting_user_id  = get_current_user_id();
+		$ids            = $this->submitted_conversation_ids();
+		$queued         = 0;
+		$removed        = 0;
+		$skipped        = 0;
+		$acting_user_id = get_current_user_id();
 
 		foreach ( $ids as $conversation_id ) {
 			$conversation = $this->conversations->find( $conversation_id );

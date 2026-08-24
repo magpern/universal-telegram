@@ -128,7 +128,7 @@ class TopicDeletionHandler {
 			return AttemptOutcome::DELIVERED;
 		}
 
-		$code         = TelegramTopicError::classify_delete_failure( $result );
+		$code           = TelegramTopicError::classify_delete_failure( $result );
 		$classification = $this->classifier->classify( $result );
 
 		if ( FailureClassification::TOKEN_INVALID === $classification
@@ -181,6 +181,8 @@ class TopicDeletionHandler {
 	}
 
 	/**
+	 * Reschedules the job just after an observed competing claim lease.
+	 *
 	 * @param Conversation                                                                         $conversation Conversation owned by another claim.
 	 * @param array{job_id: string, job_type: string, attempt: int, payload: array<string, mixed>} $job          Current job.
 	 */

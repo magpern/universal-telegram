@@ -39,7 +39,19 @@ final class EventDispatcherTest extends WP_UnitTestCase {
 	}
 
 	private function envelope( Registry $registry ): EventEnvelope {
-		return new EventEnvelope( $registry, 'visitor.page_viewed', 'key-1', EventSource::VISITOR, array(), array( 'path' => '/', 'page_type' => 'home' ), array(), array() );
+		return new EventEnvelope(
+			$registry,
+			'visitor.page_viewed',
+			'key-1',
+			EventSource::VISITOR,
+			array(),
+			array(
+				'path'      => '/',
+				'page_type' => 'home',
+			),
+			array(),
+			array()
+		);
 	}
 
 	/**

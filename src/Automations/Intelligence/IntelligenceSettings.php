@@ -36,32 +36,62 @@ final class IntelligenceSettings {
 	 */
 	public function __construct( private readonly Settings $settings ) {}
 
+	/**
+	 * Whether the operational summary is enabled.
+	 *
+	 * @return bool
+	 */
 	public function operational_summary_enabled(): bool {
 		return true === (bool) $this->settings->get()['operational_summary_enabled'];
 	}
 
+	/**
+	 * Configured operational-summary bot id, or null.
+	 *
+	 * @return int|null
+	 */
 	public function operational_summary_bot_id(): ?int {
 		$value = $this->settings->get()['operational_summary_bot_id'];
 
 		return null === $value ? null : (int) $value;
 	}
 
+	/**
+	 * Configured operational-summary destination id, or null.
+	 *
+	 * @return int|null
+	 */
 	public function operational_summary_destination_id(): ?int {
 		$value = $this->settings->get()['operational_summary_destination_id'];
 
 		return null === $value ? null : (int) $value;
 	}
 
+	/**
+	 * UTC hour when the operational summary should run.
+	 *
+	 * @return int
+	 */
 	public function operational_summary_hour_utc(): int {
 		return (int) $this->settings->get()['operational_summary_hour_utc'];
 	}
 
+	/**
+	 * Configured alert bot id, or null.
+	 *
+	 * @return int|null
+	 */
 	public function alert_bot_id(): ?int {
 		$value = $this->settings->get()['alert_bot_id'];
 
 		return null === $value ? null : (int) $value;
 	}
 
+	/**
+	 * Configured alert destination id, or null.
+	 *
+	 * @return int|null
+	 */
 	public function alert_destination_id(): ?int {
 		$value = $this->settings->get()['alert_destination_id'];
 

@@ -43,22 +43,26 @@ final class DiagnosticsReport {
 	/**
 	 * Constructor.
 	 *
-	 * @param QueueHealth                $queue_health              Pending/failed action counts.
-	 * @param AuditLogRepository         $audit_log_repository      The recent-entries read path.
-	 * @param WooCommerceSupport         $woocommerce_support        WooCommerce-presence detection.
-	 * @param SchemaHealth               $schema_health              The current schema-availability state.
-	 * @param BotProfileRepository       $bots                       Telegram bot counts.
-	 * @param DestinationRepository      $destinations               Telegram destination counts.
-	 * @param QueueHealthAlert           $queue_health_alert          The Telegram queue-health alert's own details.
-	 * @param EventHistoryRepository     $event_history       Event-history counts.
-	 * @param NotificationRuleRepository $notification_rules  Rule counts.
-	 * @param DispatchLogRepository      $dispatch_log        Dispatch-log failure/stuck-claim counts.
-	 * @param Settings                   $settings            Reads the current visitor tracking configuration.
-	 * @param DigestEligibility               $digest_eligibility     The M11A visitor digest shared active/eligibility gate.
-	 * @param VisitorDigestCounterRepository  $digest_counters        The M11A visitor digest counter persistence.
-	 * @param VisitorDigestStateRepository    $digest_state           The M11A visitor digest state/checkpoint persistence.
-	 * @param int                        $stale_pending_threshold_seconds The message-staleness threshold, in seconds.
-	 * @param int                        $stale_registration_threshold_hours The registration-staleness threshold, in hours.
+	 * @param QueueHealth                       $queue_health              Pending/failed action counts.
+	 * @param AuditLogRepository                $audit_log_repository      The recent-entries read path.
+	 * @param WooCommerceSupport                $woocommerce_support        WooCommerce-presence detection.
+	 * @param SchemaHealth                      $schema_health              The current schema-availability state.
+	 * @param BotProfileRepository              $bots                       Telegram bot counts.
+	 * @param DestinationRepository             $destinations               Telegram destination counts.
+	 * @param QueueHealthAlert                  $queue_health_alert          The Telegram queue-health alert's own details.
+	 * @param EventHistoryRepository            $event_history       Event-history counts.
+	 * @param NotificationRuleRepository        $notification_rules  Rule counts.
+	 * @param DispatchLogRepository             $dispatch_log        Dispatch-log failure/stuck-claim counts.
+	 * @param Settings                          $settings            Reads the current visitor tracking configuration.
+	 * @param DigestEligibility                 $digest_eligibility     The M11A visitor digest shared active/eligibility gate.
+	 * @param VisitorDigestCounterRepository    $digest_counters        The M11A visitor digest counter persistence.
+	 * @param VisitorDigestStateRepository      $digest_state           The M11A visitor digest state/checkpoint persistence.
+	 * @param int                               $stale_pending_threshold_seconds The message-staleness threshold, in seconds.
+	 * @param int                               $stale_registration_threshold_hours The registration-staleness threshold, in hours.
+	 * @param IntelligenceSettings|null         $intelligence_settings Typed M11B intelligence settings reader.
+	 * @param OperationalSummaryRepository|null $operational_summary_repository Operational summary runs.
+	 * @param AlertRepository|null              $alert_repository       Threshold alert state.
+	 * @param SummaryAiRepository|null          $summary_ai_repository  Summary AI drafts.
 	 */
 	public function __construct(
 		private readonly QueueHealth $queue_health,
@@ -229,7 +233,7 @@ final class DiagnosticsReport {
 		);
 
 		foreach ( IntelligenceSettings::ALERT_TYPES as $alert_type ) {
-			$keys[ 'alert_' . $alert_type . '_enabled' ]      = $this->intelligence_settings->alert_enabled( $alert_type );
+			$keys[ 'alert_' . $alert_type . '_enabled' ]       = $this->intelligence_settings->alert_enabled( $alert_type );
 			$keys[ 'alert_' . $alert_type . '_last_fired_at' ] = $this->schema_health->is_available() ? $this->alert_repository->last_fired_at( $alert_type ) : null;
 		}
 
@@ -259,12 +263,12 @@ final class DiagnosticsReport {
 	 * }
 	 */
 	private function visitor_digest_diagnostics(): array {
-		$active             = $this->digest_eligibility->is_active();
-		$window_started_at  = $this->schema_health->is_available() ? $this->digest_state->current_window_started_at() : null;
+		$active              = $this->digest_eligibility->is_active();
+		$window_started_at   = $this->schema_health->is_available() ? $this->digest_state->current_window_started_at() : null;
 		$pending_event_count = null !== $window_started_at && $this->schema_health->is_available()
 			? $this->digest_counters->sum_for_window( $window_started_at )
 			: 0;
-		$oldest_pending_age = null;
+		$oldest_pending_age  = null;
 
 		if ( null !== $window_started_at ) {
 			$started = strtotime( $window_started_at . ' UTC' );
@@ -282,15 +286,15 @@ final class DiagnosticsReport {
 		}
 
 		return array(
-			'visitor_digest_enabled'                          => $this->digest_eligibility->enabled(),
-			'visitor_digest_target_valid'                      => $this->digest_eligibility->target_valid(),
-			'visitor_digest_active'                            => $active,
-			'visitor_digest_paused_invalid_target'              => $this->digest_eligibility->paused_for_invalid_target(),
-			'visitor_digest_pending_event_count'                => $pending_event_count,
-			'visitor_digest_oldest_pending_age_seconds'         => $oldest_pending_age,
-			'visitor_digest_last_sent_at'                       => $this->schema_health->is_available() ? $this->digest_state->last_digest_sent_at() : null,
-			'visitor_digest_last_status'                        => $this->schema_health->is_available() ? ( $this->digest_state->last_digest_status() ?? 'never_run' ) : 'never_run',
-			'visitor_digest_currently_suppressed_rules_count'   => $suppressed_rules_count,
+			'visitor_digest_enabled'                    => $this->digest_eligibility->enabled(),
+			'visitor_digest_target_valid'               => $this->digest_eligibility->target_valid(),
+			'visitor_digest_active'                     => $active,
+			'visitor_digest_paused_invalid_target'      => $this->digest_eligibility->paused_for_invalid_target(),
+			'visitor_digest_pending_event_count'        => $pending_event_count,
+			'visitor_digest_oldest_pending_age_seconds' => $oldest_pending_age,
+			'visitor_digest_last_sent_at'               => $this->schema_health->is_available() ? $this->digest_state->last_digest_sent_at() : null,
+			'visitor_digest_last_status'                => $this->schema_health->is_available() ? ( $this->digest_state->last_digest_status() ?? 'never_run' ) : 'never_run',
+			'visitor_digest_currently_suppressed_rules_count' => $suppressed_rules_count,
 		);
 	}
 

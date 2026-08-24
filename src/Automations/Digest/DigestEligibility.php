@@ -61,10 +61,10 @@ class DigestEligibility {
 	/**
 	 * Constructor.
 	 *
-	 * @param Settings                $settings     Supplies the five visitor_digest_* fields.
-	 * @param BotProfileRepository    $bots         Live bot-status lookup.
-	 * @param DestinationRepository   $destinations Live destination lookup.
-	 * @param ConversationRepository  $conversations Excludes conversation-linked destinations.
+	 * @param Settings               $settings     Supplies the five visitor_digest_* fields.
+	 * @param BotProfileRepository   $bots         Live bot-status lookup.
+	 * @param DestinationRepository  $destinations Live destination lookup.
+	 * @param ConversationRepository $conversations Excludes conversation-linked destinations.
 	 */
 	public function __construct(
 		private readonly Settings $settings,

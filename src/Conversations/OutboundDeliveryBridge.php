@@ -44,6 +44,8 @@ final class OutboundDeliveryBridge {
 	}
 
 	/**
+	 * Applies delivery outcome to the matching conversation message.
+	 *
 	 * @param string      $outbound_uuid Outbound message uuid.
 	 * @param string      $outcome       sent|failed.
 	 * @param string|null $failure_code  Fixed code on failure, else null.

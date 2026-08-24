@@ -76,6 +76,9 @@ final class SchemaDegradedExecutionTest extends WP_UnitTestCase {
 			// batch as this test's own action, consuming a run() call
 			// this test's queue-runner assertion depends on.
 			as_unschedule_all_actions( \UniversalTelegram\AI\Draft\AiDraftLeaseSweep::JOB_TYPE );
+			as_unschedule_all_actions( \UniversalTelegram\Automations\Intelligence\SummaryAiLeaseSweep::JOB_TYPE );
+			as_unschedule_all_actions( \UniversalTelegram\Automations\Digest\VisitorDigestSweep::JOB_TYPE );
+			as_unschedule_all_actions( \UniversalTelegram\Automations\Intelligence\OperationalSummarySweep::JOB_TYPE );
 		}
 	}
 

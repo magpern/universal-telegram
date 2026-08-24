@@ -27,10 +27,10 @@ final class VisitorDigestRenderer {
 	/**
 	 * Renders the fixed digest message for one window.
 	 *
-	 * @param string                                                                  $window_started_at  The window's own open timestamp.
-	 * @param string                                                                  $sent_at            The send timestamp.
+	 * @param string                                                                   $window_started_at  The window's own open timestamp.
+	 * @param string                                                                   $sent_at            The send timestamp.
 	 * @param array<int, array{category: string, page_type: string, event_count: int}> $rows               The window's own counter rows.
-	 * @param bool                                                                    $woocommerce_active Whether product-view/cart-intent lines should render at all.
+	 * @param bool                                                                     $woocommerce_active Whether product-view/cart-intent lines should render at all.
 	 *
 	 * @return string
 	 */
@@ -102,8 +102,8 @@ final class VisitorDigestRenderer {
 
 			switch ( $row['category'] ) {
 				case 'page_views':
-					$totals['page_views'] += $count;
-					$key                   = in_array( $row['page_type'], self::PAGE_TYPES, true ) ? $row['page_type'] : 'other';
+					$totals['page_views']        += $count;
+					$key                          = in_array( $row['page_type'], self::PAGE_TYPES, true ) ? $row['page_type'] : 'other';
 					$totals['page_type'][ $key ] += $count;
 					break;
 				case 'product_views':

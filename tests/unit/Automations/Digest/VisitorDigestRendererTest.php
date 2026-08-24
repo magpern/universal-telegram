@@ -17,9 +17,21 @@ final class VisitorDigestRendererTest extends TestCase {
 			'2026-01-01 00:00:00',
 			'2026-01-01 00:15:00',
 			array(
-				array( 'category' => 'page_views', 'page_type' => 'home', 'event_count' => 4 ),
-				array( 'category' => 'page_views', 'page_type' => 'singular', 'event_count' => 6 ),
-				array( 'category' => 'search', 'page_type' => '', 'event_count' => 2 ),
+				array(
+					'category'    => 'page_views',
+					'page_type'   => 'home',
+					'event_count' => 4,
+				),
+				array(
+					'category'    => 'page_views',
+					'page_type'   => 'singular',
+					'event_count' => 6,
+				),
+				array(
+					'category'    => 'search',
+					'page_type'   => '',
+					'event_count' => 2,
+				),
 			),
 			true
 		);
@@ -39,7 +51,13 @@ final class VisitorDigestRendererTest extends TestCase {
 		$text = $renderer->render(
 			'2026-01-01 00:00:00',
 			'2026-01-01 00:05:00',
-			array( array( 'category' => 'search', 'page_type' => '', 'event_count' => 1 ) ),
+			array(
+				array(
+					'category'    => 'search',
+					'page_type'   => '',
+					'event_count' => 1,
+				),
+			),
 			true
 		);
 
@@ -54,7 +72,13 @@ final class VisitorDigestRendererTest extends TestCase {
 		$text = $renderer->render(
 			'2026-01-01 00:00:00',
 			'2026-01-01 00:05:00',
-			array( array( 'category' => 'search', 'page_type' => '', 'event_count' => 1 ) ),
+			array(
+				array(
+					'category'    => 'search',
+					'page_type'   => '',
+					'event_count' => 1,
+				),
+			),
 			true
 		);
 
@@ -67,7 +91,13 @@ final class VisitorDigestRendererTest extends TestCase {
 		$text = $renderer->render(
 			'2026-01-01 00:00:00',
 			'2026-01-01 00:05:00',
-			array( array( 'category' => 'search', 'page_type' => '', 'event_count' => 1 ) ),
+			array(
+				array(
+					'category'    => 'search',
+					'page_type'   => '',
+					'event_count' => 1,
+				),
+			),
 			false
 		);
 
@@ -78,10 +108,32 @@ final class VisitorDigestRendererTest extends TestCase {
 	public function test_other_activity_line_only_appears_when_non_zero(): void {
 		$renderer = new VisitorDigestRenderer();
 
-		$without_other = $renderer->render( '2026-01-01 00:00:00', '2026-01-01 00:05:00', array( array( 'category' => 'search', 'page_type' => '', 'event_count' => 1 ) ), true );
+		$without_other = $renderer->render(
+			'2026-01-01 00:00:00',
+			'2026-01-01 00:05:00',
+			array(
+				array(
+					'category'    => 'search',
+					'page_type'   => '',
+					'event_count' => 1,
+				),
+			),
+			true
+		);
 		$this->assertStringNotContainsString( 'Other activity:', $without_other );
 
-		$with_other = $renderer->render( '2026-01-01 00:00:00', '2026-01-01 00:05:00', array( array( 'category' => 'other', 'page_type' => '', 'event_count' => 1 ) ), true );
+		$with_other = $renderer->render(
+			'2026-01-01 00:00:00',
+			'2026-01-01 00:05:00',
+			array(
+				array(
+					'category'    => 'other',
+					'page_type'   => '',
+					'event_count' => 1,
+				),
+			),
+			true
+		);
 		$this->assertStringContainsString( 'Other activity: 1', $with_other );
 	}
 
@@ -91,7 +143,13 @@ final class VisitorDigestRendererTest extends TestCase {
 		$text = $renderer->render(
 			'2026-01-01 00:00:00',
 			'2026-01-01 00:05:00',
-			array( array( 'category' => 'page_views', 'page_type' => 'not-a-real-type', 'event_count' => 3 ) ),
+			array(
+				array(
+					'category'    => 'page_views',
+					'page_type'   => 'not-a-real-type',
+					'event_count' => 3,
+				),
+			),
 			true
 		);
 
@@ -105,11 +163,31 @@ final class VisitorDigestRendererTest extends TestCase {
 			'2026-01-01 00:00:00',
 			'2026-01-01 00:05:00',
 			array(
-				array( 'category' => 'page_views', 'page_type' => 'home', 'event_count' => 2 ),
-				array( 'category' => 'product_views', 'page_type' => '', 'event_count' => 3 ),
-				array( 'category' => 'search', 'page_type' => '', 'event_count' => 1 ),
-				array( 'category' => 'cart_intent', 'page_type' => '', 'event_count' => 4 ),
-				array( 'category' => 'other', 'page_type' => '', 'event_count' => 5 ),
+				array(
+					'category'    => 'page_views',
+					'page_type'   => 'home',
+					'event_count' => 2,
+				),
+				array(
+					'category'    => 'product_views',
+					'page_type'   => '',
+					'event_count' => 3,
+				),
+				array(
+					'category'    => 'search',
+					'page_type'   => '',
+					'event_count' => 1,
+				),
+				array(
+					'category'    => 'cart_intent',
+					'page_type'   => '',
+					'event_count' => 4,
+				),
+				array(
+					'category'    => 'other',
+					'page_type'   => '',
+					'event_count' => 5,
+				),
 			),
 			true
 		);

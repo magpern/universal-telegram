@@ -27,6 +27,10 @@ use WP_UnitTestCase;
 final class TopicLifecycleWooCommerceAbsentTest extends WP_UnitTestCase {
 
 	public function test_topic_lifecycle_classes_construct_without_woocommerce(): void {
+		if ( class_exists( \Automattic\WooCommerce\Utilities\OrderUtil::class, false ) ) {
+			$this->markTestSkipped( 'WooCommerce is loaded on this matrix leg; WP-only absence is covered there.' );
+		}
+
 		$this->assertFalse( class_exists( \Automattic\WooCommerce\Utilities\OrderUtil::class, false ) );
 
 		$schema        = new SchemaHealth();

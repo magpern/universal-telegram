@@ -120,9 +120,9 @@ final class SummaryAiGenerationHandlerTest extends WP_UnitTestCase {
 		$this->enable_provider();
 		$this->fake_response( 200, array( 'choices' => array( array( 'message' => array( 'content' => 'Here is a summary.' ) ) ) ) );
 
-		$drafts       = $this->drafts();
-		$request      = $drafts->request( $this->summary_run_id(), 1, 'openai', 'gpt-4o-mini', OperationalSummaryPromptBuilder::POLICY_VERSION );
-		$draft        = $drafts->find_by_uuid( (string) $request['draft_uuid'] );
+		$drafts  = $this->drafts();
+		$request = $drafts->request( $this->summary_run_id(), 1, 'openai', 'gpt-4o-mini', OperationalSummaryPromptBuilder::POLICY_VERSION );
+		$draft   = $drafts->find_by_uuid( (string) $request['draft_uuid'] );
 
 		$this->handler()->handle_job( $this->job( $draft->draft_uuid() ) );
 

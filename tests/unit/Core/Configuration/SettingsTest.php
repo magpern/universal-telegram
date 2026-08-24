@@ -382,8 +382,8 @@ final class SettingsTest extends TestCase {
 		return array(
 			'operational_summary_bot_id'         => array( 'operational_summary_bot_id' ),
 			'operational_summary_destination_id' => array( 'operational_summary_destination_id' ),
-			'alert_bot_id'                        => array( 'alert_bot_id' ),
-			'alert_destination_id'                => array( 'alert_destination_id' ),
+			'alert_bot_id'                       => array( 'alert_bot_id' ),
+			'alert_destination_id'               => array( 'alert_destination_id' ),
 		);
 	}
 

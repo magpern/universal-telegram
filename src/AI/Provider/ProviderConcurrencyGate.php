@@ -47,9 +47,9 @@ final class ProviderConcurrencyGate {
 	 * the cap is already reached (deferred, not failed) or the row cannot
 	 * be locked.
 	 *
-	 * @param int                  $max_concurrent        The shared, site-wide cap (M09's own value, e.g. 2).
+	 * @param int                         $max_concurrent        The shared, site-wide cap (M09's own value, e.g. 2).
 	 * @param array<int, callable(): int> $active_count_providers One callable per domain sharing this cap, each returning that domain's own current active-generation count.
-	 * @param callable(): mixed    $claim                 Invoked, still inside the held lock, only if admission succeeds.
+	 * @param callable(): mixed           $claim                 Invoked, still inside the held lock, only if admission succeeds.
 	 *
 	 * @return mixed The claim callable's own return value, or null if deferred/unavailable.
 	 */

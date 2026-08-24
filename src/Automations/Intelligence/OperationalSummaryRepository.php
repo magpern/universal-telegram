@@ -204,9 +204,9 @@ final class OperationalSummaryRepository {
 	/**
 	 * Overwrites every aggregate count column on the given row.
 	 *
-	 * @param int                  $id     The row's own id.
-	 * @param array<string, int>   $counts Column-name => integer-count pairs; only recognized columns are written.
-	 * @param bool                 $woocommerce_active Recorded as of this computation.
+	 * @param int                $id     The row's own id.
+	 * @param array<string, int> $counts Column-name => integer-count pairs; only recognized columns are written.
+	 * @param bool               $woocommerce_active Recorded as of this computation.
 	 */
 	public function save_counts( int $id, array $counts, bool $woocommerce_active ): void {
 		if ( ! $this->schema_health->is_available() ) {
@@ -258,7 +258,14 @@ final class OperationalSummaryRepository {
 
 		$table = $wpdb->prefix . Migrator::OPERATIONAL_SUMMARY_RUNS_TABLE;
 
-		$wpdb->update( $table, array( 'sent_at' => $sent_at, 'send_status' => 'sent' ), array( 'id' => $id ) );
+		$wpdb->update(
+			$table,
+			array(
+				'sent_at'     => $sent_at,
+				'send_status' => 'sent',
+			),
+			array( 'id' => $id )
+		);
 	}
 
 	/**

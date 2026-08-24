@@ -28,7 +28,7 @@ final class MigratorConversationOwnershipSchemaTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 24, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
 
 		$table   = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
 		$columns = $wpdb->get_col(
@@ -59,7 +59,7 @@ final class MigratorConversationOwnershipSchemaTest extends WP_UnitTestCase {
 		update_option( 'universal_telegram_db_version', 15 );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 24, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 
 	public function test_upgrade_from_db_version_16_is_a_safe_no_op(): void {
@@ -69,7 +69,7 @@ final class MigratorConversationOwnershipSchemaTest extends WP_UnitTestCase {
 		update_option( 'universal_telegram_db_version', 16 );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 24, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 29, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 
 	public function test_owner_active_slot_unique_index_rejects_a_second_active_row_for_the_same_owner_and_bot(): void {

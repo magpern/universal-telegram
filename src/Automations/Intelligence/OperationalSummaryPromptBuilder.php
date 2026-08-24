@@ -14,12 +14,12 @@ use UniversalTelegram\AI\Provider\AiRequest;
 /**
  * Assembles the fixed prompt for the operator-triggered AI-assisted
  * summary (docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md
- * §2.6/§3). Follows AI\Draft\PromptBuilder's `<source>`-delimited-data-not-
- * instruction pattern but is a separate class: the "source" here is always
+ * §2.6/§3). Follows AI\Draft\PromptBuilder's source-delimited data-not-
+ * instruction pattern but is a separate class: the source here is always
  * the plugin's own computed aggregate row, never approved WordPress
  * content, so the two data shapes are not conflated.
  *
- * build()'s own signature accepts only the typed OperationalSummaryRow —
+ * The build() method's own signature accepts only the typed OperationalSummaryRow —
  * never a string, an arbitrary-shape array, or an event/order object — so
  * raw event data cannot enter the prompt even by mistake (mirrors ADR-0028
  * decision 2's structural pattern).

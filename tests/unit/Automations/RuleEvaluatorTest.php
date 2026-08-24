@@ -283,7 +283,7 @@ final class RuleEvaluatorTest extends TestCase {
 	}
 
 	/**
-	 * visitor.javascript_error is deliberately excluded from
+	 * Visitor.javascript_error is deliberately excluded from
 	 * DigestEligibility::SUPPRESSED_EVENT_TYPES (M11A §3.3) — its rules
 	 * must keep dispatching individually even while the digest is fully
 	 * active for every other visitor event type.
@@ -310,7 +310,7 @@ final class RuleEvaluatorTest extends TestCase {
 
 		$evaluator = new RuleEvaluator( $repo, $registry, $this->fake_dispatch_log(), $dispatcher, $eligibility );
 		$evaluator->evaluate(
-			new EventEnvelope( $registry, 'visitor.javascript_error', 'key-1', EventSource::VISITOR, array(), array( 'error_category' => 'runtime' ), array(), array() )
+			new EventEnvelope( $registry, 'visitor.javascript_error', 'key-1', EventSource::VISITOR, array(), array(), array(), array( 'error_category' => 'runtime' ) )
 		);
 	}
 
