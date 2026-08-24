@@ -72,7 +72,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 28;
+		return 29;
 	}
 
 	/**
