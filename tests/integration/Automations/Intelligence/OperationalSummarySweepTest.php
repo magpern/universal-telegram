@@ -191,4 +191,84 @@ final class OperationalSummarySweepTest extends WP_UnitTestCase {
 		$this->assertSame( 'send_failed', $row['send_status'] );
 		$this->assertNull( $row['sent_at'] );
 	}
+
+	/**
+	 * Each funnel stage count is an independent COUNT(*) against its own
+	 * event type — inserting rows for one stage must never inflate another
+	 * stage's own count (no cross-event join, no accidental sharing).
+	 */
+	public function test_funnel_stage_counts_are_independent(): void {
+		global $wpdb;
+
+		$settings = $this->enabled_settings();
+		$table    = $wpdb->prefix . \UniversalTelegram\Persistence\Migrator::EVENT_HISTORY_TABLE;
+		$now      = current_time( 'mysql', true );
+
+		$insert = static function ( string $event_type ) use ( $wpdb, $table, $now ) {
+			$wpdb->query(
+				$wpdb->prepare(
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					"INSERT INTO {$table} (event_id, event_type, schema_version, occurred_at, source, projected_fields_json, created_at) VALUES (%s, %s, %d, %s, %s, %s, %s)",
+					wp_generate_uuid4(),
+					$event_type,
+					1,
+					$now,
+					'visitor',
+					'{}',
+					$now
+				)
+			);
+		};
+
+		$insert( 'visitor.product_viewed' );
+		$insert( 'visitor.product_viewed' );
+		$insert( 'visitor.add_to_cart_intent' );
+
+		$this->sweep( $settings, $this->eligible_target() )->run();
+
+		$repo = new OperationalSummaryRepository( new SchemaHealth() );
+		$row  = $repo->find_by_date( gmdate( 'Y-m-d' ) );
+
+		$this->assertSame( 2, (int) $row['funnel_product_views'] );
+		$this->assertSame( 1, (int) $row['funnel_cart_intents'] );
+		$this->assertSame( 0, (int) $row['funnel_checkout_starts'] );
+	}
+
+	/**
+	 * JS-error clustering reads only the bounded payload.error_category
+	 * field — never raw text, stack, filename, or URL, which do not exist
+	 * as columns or JSON keys this counting method ever inspects.
+	 */
+	public function test_js_error_clustering_counts_by_category_only(): void {
+		global $wpdb;
+
+		$settings = $this->enabled_settings();
+		$table    = $wpdb->prefix . \UniversalTelegram\Persistence\Migrator::EVENT_HISTORY_TABLE;
+		$now      = current_time( 'mysql', true );
+
+		foreach ( array( 'runtime', 'runtime', 'promise_rejection', 'resource_load' ) as $category ) {
+			$wpdb->query(
+				$wpdb->prepare(
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					"INSERT INTO {$table} (event_id, event_type, schema_version, occurred_at, source, projected_fields_json, created_at) VALUES (%s, %s, %d, %s, %s, %s, %s)",
+					wp_generate_uuid4(),
+					'visitor.javascript_error',
+					1,
+					$now,
+					'visitor',
+					wp_json_encode( array( 'payload' => array( 'error_category' => $category ) ) ),
+					$now
+				)
+			);
+		}
+
+		$this->sweep( $settings, $this->eligible_target() )->run();
+
+		$repo = new OperationalSummaryRepository( new SchemaHealth() );
+		$row  = $repo->find_by_date( gmdate( 'Y-m-d' ) );
+
+		$this->assertSame( 2, (int) $row['js_error_runtime'] );
+		$this->assertSame( 1, (int) $row['js_error_promise'] );
+		$this->assertSame( 1, (int) $row['js_error_resource'] );
+	}
 }

@@ -128,12 +128,21 @@ final class OperationalSummarySweep {
 
 		$woocommerce_active = $this->woocommerce_support->is_active();
 
+		$orders_created = $this->repository->count_event_type_since( 'woocommerce.order_created', $window_started_at );
+
 		$counts = array(
-			'orders_created'     => $this->repository->count_event_type_since( 'woocommerce.order_created', $window_started_at ),
-			'payments_completed' => $this->repository->count_event_type_since( 'woocommerce.payment_completed', $window_started_at ),
-			'orders_failed'      => $this->repository->count_event_type_since( 'woocommerce.order_failed', $window_started_at ),
-			'orders_cancelled'   => $this->repository->count_event_type_since( 'woocommerce.order_cancelled', $window_started_at ),
-			'checkout_failures'  => $this->repository->count_event_type_since( 'woocommerce.checkout_validation_failed', $window_started_at ),
+			'orders_created'         => $orders_created,
+			'payments_completed'     => $this->repository->count_event_type_since( 'woocommerce.payment_completed', $window_started_at ),
+			'orders_failed'          => $this->repository->count_event_type_since( 'woocommerce.order_failed', $window_started_at ),
+			'orders_cancelled'       => $this->repository->count_event_type_since( 'woocommerce.order_cancelled', $window_started_at ),
+			'checkout_failures'      => $this->repository->count_event_type_since( 'woocommerce.checkout_validation_failed', $window_started_at ),
+			'js_error_runtime'       => $this->repository->count_error_category_since( 'runtime', $window_started_at ),
+			'js_error_promise'       => $this->repository->count_error_category_since( 'promise_rejection', $window_started_at ),
+			'js_error_resource'      => $this->repository->count_error_category_since( 'resource_load', $window_started_at ),
+			'funnel_product_views'   => $this->repository->count_event_type_since( 'visitor.product_viewed', $window_started_at ),
+			'funnel_cart_intents'    => $this->repository->count_event_type_since( 'visitor.add_to_cart_intent', $window_started_at ),
+			'funnel_checkout_starts' => $this->repository->count_event_type_since( 'visitor.checkout_started_intent', $window_started_at ),
+			'funnel_orders_created'  => $orders_created,
 		);
 
 		$this->repository->save_counts( (int) $row['id'], $counts, $woocommerce_active );
