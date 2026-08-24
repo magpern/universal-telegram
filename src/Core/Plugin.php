@@ -1015,6 +1015,14 @@ final class Plugin {
 		$this->hub_page = new HubPage( $this->hub_tab_registry );
 		add_action( 'admin_menu', array( $this->hub_page, 'register_menu' ) );
 
+		// M11A visitor activity digest (docs/plans/m11a-visitor-activity-digests-plan-v1.md):
+		// the shared is_active()/eligibility gate, constructed once, ahead of
+		// RuleEvaluator (which consults it to suppress digest-eligible
+		// visitor event types) and reused unchanged by the Visitor Tracking
+		// settings page below.
+		$this->digest_eligibility = new DigestEligibility( $settings, $this->bot_profile_repository, $this->destination_repository, $this->conversation_repository );
+		$this->digest_eligibility->register();
+
 		// Events/Automations (M02) continued: the repositories above are
 		// already constructed; wire the remaining dispatch/evaluation/
 		// emission services.
@@ -1026,7 +1034,7 @@ final class Plugin {
 			new TemplateRenderer(),
 			$this->message_dispatcher
 		);
-		$rule_evaluator          = new RuleEvaluator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher );
+		$rule_evaluator          = new RuleEvaluator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher, $this->digest_eligibility );
 		$this->event_dispatcher  = new EventDispatcher( $this->event_history_repository, $rule_evaluator );
 		$this->event_emitter     = new EventEmitter( $this->event_registry, $this->event_dispatcher, $this->audit_logger );
 
@@ -1194,7 +1202,8 @@ final class Plugin {
 			$this->notification_rule_repository,
 			$this->event_registry,
 			$this->bot_profile_repository,
-			$this->destination_repository
+			$this->destination_repository,
+			$this->digest_eligibility
 		);
 		$this->hub_tab_registry->register(
 			new Tab( 'rules', __( 'Rules', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_builder_page, 'render_tab_content' ) )
@@ -1207,7 +1216,7 @@ final class Plugin {
 			( new PluginActionLinks( plugin_basename( UNIVERSAL_TELEGRAM_PLUGIN_FILE ) ) )->register();
 		}
 
-		$rule_simulator = new RuleSimulator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher );
+		$rule_simulator = new RuleSimulator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher, $this->digest_eligibility );
 
 		$this->rule_simulator_page = new RuleSimulatorPage( $rule_simulator, $this->event_registry );
 		$this->hub_tab_registry->register(
@@ -1219,13 +1228,8 @@ final class Plugin {
 			new Tab( EventHistoryPage::TAB_ID, __( 'Event History', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_history_page, 'render_tab_content' ) )
 		);
 
-		// M11A visitor activity digest (docs/plans/m11a-visitor-activity-digests-plan-v1.md):
-		// the shared is_active()/eligibility gate, constructed once and
-		// reused by the settings page, the suppression guard, and the
-		// counter increment/sweep wired further below.
-		$this->digest_eligibility = new DigestEligibility( $settings, $this->bot_profile_repository, $this->destination_repository, $this->conversation_repository );
-		$this->digest_eligibility->register();
-
+		// $this->digest_eligibility is already constructed above, ahead of
+		// RuleEvaluator; reused unchanged here.
 		$this->visitor_tracking_page = new VisitorTrackingPage( $settings, $this->bot_profile_repository, $this->digest_eligibility );
 		$this->hub_tab_registry->register(
 			new Tab( VisitorTrackingPage::TAB_ID, __( 'Visitor Tracking', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->visitor_tracking_page, 'render_tab_content' ) )

@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Automations;
 
+use UniversalTelegram\Automations\Digest\DigestEligibility;
 use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Events\Registry;
@@ -29,16 +30,18 @@ final class RuleBuilderPage {
 	/**
 	 * Constructor.
 	 *
-	 * @param NotificationRuleRepository $rules        Notification rules.
-	 * @param Registry                   $registry     The current request's event registry.
-	 * @param BotProfileRepository       $bots         Bot profiles.
-	 * @param DestinationRepository      $destinations Destinations.
+	 * @param NotificationRuleRepository $rules              Notification rules.
+	 * @param Registry                   $registry           The current request's event registry.
+	 * @param BotProfileRepository       $bots               Bot profiles.
+	 * @param DestinationRepository      $destinations       Destinations.
+	 * @param DigestEligibility|null     $digest_eligibility Live "currently batched by Visitor Digest" state (M11A §3.1); null only for pre-M11A callers.
 	 */
 	public function __construct(
 		private readonly NotificationRuleRepository $rules,
 		private readonly Registry $registry,
 		private readonly BotProfileRepository $bots,
-		private readonly DestinationRepository $destinations
+		private readonly DestinationRepository $destinations,
+		private readonly ?DigestEligibility $digest_eligibility = null
 	) {}
 
 	/**
@@ -70,7 +73,7 @@ final class RuleBuilderPage {
 			printf(
 				'<td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>',
 				esc_html( $rule->name() ),
-				esc_html( $rule->event_type() ),
+				esc_html( $rule->event_type() ) . $this->digest_badge( $rule->event_type() ),
 				$rule->enabled() ? esc_html__( 'Yes', 'universal-telegram' ) : esc_html__( 'No', 'universal-telegram' ),
 				esc_html( (string) $rule->priority() ),
 				esc_html( (string) $rule->cooldown_seconds() )
@@ -87,6 +90,32 @@ final class RuleBuilderPage {
 		}
 
 		echo '</tbody></table>';
+	}
+
+	/**
+	 * Renders a small inline badge next to an event type currently batched
+	 * by an active Visitor Digest, or an empty string otherwise — a live,
+	 * state-reflecting label, never a static "always superseded" claim
+	 * (M11A §3.1).
+	 *
+	 * @param string $event_type The rule's own event type.
+	 *
+	 * @return string
+	 */
+	private function digest_badge( string $event_type ): string {
+		if ( null === $this->digest_eligibility ) {
+			return '';
+		}
+
+		if ( ! in_array( $event_type, DigestEligibility::SUPPRESSED_EVENT_TYPES, true ) ) {
+			return '';
+		}
+
+		if ( ! $this->digest_eligibility->is_active() ) {
+			return '';
+		}
+
+		return ' <span class="ut-digest-badge">' . esc_html__( 'Currently batched by Visitor Digest', 'universal-telegram' ) . '</span>';
 	}
 
 	/**
@@ -107,7 +136,14 @@ final class RuleBuilderPage {
 		foreach ( $this->registry->all() as $entry ) {
 			printf( '<option value="%s">%s</option>', esc_attr( $entry['event_type'] ), esc_html( $entry['event_type'] ) );
 		}
-		echo '</select></td></tr>';
+		echo '</select>';
+		if ( null !== $this->digest_eligibility && $this->digest_eligibility->is_active() ) {
+			echo '<p class="description">' . esc_html__(
+				'Visitor Digest is currently enabled and active: page view, navigation, search, product view, and cart/checkout-intent event types will not send individually while that remains the case.',
+				'universal-telegram'
+			) . '</p>';
+		}
+		echo '</td></tr>';
 
 		echo '<tr><th><label for="ut-rule-bot">' . esc_html__( 'Bot', 'universal-telegram' ) . '</label></th><td><select id="ut-rule-bot" name="bot_id">';
 		foreach ( $this->bots->all() as $bot ) {

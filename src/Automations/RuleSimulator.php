@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace UniversalTelegram\Automations;
 
 use Throwable;
+use UniversalTelegram\Automations\Digest\DigestEligibility;
 use UniversalTelegram\Events\EventEnvelope;
 use UniversalTelegram\Events\EventSource;
 use UniversalTelegram\Events\Registry;
@@ -28,16 +29,18 @@ final class RuleSimulator {
 	/**
 	 * Constructor.
 	 *
-	 * @param NotificationRuleRepository $rules        Supplies each event type's own enabled rules.
-	 * @param Registry                   $registry     The current request's event registry.
-	 * @param DispatchLogRepository      $dispatch_log Required only to satisfy RuleEvaluator's constructor; never invoked during simulation.
-	 * @param NotificationDispatcher     $dispatcher   Required only to satisfy RuleEvaluator's constructor; never invoked during simulation.
+	 * @param NotificationRuleRepository $rules              Supplies each event type's own enabled rules.
+	 * @param Registry                   $registry           The current request's event registry.
+	 * @param DispatchLogRepository      $dispatch_log       Required only to satisfy RuleEvaluator's constructor; never invoked during simulation.
+	 * @param NotificationDispatcher     $dispatcher         Required only to satisfy RuleEvaluator's constructor; never invoked during simulation.
+	 * @param DigestEligibility|null     $digest_eligibility Surfaces the same live "currently batched by Visitor Digest" outcome a real evaluation would produce for a digest-eligible event type (M11A §3.1).
 	 */
 	public function __construct(
 		private readonly NotificationRuleRepository $rules,
 		private readonly Registry $registry,
 		private readonly DispatchLogRepository $dispatch_log,
-		private readonly NotificationDispatcher $dispatcher
+		private readonly NotificationDispatcher $dispatcher,
+		private readonly ?DigestEligibility $digest_eligibility = null
 	) {}
 
 	/**
@@ -66,7 +69,7 @@ final class RuleSimulator {
 		}
 
 		$entries   = array();
-		$evaluator = new class( $this->rules, $this->registry, $this->dispatch_log, $this->dispatcher, $entries ) extends RuleEvaluator {
+		$evaluator = new class( $this->rules, $this->registry, $this->dispatch_log, $this->dispatcher, $this->digest_eligibility, $entries ) extends RuleEvaluator {
 
 			/**
 			 * Reference to the enclosing simulate() call's own $entries array.
@@ -81,14 +84,15 @@ final class RuleSimulator {
 			/**
 			 * Constructor.
 			 *
-			 * @param NotificationRuleRepository                                                                    $rules        Supplies each event type's own enabled rules.
-			 * @param Registry                                                                                      $registry     The current request's event registry.
-			 * @param DispatchLogRepository                                                                         $dispatch_log Never invoked; satisfies the parent constructor only.
-			 * @param NotificationDispatcher                                                                        $dispatcher   Never invoked; satisfies the parent constructor only.
+			 * @param NotificationRuleRepository                                                                    $rules              Supplies each event type's own enabled rules.
+			 * @param Registry                                                                                      $registry           The current request's event registry.
+			 * @param DispatchLogRepository                                                                         $dispatch_log       Never invoked; satisfies the parent constructor only.
+			 * @param NotificationDispatcher                                                                        $dispatcher         Never invoked; satisfies the parent constructor only.
+			 * @param DigestEligibility|null                                                                        $digest_eligibility Consulted read-only, exactly as a real evaluation would.
 			 * @param array<int, array{rule_id: int, rule_name: string, outcome: string, reason_code: string|null}> $entries_ref Reference to the outer $entries array.
 			 */
-			public function __construct( $rules, $registry, $dispatch_log, $dispatcher, array &$entries_ref ) {
-				parent::__construct( $rules, $registry, $dispatch_log, $dispatcher );
+			public function __construct( $rules, $registry, $dispatch_log, $dispatcher, $digest_eligibility, array &$entries_ref ) {
+				parent::__construct( $rules, $registry, $dispatch_log, $dispatcher, $digest_eligibility );
 				$this->entries_ref = &$entries_ref;
 			}
 
