@@ -69,6 +69,8 @@ final class EventCatalogLabels {
 		'subject.username'             => 'Username',
 		'subject.name'                 => 'Name',
 		'subject.email'                => 'Email address',
+		'subject.country'              => 'Country',
+		'subject.region'               => 'Region',
 		'payload.new_role'             => 'New user role',
 		'payload.old_roles_csv'        => 'Previous user roles',
 		'subject.post_id'              => 'Post ID',

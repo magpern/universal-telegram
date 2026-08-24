@@ -70,6 +70,9 @@ indicator, so administrators have an accurate signal rather than an unearned exa
   address (new `subject.username`, `subject.name`, `subject.email` fields), not just its numeric
   ID. These are usable in message templates and conditions but, like other personal data, are
   never written to the durable event history.
+* `wordpress.user_registered` also gains `subject.country` and `subject.region`, resolved from
+  the Universal Geo Context plugin when it is active (silently absent otherwise) - never the raw
+  IP address itself.
 * The message editor's field-insert menu now has a companion "Insert emoji" menu, for admins who
   want emoji in their own notification text. Built-in presets remain plain professional text.
 

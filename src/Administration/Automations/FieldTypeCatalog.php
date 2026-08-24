@@ -90,6 +90,16 @@ final class FieldTypeCatalog {
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'jane@example.com',
 		),
+		'subject.country'            => array(
+			'type'          => self::TYPE_TEXT,
+			'operators'     => self::TEXT_OPERATORS,
+			'preview_value' => 'US',
+		),
+		'subject.region'             => array(
+			'type'          => self::TYPE_TEXT,
+			'operators'     => self::TEXT_OPERATORS,
+			'preview_value' => 'CA',
+		),
 		'payload.new_role'           => array(
 			'type'            => self::TYPE_CHOICE,
 			'operators'       => self::CHOICE_OPERATORS,

@@ -48,13 +48,60 @@ final class UserLifecycleEmitterTest extends WP_UnitTestCase {
 		$this->assertContains( 'subject.username', $allowed );
 		$this->assertContains( 'subject.name', $allowed );
 		$this->assertContains( 'subject.email', $allowed );
+		$this->assertContains( 'subject.country', $allowed );
+		$this->assertContains( 'subject.region', $allowed );
 
 		$classification = $registry->classification_map_for( 'wordpress.user_registered' );
 		$this->assertSame( Classification::INTERNAL, $classification['subject.username'] );
 		$this->assertSame( Classification::INTERNAL, $classification['subject.name'] );
 		$this->assertSame( Classification::INTERNAL, $classification['subject.email'] );
+		$this->assertSame( Classification::INTERNAL, $classification['subject.country'] );
+		$this->assertSame( Classification::INTERNAL, $classification['subject.region'] );
 
 		$this->assertSame( array( 'subject.user_id' ), $registry->history_projection_fields_for( 'wordpress.user_registered' ) );
+	}
+
+	public function test_country_and_region_are_silently_absent_when_universal_geo_context_is_not_active(): void {
+		$this->assertFalse(
+			function_exists( 'universal_geo_get_country_code' ),
+			'This test assumes Universal Geo Context is not loaded in this test run; if it now is, the emitter\'s guarded fallback path is no longer exercised here.'
+		);
+
+		$plugin      = Plugin::instance();
+		$bot         = $plugin->bot_profile_repository()->create( 'Bot', str_repeat( 'b', 46 ) );
+		$destination = $plugin->destination_repository()->create( $bot->id(), DestinationKind::PRIVATE, '556', null, 'Ops' );
+		$plugin->bot_profile_repository()->set_status( $bot->id(), BotStatus::ACTIVE );
+
+		$plugin->notification_rule_repository()->save(
+			null,
+			'Geo rule',
+			'wordpress.user_registered',
+			1,
+			array(),
+			$bot->id(),
+			$destination->id(),
+			'Country: [{{subject.country}}]',
+			true,
+			100,
+			0,
+			'all'
+		);
+
+		$user_id = self::factory()->user->create();
+
+		do_action( 'user_register', $user_id );
+
+		global $wpdb;
+		$table = $wpdb->prefix . Migrator::OUTBOUND_MESSAGES_TABLE;
+		$row   = $wpdb->get_row( "SELECT * FROM {$table} ORDER BY id DESC LIMIT 1", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$this->assertNotNull( $row );
+
+		$message = $plugin->outbound_message_repository()->find( (int) $row['id'] );
+		$body    = $plugin->outbound_message_repository()->decrypt_body( $message );
+
+		// The literal "[" and "]" are MarkdownV2-escaped; the token itself
+		// resolves to an empty string, never a raw placeholder or a fatal.
+		$this->assertStringContainsString( 'Country: \\[\\]', (string) $body->plaintext() );
 	}
 
 	public function test_username_and_email_reach_a_matched_rules_queued_outbound_message(): void {
