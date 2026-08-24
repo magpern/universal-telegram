@@ -168,6 +168,7 @@ final class ConversationInboxPage {
 		echo '<table class="widefat striped"><thead><tr><th>' .
 			esc_html__( 'Conversation', 'universal-telegram' ) . '</th><th>' .
 			esc_html__( 'Status', 'universal-telegram' ) . '</th><th>' .
+			esc_html__( 'Telegram topic', 'universal-telegram' ) . '</th><th>' .
 			esc_html__( 'Assigned to', 'universal-telegram' ) . '</th><th>' .
 			esc_html__( 'Last activity', 'universal-telegram' ) . '</th></tr></thead><tbody>';
 
@@ -191,10 +192,11 @@ final class ConversationInboxPage {
 			}
 
 			printf(
-				'<tr><td><a href="%s">%s</a></td><td>%s</td><td>%s</td><td>%s</td></tr>',
+				'<tr><td><a href="%s">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
 				esc_url( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . self::TAB_ID . '&conversation_id=' . $conversation->id() ) ),
 				esc_html( substr( $conversation->conversation_uuid(), 0, 8 ) ),
 				esc_html( $conversation->status() ),
+				esc_html( ConversationDetailPage::topic_lifecycle_label( $conversation->topic_lifecycle_state() ) ),
 				esc_html( $assigned_label ),
 				esc_html( $conversation->updated_at() )
 			);

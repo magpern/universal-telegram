@@ -15,9 +15,12 @@ use UniversalTelegram\Conversations\ConversationNoteRepository;
 use UniversalTelegram\Conversations\ConversationPurgeService;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Conversations\ConversationStatus;
+use UniversalTelegram\Conversations\ConversationTopicEligibility;
 use UniversalTelegram\Conversations\OperatorAvailability;
 use UniversalTelegram\Conversations\OperatorAvailabilityRepository;
 use UniversalTelegram\Conversations\OperatorIdentityRepository;
+use UniversalTelegram\Conversations\TopicDeletionDispatcher;
+use UniversalTelegram\Conversations\TopicLifecycleState;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Privacy\Classification;
 
@@ -42,12 +45,14 @@ class ConversationActionHandler {
 	/**
 	 * Constructor.
 	 *
-	 * @param OperatorAvailabilityRepository $availability  Operator availability.
-	 * @param OperatorIdentityRepository     $identities    Operator identity mappings, used to verify a target operator is actually mapped.
-	 * @param ConversationRepository         $conversations Assignment and lifecycle transitions.
-	 * @param ConversationNoteRepository     $notes         Internal notes.
-	 * @param ConversationPurgeService       $purge_service Shared permanent-deletion sequence (WP8, ADR-0026), the same one scheduled retention uses.
-	 * @param AuditLogger                    $audit         Records every successful state change.
+	 * @param OperatorAvailabilityRepository $availability   Operator availability.
+	 * @param OperatorIdentityRepository     $identities     Operator identity mappings.
+	 * @param ConversationRepository         $conversations  Assignment and lifecycle transitions.
+	 * @param ConversationNoteRepository     $notes          Internal notes.
+	 * @param ConversationPurgeService       $purge_service  Shared permanent-deletion sequence.
+	 * @param AuditLogger                    $audit          Records every successful state change.
+	 * @param ConversationTopicEligibility   $eligibility    Remote-delete structural gate.
+	 * @param TopicDeletionDispatcher        $topic_deletion Queues eligible remote deletes.
 	 */
 	public function __construct(
 		private readonly OperatorAvailabilityRepository $availability,
@@ -55,7 +60,9 @@ class ConversationActionHandler {
 		private readonly ConversationRepository $conversations,
 		private readonly ConversationNoteRepository $notes,
 		private readonly ConversationPurgeService $purge_service,
-		private readonly AuditLogger $audit
+		private readonly AuditLogger $audit,
+		private readonly ConversationTopicEligibility $eligibility,
+		private readonly TopicDeletionDispatcher $topic_deletion
 	) {}
 
 	/**
@@ -89,9 +96,19 @@ class ConversationActionHandler {
 			case 'add_note':
 				$this->add_note();
 				break;
-			case 'delete_archived':
-				$this->delete_archived();
+			case 'archive':
+				$this->archive();
 				break;
+			case 'confirm_delete_permanently':
+				$this->confirm_delete_permanently();
+				return;
+			case 'delete_permanently':
+				$this->delete_permanently();
+				return;
+			case 'delete_archived':
+				// Legacy op name: require the same confirm flag as delete_permanently.
+				$this->delete_permanently();
+				return;
 		}
 
 		$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox' ) );
@@ -355,14 +372,10 @@ class ConversationActionHandler {
 	}
 
 	/**
-	 * Manually deletes a conversation, restricted to `archived` status only
-	 * (ADR-0026 decision 9). Audited before execution — the entry is
-	 * written first, and only then is the shared ConversationPurgeService
-	 * (the same one scheduled retention cleanup uses) invoked, so a delete
-	 * that is ever attempted is always evidenced regardless of what the
-	 * purge itself does. Never contacts the Telegram Bot API.
+	 * Archives a conversation locally and revokes the visitor secret. Never
+	 * calls Telegram (M07.1, docs/adr/0031).
 	 */
-	private function delete_archived(): void {
+	private function archive(): void {
 		if ( ! current_user_can( CapabilityRegistrar::MANAGE_CONVERSATIONS ) ) {
 			return;
 		}
@@ -375,7 +388,77 @@ class ConversationActionHandler {
 
 		$conversation = $this->conversations->find( $conversation_id );
 
+		if ( null === $conversation ) {
+			return;
+		}
+
+		if ( TopicLifecycleState::DELETE_PENDING === $conversation->topic_lifecycle_state() ) {
+			return;
+		}
+
+		if ( ! $this->conversations->transition( $conversation_id, $conversation->status(), ConversationStatus::ARCHIVED ) ) {
+			return;
+		}
+
+		$this->conversations->revoke_secret( $conversation_id );
+
+		$this->audit->record(
+			'conversation.archived',
+			'operator',
+			get_current_user_id(),
+			array( 'conversation_id' => $conversation_id ),
+			array( 'conversation_id' => Classification::INTERNAL ),
+			Classification::INTERNAL
+		);
+	}
+
+	/**
+	 * First step of permanent delete: redirect to the detail confirm view.
+	 */
+	private function confirm_delete_permanently(): void {
+		if ( ! current_user_can( CapabilityRegistrar::MANAGE_CONVERSATIONS ) ) {
+			$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox' ) );
+			return;
+		}
+
+		$conversation_id = isset( $_POST['conversation_id'] ) ? (int) $_POST['conversation_id'] : 0;
+
+		$this->redirect_and_exit(
+			admin_url(
+				'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox&conversation_id=' . $conversation_id . '&confirm_delete=1'
+			)
+		);
+	}
+
+	/**
+	 * Second confirming POST: enqueue remote topic deletion or local purge.
+	 * Never calls Telegram synchronously (M07.1, docs/adr/0031).
+	 */
+	private function delete_permanently(): void {
+		if ( ! current_user_can( CapabilityRegistrar::MANAGE_CONVERSATIONS ) ) {
+			$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox' ) );
+			return;
+		}
+
+		$conversation_id = isset( $_POST['conversation_id'] ) ? (int) $_POST['conversation_id'] : 0;
+		$confirmed       = ! empty( $_POST['confirm'] );
+
+		if ( $conversation_id <= 0 || ! $confirmed ) {
+			$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox' ) );
+			return;
+		}
+
+		$conversation = $this->conversations->find( $conversation_id );
+
 		if ( null === $conversation || ConversationStatus::ARCHIVED !== $conversation->status() ) {
+			$this->redirect_and_exit( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox' ) );
+			return;
+		}
+
+		if ( TopicLifecycleState::DELETE_PENDING === $conversation->topic_lifecycle_state() ) {
+			$this->redirect_and_exit(
+				admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox&conversation_id=' . $conversation_id )
+			);
 			return;
 		}
 
@@ -388,7 +471,26 @@ class ConversationActionHandler {
 			Classification::INTERNAL
 		);
 
-		$this->purge_service->purge( $conversation_id, $conversation->destination_id() );
+		if ( $this->eligibility->is_remote_deletable( $conversation ) ) {
+			$result = $this->topic_deletion->maybe_delete( $conversation );
+			$notice = null !== $result ? 'deletion_started' : 'deletion_failed';
+
+			$this->redirect_and_exit(
+				admin_url(
+					'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox&conversation_id=' . $conversation_id . '&ut_notice=' . $notice
+				)
+			);
+			return;
+		}
+
+		$this->purge_service->purge(
+			$conversation_id,
+			$this->eligibility->destination_id_for_purge( $conversation )
+		);
+
+		$this->redirect_and_exit(
+			admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox&ut_notice=conversation_removed' )
+		);
 	}
 
 	/**

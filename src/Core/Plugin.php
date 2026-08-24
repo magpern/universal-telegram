@@ -1334,7 +1334,9 @@ final class Plugin {
 			$this->conversation_repository,
 			$this->conversation_note_repository,
 			$this->conversation_purge_service,
-			$this->audit_logger
+			$this->audit_logger,
+			$this->conversation_topic_eligibility,
+			$this->topic_deletion_dispatcher
 		);
 		add_action( 'admin_post_' . ConversationActionHandler::ADMIN_POST_ACTION, array( $this->conversation_action_handler, 'handle_request' ) );
 

@@ -443,6 +443,8 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 
 		$this->assertStringContainsString( 'Conversation topics', $html );
 		$this->assertStringContainsString( 'Conversation abc123', $html );
+		$this->assertStringContainsString( 'Open conversation', $html );
+		$this->assertStringContainsString( 'conversation_id=' . $conversation->id(), $html );
 
 		// The manual "Website Support" destination created by
 		// complete_setup_for() still has its test-message action.
