@@ -96,6 +96,16 @@ final class PresetCatalog {
 			'requires_woocommerce' => true,
 		),
 		array(
+			'key'                  => 'added_to_cart',
+			'title'                => 'Added to cart',
+			'description'          => 'Notify when a customer adds a product to their cart.',
+			'event_type'           => 'woocommerce.cart_item_added',
+			'conditions'           => array(),
+			'match_mode'           => 'all',
+			'message'              => 'Product #{{subject.product_id}} added to cart (quantity: {{payload.quantity}}).',
+			'requires_woocommerce' => true,
+		),
+		array(
 			'key'                  => 'admin_login',
 			'title'                => 'Successful administrator login',
 			'description'          => 'Notify when an administrator account signs in.',
