@@ -48,6 +48,7 @@ use UniversalTelegram\AI\Provider\AiFailureClassifier;
 use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Audit\AuditLogRepository;
 use UniversalTelegram\Automations\Digest\DigestEligibility;
+use UniversalTelegram\Automations\Intelligence\IntelligenceSettings;
 use UniversalTelegram\Automations\Digest\VisitorDigestAggregator;
 use UniversalTelegram\Automations\Digest\VisitorDigestCounterRepository;
 use UniversalTelegram\Automations\Digest\VisitorDigestRenderer;
@@ -1206,12 +1207,16 @@ final class Plugin {
 			new Tab( 'events', __( 'Events', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_catalog_page, 'render_tab_content' ) )
 		);
 
+		$intelligence_settings = new IntelligenceSettings( $settings );
+
 		$this->rule_builder_page = new RuleBuilderPage(
 			$this->notification_rule_repository,
 			$this->event_registry,
 			$this->bot_profile_repository,
 			$this->destination_repository,
-			$this->digest_eligibility
+			$this->digest_eligibility,
+			$settings,
+			$intelligence_settings
 		);
 		$this->hub_tab_registry->register(
 			new Tab( 'rules', __( 'Rules', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_builder_page, 'render_tab_content' ) )
@@ -1219,6 +1224,7 @@ final class Plugin {
 
 		$this->rule_builder_request_handler = new RuleBuilderRequestHandler( $this->notification_rule_repository );
 		add_action( 'admin_post_' . RuleBuilderRequestHandler::ADMIN_POST_ACTION, array( $this->rule_builder_request_handler, 'handle_request' ) );
+		add_action( 'admin_post_' . RuleBuilderPage::INTELLIGENCE_ADMIN_POST_ACTION, array( $this->rule_builder_page, 'handle_intelligence_settings_request' ) );
 
 		if ( defined( 'UNIVERSAL_TELEGRAM_PLUGIN_FILE' ) ) {
 			( new PluginActionLinks( plugin_basename( UNIVERSAL_TELEGRAM_PLUGIN_FILE ) ) )->register();
