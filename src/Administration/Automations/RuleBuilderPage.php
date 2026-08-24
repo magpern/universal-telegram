@@ -41,6 +41,9 @@ final class RuleBuilderPage {
 	public const INTELLIGENCE_ADMIN_POST_ACTION = 'universal_telegram_intelligence_settings_save';
 	public const INTELLIGENCE_NONCE_ACTION      = 'universal_telegram_intelligence_settings_save';
 
+	public const PREVIEW_ADMIN_POST_ACTION = 'universal_telegram_rule_preview';
+	public const PREVIEW_NONCE_ACTION      = 'universal_telegram_rule_preview';
+
 	/**
 	 * Constructor.
 	 *
@@ -155,6 +158,34 @@ final class RuleBuilderPage {
 		$this->render_rule_list();
 		$this->render_rule_form();
 		$this->render_intelligence_settings();
+	}
+
+	/**
+	 * The "Example notification preview" endpoint: a read-only render, not
+	 * a mutation, so it responds with JSON rather than a redirect — still
+	 * routed through the same admin-post.php dispatch, capability check,
+	 * and nonce verification every other action here uses (M08.1 plan
+	 * "Define the preview precisely"). Never touches a database, an HTTP
+	 * client, or any real event/order/visitor/Telegram data — only
+	 * PreviewRenderer's own fixed FieldTypeCatalog sample values.
+	 */
+	public function handle_preview_request(): void {
+		if ( ! current_user_can( CapabilityRegistrar::MANAGE_AUTOMATIONS ) ) {
+			wp_send_json_error( array(), 403 );
+			return;
+		}
+
+		if ( ! check_ajax_referer( self::PREVIEW_NONCE_ACTION, '_wpnonce', false ) ) {
+			wp_send_json_error( array(), 403 );
+			return;
+		}
+
+		$event_type = isset( $_POST['event_type'] ) ? sanitize_text_field( wp_unslash( $_POST['event_type'] ) ) : '';
+		$template   = isset( $_POST['template'] ) ? sanitize_textarea_field( wp_unslash( $_POST['template'] ) ) : '';
+
+		$preview = ( new PreviewRenderer( $this->registry ) )->render( $event_type, $template );
+
+		wp_send_json_success( array( 'preview' => $preview ) );
 	}
 
 	/**
@@ -412,7 +443,15 @@ final class RuleBuilderPage {
 		}
 		echo '</select></td></tr>';
 
-		echo '<tr><th><label for="ut-rule-template">' . esc_html__( 'Message template', 'universal-telegram' ) . '</label></th><td><textarea id="ut-rule-template" name="template" class="large-text" rows="3"></textarea></td></tr>';
+		echo '<tr><th><label for="ut-rule-template">' . esc_html__( 'Message', 'universal-telegram' ) . '</label></th><td>';
+		echo '<p><label for="ut-insert-field" class="screen-reader-text">' . esc_html__( 'Insert field', 'universal-telegram' ) . '</label>';
+		echo '<select id="ut-insert-field"><option value="">' . esc_html__( 'Insert field…', 'universal-telegram' ) . '</option></select> ';
+		echo '<button type="button" id="ut-insert-field-button" class="button">' . esc_html__( 'Insert', 'universal-telegram' ) . '</button></p>';
+		echo '<textarea id="ut-rule-template" name="template" class="large-text" rows="3"></textarea>';
+		echo '<p class="description">' . esc_html__( 'The final message uses the real event information when it is sent.', 'universal-telegram' ) . '</p>';
+		echo '<p><strong>' . esc_html__( 'Example notification preview', 'universal-telegram' ) . '</strong></p>';
+		echo '<p id="ut-message-preview" class="ut-message-preview"></p>';
+		echo '</td></tr>';
 
 		echo '<tr><th><label for="ut-rule-priority">' . esc_html__( 'Priority', 'universal-telegram' ) . '</label></th><td><input type="number" id="ut-rule-priority" name="priority" value="100" /></td></tr>';
 
@@ -425,7 +464,7 @@ final class RuleBuilderPage {
 		submit_button( __( 'Save rule', 'universal-telegram' ) );
 		echo '</form>';
 
-		$this->render_condition_builder_script();
+		$this->render_builder_script();
 	}
 
 	/**
@@ -531,29 +570,46 @@ final class RuleBuilderPage {
 
 	/**
 	 * Embeds the per-event-type friendly field/operator/choice metadata as
-	 * JSON and the small vanilla-JS behavior for the event picker and
-	 * condition builder: row add/remove, and rebuilding a row's own
-	 * operator/value controls when its field (or the event type) changes.
-	 * No build pipeline, no framework — plain DOM script, matching the
-	 * frozen plan's "no SPA/React/Vue" requirement.
+	 * JSON and the small vanilla-JS behavior for: the event picker and
+	 * condition builder (row add/remove, rebuilding a row's own
+	 * operator/value controls when its field or the event type changes);
+	 * the message field-insert menu (inserting the literal `{{field.path}}`
+	 * token at the textarea cursor); and the "Example notification
+	 * preview" (debounced fetch to handle_preview_request(), rendered via
+	 * textContent only — never innerHTML). No build pipeline, no
+	 * framework — plain DOM script, matching the frozen plan's "no
+	 * SPA/React/Vue" requirement.
 	 */
-	private function render_condition_builder_script(): void {
+	private function render_builder_script(): void {
 		$metadata = array();
 		foreach ( $this->registry->all() as $entry ) {
 			$metadata[ $entry['event_type'] ] = ConditionRowRenderer::field_metadata_for_event( $entry['event_type'], $this->registry );
 		}
 
 		echo '<script type="application/json" id="ut-condition-field-metadata">' . wp_json_encode( $metadata ) . '</script>';
+
+		$preview_config = array(
+			'ajaxUrl' => admin_url( 'admin-post.php' ),
+			'action'  => self::PREVIEW_ADMIN_POST_ACTION,
+			'nonce'   => wp_create_nonce( self::PREVIEW_NONCE_ACTION ),
+		);
+		echo '<script type="application/json" id="ut-preview-config">' . wp_json_encode( $preview_config ) . '</script>';
 		?>
 		<script>
 		( function () {
 			var metadata = JSON.parse( document.getElementById( 'ut-condition-field-metadata' ).textContent || '{}' );
+			var previewConfig = JSON.parse( document.getElementById( 'ut-preview-config' ).textContent || '{}' );
 			var eventSelect = document.getElementById( 'ut-rule-event-type' );
 			var wrap = document.getElementById( 'ut-conditions-wrap' );
 			var rows = document.getElementById( 'ut-condition-rows' );
 			var template = document.getElementById( 'ut-condition-row-template' );
 			var addButton = document.getElementById( 'ut-add-condition' );
+			var templateTextarea = document.getElementById( 'ut-rule-template' );
+			var insertFieldSelect = document.getElementById( 'ut-insert-field' );
+			var insertFieldButton = document.getElementById( 'ut-insert-field-button' );
+			var previewEl = document.getElementById( 'ut-message-preview' );
 			var rowIndex = 0;
+			var previewTimer = null;
 
 			function optionsHtml( items, selectedValue ) {
 				var html = '';
@@ -641,12 +697,70 @@ final class RuleBuilderPage {
 
 			addButton.addEventListener( 'click', addRow );
 
+			function rebuildInsertFieldOptions() {
+				var eventType = eventSelect.value;
+				insertFieldSelect.innerHTML = '<option value="">' + insertFieldSelect.options[ 0 ].text + '</option>' + fieldOptionsHtml( eventType );
+			}
+
+			insertFieldButton.addEventListener( 'click', function () {
+				var token = insertFieldSelect.value;
+				if ( ! token ) {
+					return;
+				}
+
+				var placeholder = '{{' + token + '}}';
+				var start = templateTextarea.selectionStart || 0;
+				var end = templateTextarea.selectionEnd || 0;
+				var value = templateTextarea.value;
+
+				templateTextarea.value = value.slice( 0, start ) + placeholder + value.slice( end );
+				templateTextarea.focus();
+				templateTextarea.selectionStart = templateTextarea.selectionEnd = start + placeholder.length;
+
+				schedulePreview();
+			} );
+
+			function fetchPreview() {
+				if ( ! previewConfig.ajaxUrl ) {
+					return;
+				}
+
+				var body = new URLSearchParams();
+				body.set( 'action', previewConfig.action );
+				body.set( '_wpnonce', previewConfig.nonce );
+				body.set( 'event_type', eventSelect.value );
+				body.set( 'template', templateTextarea.value );
+
+				fetch( previewConfig.ajaxUrl, { method: 'POST', credentials: 'same-origin', body: body } )
+					.then( function ( response ) { return response.json(); } )
+					.then( function ( json ) {
+						previewEl.textContent = ( json && json.success && json.data ) ? json.data.preview : '';
+					} )
+					.catch( function () {
+						previewEl.textContent = '';
+					} );
+			}
+
+			function schedulePreview() {
+				if ( previewTimer ) {
+					clearTimeout( previewTimer );
+				}
+				previewTimer = setTimeout( fetchPreview, 400 );
+			}
+
+			templateTextarea.addEventListener( 'input', schedulePreview );
+
 			eventSelect.addEventListener( 'change', function () {
 				var existingRows = rows.querySelectorAll( '.ut-condition-row' );
 				for ( var i = 0; i < existingRows.length; i++ ) {
 					rebuildFieldOptions( existingRows[ i ] );
 				}
+				rebuildInsertFieldOptions();
+				schedulePreview();
 			} );
+
+			rebuildInsertFieldOptions();
+			schedulePreview();
 		} )();
 		</script>
 		<?php

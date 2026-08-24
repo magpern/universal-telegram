@@ -1313,6 +1313,7 @@ final class Plugin {
 		$this->rule_builder_request_handler = new RuleBuilderRequestHandler( $this->notification_rule_repository );
 		add_action( 'admin_post_' . RuleBuilderRequestHandler::ADMIN_POST_ACTION, array( $this->rule_builder_request_handler, 'handle_request' ) );
 		add_action( 'admin_post_' . RuleBuilderPage::INTELLIGENCE_ADMIN_POST_ACTION, array( $this->rule_builder_page, 'handle_intelligence_settings_request' ) );
+		add_action( 'admin_post_' . RuleBuilderPage::PREVIEW_ADMIN_POST_ACTION, array( $this->rule_builder_page, 'handle_preview_request' ) );
 
 		if ( defined( 'UNIVERSAL_TELEGRAM_PLUGIN_FILE' ) ) {
 			( new PluginActionLinks( plugin_basename( UNIVERSAL_TELEGRAM_PLUGIN_FILE ) ) )->register();
