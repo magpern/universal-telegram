@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented with fail-closed Contract boundary (closure: `docs/closure/ut-adapter-m1-universal-support-chat-adapter-closure.md`; operational exchange waits for SC-M03 authenticated Contract server; awaiting Product Owner acceptance / merge)
+Implemented with fail-closed Contract boundary (closure: `docs/closure/ut-adapter-m1-universal-support-chat-adapter-closure.md`). **Signed Contract client follow-up now pinned and scoped by ADR-0038** (§0 below); implementation of that follow-up has not begun.
 
 ## Dependencies
 
@@ -11,6 +11,20 @@ Implemented with fail-closed Contract boundary (closure: `docs/closure/ut-adapte
   - Commit SHA: `dff2730e24b7d3f70f15f706305e12e14fdcc6c8`
   - Canonical URL: `https://github.com/magpern/universal-support-chat/blob/dff2730e24b7d3f70f15f706305e12e14fdcc6c8/docs/adr/0005-canonical-support-channel-contract-v1.md`
 - Support Chat **SC-M01** and **SC-M02** surfaces available for Contract callbacks and Hub/conversation identity (implemented in `universal-support-chat`, not in this repository).
+- Signed-client follow-up additionally depends on Support Chat **ADR-0007** (pinned in §0 below).
+
+## 0. Signed Contract client follow-up (ADR-0038)
+
+Added by the `docs/ut-contract-v1-auth-profile-pin` documentation freeze, additive to this charter (`docs/governance.md` "Changing a frozen milestone charter"). Does not alter §Included scope, §Explicit exclusions, or the acceptance/entry/exit criteria below.
+
+Support Chat ADR-0007 fixes the authentication mechanism Contract v1 (ADR-0005) required but never specified — mutual Ed25519 request signing, administrator-authorized pairing, auth profile `support-channel-contract-auth/v1`. Pin (Support Chat `main`, merged PR #5):
+
+- Commit SHA: `8ee396d8b8edcbf526797c0a1f5741f3842df57a`
+- Canonical URL: `https://github.com/magpern/universal-support-chat/blob/8ee396d8b8edcbf526797c0a1f5741f3842df57a/docs/adr/0007-contract-v1-mutual-signed-adapter-authentication-profile.md`
+
+`SupportChatContractClient`'s current unconditional fail-closed stubs are deliberate legacy of the missing mechanism, not a defect. The authorised follow-up — replacing those stubs, adding pairing, and verifying inbound Support Chat signatures at `OutboundContractController` — is scoped in full in ADR-0038 (`docs/adr/0038-support-chat-adr-0007-pin-and-signed-contract-client-follow-up.md`) and this milestone's frozen plan: [v2](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v2.md), superseding [v1](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v1.md).
+
+**No signed-client implementation code may begin until ADR-0038 is merged. No SC-M03 migration/cutover code may begin until both ADR-0038 and Support Chat's SC-M03 work package 0 (authenticated Contract server) are merged.**
 
 ## Objective
 
@@ -87,4 +101,4 @@ Adapter module; binding schema/migrations (at implementation); Contract client/s
 
 ## Frozen plan
 
-[ut-adapter-m1-universal-support-chat-adapter-plan-v1.md](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v1.md)
+[ut-adapter-m1-universal-support-chat-adapter-plan-v2.md](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v2.md) (supersedes [v1](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v1.md); v1 retained unedited per `docs/plans/README.md`/`docs/governance.md`)
