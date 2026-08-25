@@ -4,6 +4,10 @@
 
 Implemented — technical work complete on `feature/m09-ai-draft-assistant`, merged to `main` at `396b1d8d44357b4e2a4405e0bc195c0b157facc1`, frozen plan `docs/plans/m09-ai-draft-assistant-plan-v1.md`, ADR-0028. Product Owner acceptance pending the manual dev-provider checklist. See `docs/closure/m09-ai-draft-assistant-closure.md`.
 
+### Architecture amendment note (documentation only)
+
+**M09 behaviour is unchanged** by the chat-experience amendment: operator-requested drafts only; no autonomous send; visitor `ai_ack` retained until M10. Follow-on **M09.1** (ADR-0036) is the sole narrow Approve-and-send extension. This charter is not reopened for auto-send.
+
 ## Dependencies
 
 M05, M07

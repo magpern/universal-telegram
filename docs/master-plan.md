@@ -41,13 +41,15 @@ The official product name and technical identifiers are finalized in ADR-0002.
 
 ### Website chat
 
-* Display a configurable chat widget on selected pages.
-* Forward customer messages to Telegram.
-* Give each customer conversation its own Telegram forum topic.
-* Allow staff to reply from Telegram.
-* Deliver replies back to the customer’s website chat.
+* Display a configurable chat widget on selected pages (authenticated access per ADR-0025).
+* Store every conversation in WordPress as the system of record.
+* Route visitor messages according to site routing policy (ADR-0033):
+  * **human-first** (default while M10 direct AI is disabled): preserve Telegram human-support delivery (topic + outbound), matching historical behaviour.
+  * **ai-first** (only when M10 direct AI is enabled): ordinary AI-only exchanges stay in WordPress with zero Telegram traffic; create a Telegram topic only on human request or defined escalation.
+* Allow staff to reply from Telegram after a topic exists; deliver replies back to the website chat.
 * Preserve conversations if the visitor navigates between pages.
-* Support online, busy and offline modes.
+* Site support availability combines weekly schedule (site timezone), exceptions, and manual override (`automatic|online|offline`), with `/support` site commands distinct from per-operator `/presence` (ADR-0034, ADR-0035).
+* Offline human requests create a durable waiting case and Telegram topic immediately, with truthful visitor wording.
 
 ### Telegram administration
 
@@ -1058,18 +1060,25 @@ Validation:
 
 **Objective:** Permit narrowly scoped AI-first chat.
 
+**Status:** Not started. Charter amended by the chat-experience architecture documentation freeze (ADR-0033–0036). A **future M10 ADR** is required before any M10 implementation.
+
 Prerequisite:
 
-M9 must demonstrate acceptable quality and safety.
+* M9 must demonstrate acceptable quality and safety (Product Owner acceptance).
+* M05.2, M07.2, and M09.1 foundations as chartered.
+* Future M10 ADR + frozen implementation plan.
 
 Deliverables:
 
+* Administrator-enabled direct AI; flip to `ai-first` routing mode
+* Replace visitor `ai_ack` with site policy + disclosure
 * Per-profile AI policies
 * Confidence and escalation rules
 * Restricted read-only tools
 * Human takeover
 * Response limits
 * AI disclosure
+* Visitor attribution: **AI assistant** (never Support team / named human)
 * Evaluation suite
 
 Validation:
@@ -1078,6 +1087,21 @@ Validation:
 * Unsupported health and policy questions escalate
 * No unauthorized tool invocation
 * Human takeover is immediate
+* AI-only conversations produce no Telegram traffic
+
+---
+
+## Chat-experience architecture amendment (documentation)
+
+Follow-on milestones (plans frozen; code not started):
+
+* **M05.2** — Escalation-aware conversation routing (ADR-0033)
+* **M06.4** — Professional chat-widget visual revamp (no live/offline until M07.2)
+* **M07.2** — Site support availability, `/support`, waiting queue, availability sweep (ADR-0034, ADR-0035)
+* **M09.1** — Operator approve-and-send as Support team (ADR-0036)
+* **M10** — Controlled direct AI (future ADR required)
+
+M08.1 is closed, PO-approved, and merged to `main` (out of scope). M08.2 is closed (out of scope). M09 remains operator-draft-only until M09.1/M10.
 
 ## M11 — Digests and operational intelligence
 
