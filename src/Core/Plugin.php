@@ -819,8 +819,8 @@ final class Plugin {
 			$this->audit_logger
 		);
 
-		$adapter_enabled = ! empty( $settings_values['support_chat_adapter_enabled'] );
-		$adapter_bindings = new ChannelBindingRepository( $this->schema_health );
+		$adapter_enabled   = ! empty( $settings_values['support_chat_adapter_enabled'] );
+		$adapter_bindings  = new ChannelBindingRepository( $this->schema_health );
 		$adapter_discovery = new DiscoveryClient();
 		$adapter_sc_client = new SupportChatContractClient();
 		$adapter_inbound   = new InboundAdapterBridge(
@@ -1677,27 +1677,23 @@ final class Plugin {
 			new Tab( 'diagnostics', __( 'Diagnostics', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->diagnostics_page, 'render_tab_content' ) )
 		);
 
-		if ( null !== $this->support_chat_adapter_bindings
-			&& null !== $this->support_chat_adapter_discovery
-			&& null !== $this->support_chat_adapter_settings
-			&& null !== $this->bot_profile_repository
-			&& null !== $this->digest_eligibility ) {
-			$adapter_status_page = new AdapterStatusPage(
-				$this->support_chat_adapter_settings,
-				$this->support_chat_adapter_discovery,
-				$this->support_chat_adapter_bindings,
-				$this->bot_profile_repository,
-				$this->digest_eligibility
-			);
-			$this->hub_tab_registry->register(
-				new Tab(
-					AdapterStatusPage::TAB_ID,
-					__( 'Support Chat adapter', 'universal-telegram' ),
-					CapabilityRegistrar::MANAGE,
-					array( $adapter_status_page, 'render_tab_content' )
-				)
-			);
-		}
+		// Adapter deps are assigned unconditionally earlier in init(); PHPStan
+		// narrows the nullable properties through that same method path.
+		$adapter_status_page = new AdapterStatusPage(
+			$this->support_chat_adapter_settings,
+			$this->support_chat_adapter_discovery,
+			$this->support_chat_adapter_bindings,
+			$this->bot_profile_repository,
+			$this->digest_eligibility
+		);
+		$this->hub_tab_registry->register(
+			new Tab(
+				AdapterStatusPage::TAB_ID,
+				__( 'Support Chat adapter', 'universal-telegram' ),
+				CapabilityRegistrar::MANAGE,
+				array( $adapter_status_page, 'render_tab_content' )
+			)
+		);
 
 		// Legacy URL compatibility (M04.1 plan §5, ADR-0020): every
 		// retired admin page slug stays permanently reachable, redirecting

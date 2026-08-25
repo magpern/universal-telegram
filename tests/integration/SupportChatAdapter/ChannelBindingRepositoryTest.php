@@ -67,7 +67,7 @@ final class ChannelBindingRepositoryTest extends WP_UnitTestCase {
 
 		foreach ( $files as $file ) {
 			/** @var \SplFileInfo $file */
-			$contents = file_get_contents( $file->getPathname() );
+			$contents = file_get_contents( $file->getPathname() ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local repository source file, never a remote URL.
 			$this->assertIsString( $contents );
 			$this->assertDoesNotMatchRegularExpression(
 				'/FROM\s+[\'"`]?\{?\$wpdb->prefix\}?[\'"`]?\s*\.?\s*[\'"]universal_support_chat_/i',

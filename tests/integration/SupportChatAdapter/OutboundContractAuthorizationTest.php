@@ -66,6 +66,7 @@ final class OutboundContractAuthorizationTest extends WP_UnitTestCase {
 			$deliver
 		);
 		add_action( 'rest_api_init', array( $this->controller, 'register_routes' ) );
+		// phpcs:ignore WooCommerce.Commenting.CommentHooks.MissingHookComment, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- WordPress core REST bootstrap hook used to register routes in tests.
 		do_action( 'rest_api_init' );
 
 		update_option(

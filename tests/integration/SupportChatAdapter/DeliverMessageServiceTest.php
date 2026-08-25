@@ -41,7 +41,7 @@ final class DeliverMessageServiceTest extends WP_UnitTestCase {
 		$this->assertNotNull( $binding );
 
 		// Destination/bot rows may be missing — enqueue may fail; idempotency still must reuse after first accept key insert.
-		$first = $service->deliver( $binding->binding_uuid(), 'deliver-key-1', 'hello', 'Visitor' );
+		$first  = $service->deliver( $binding->binding_uuid(), 'deliver-key-1', 'hello', 'Visitor' );
 		$second = $service->deliver( $binding->binding_uuid(), 'deliver-key-1', 'hello again', 'Visitor' );
 
 		if ( $first['ok'] ) {

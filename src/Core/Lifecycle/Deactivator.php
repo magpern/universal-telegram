@@ -34,7 +34,9 @@ final class Deactivator {
 		$uuids    = $bindings->list_active_binding_uuids( 200 );
 
 		foreach ( $uuids as $uuid ) {
-			$client->report_channel_unavailable( $uuid, 'adapter_deactivated' );
+			// Fail-closed until SC-M03; local mark below still runs.
+			$result = $client->report_channel_unavailable( $uuid, 'adapter_deactivated' );
+			unset( $result );
 		}
 
 		$bindings->mark_all_active_unavailable();

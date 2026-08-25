@@ -491,9 +491,9 @@ wp eval '
 	echo "OK: the Settings action link is present and points at the Settings tab.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
-echo "== Verifying the administration hub registers exactly the seven grouped top-level areas, in order =="
+echo "== Verifying the administration hub registers exactly the expected grouped top-level areas, in order =="
 wp eval '
-	$expected_tabs = array( "overview", "bots", "notifications-activity", "conversations", "ai-hub", "settings", "diagnostics" );
+	$expected_tabs = array( "overview", "bots", "notifications-activity", "conversations", "ai-hub", "settings", "diagnostics", "support-chat-adapter" );
 
 	$plugin   = UniversalTelegram\Core\Plugin::instance();
 	$registry = $plugin->hub_tab_registry();
@@ -508,7 +508,7 @@ wp eval '
 		fwrite( STDERR, "FAIL: hub tab set/order was " . implode( ",", $ids ) . ", expected " . implode( ",", $expected_tabs ) . "\n" );
 		exit( 1 );
 	}
-	echo "OK: the administration hub registers exactly the seven expected top-level areas, in order.\n";
+	echo "OK: the administration hub registers exactly the expected top-level areas, in order.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
 echo "== Verifying the hub shell renders the requested tab content and the full tab nav =="
