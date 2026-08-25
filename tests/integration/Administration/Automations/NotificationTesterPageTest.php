@@ -114,6 +114,28 @@ final class NotificationTesterPageTest extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( 'id="ut-tester-result"', $html );
 	}
 
+	/**
+	 * Regression test: the "Example values" form's own POST action URL
+	 * must repeat mode/rule_id (or event_type) as query params, not only
+	 * as hidden POST fields — the page resolves which rule/event is
+	 * selected from $_GET, not $_POST, so a form missing them would land
+	 * back on an empty picker with no visible result after submitting,
+	 * looking like a silent page refresh.
+	 */
+	public function test_the_example_values_forms_action_url_carries_mode_and_rule_id_so_submitting_does_not_lose_the_selection(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		$rules = $this->rules();
+		$rule  = $this->eligible_rule( $rules );
+		$_GET['rule_id'] = (string) $rule->id();
+
+		ob_start();
+		$this->page( $rules )->render_tab_content();
+		$html = ob_get_clean();
+
+		$this->assertMatchesRegularExpression( '/<form method="post" action="[^"]*mode=rule[^"]*"/', $html );
+		$this->assertMatchesRegularExpression( '/<form method="post" action="[^"]*rule_id=' . $rule->id() . '[^"]*"/', $html );
+	}
+
 	public function test_a_post_without_a_valid_nonce_is_rejected_and_runs_no_test(): void {
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
 		$rules = $this->rules();

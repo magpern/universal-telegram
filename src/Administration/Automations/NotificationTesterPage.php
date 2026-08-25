@@ -365,7 +365,19 @@ final class NotificationTesterPage {
 	 * @param array<string, mixed>  $current_values The values to pre-fill, if a test already ran this request.
 	 */
 	private function render_example_values_form( string $event_type, string $mode, array $hidden_fields, array $current_values ): void {
-		echo '<form method="post" action="' . esc_url( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . self::TAB_ID ) ) . '">';
+		// The action URL repeats mode/rule_id/event_type as query params
+		// (identical to the hidden fields below) so $_GET still carries
+		// them on the POST response — requested_mode()/requested_rule()/
+		// requested_event_type() all resolve from $_GET, exactly as they
+		// do for the GET picker forms. Without this, submitting the form
+		// would land back on an empty picker with no result shown at all,
+		// since $_GET (not $_POST) drives which rule/event is selected.
+		$action_url = 'admin.php?page=' . HubPage::SLUG . '&tab=' . self::TAB_ID . '&mode=' . rawurlencode( $mode );
+		foreach ( $hidden_fields as $field_name => $field_value ) {
+			$action_url .= '&' . rawurlencode( $field_name ) . '=' . rawurlencode( (string) $field_value );
+		}
+
+		echo '<form method="post" action="' . esc_url( admin_url( $action_url ) ) . '">';
 		wp_nonce_field( self::NONCE_ACTION );
 		echo '<input type="hidden" name="mode" value="' . esc_attr( $mode ) . '" />';
 		foreach ( $hidden_fields as $field_name => $field_value ) {
