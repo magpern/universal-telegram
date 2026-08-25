@@ -9,16 +9,34 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Core\Lifecycle;
 
+use UniversalTelegram\Persistence\SchemaHealth;
+use UniversalTelegram\SupportChatAdapter\ChannelBindingRepository;
+use UniversalTelegram\SupportChatAdapter\Inbound\SupportChatContractClient;
+
 /**
- * Deactivation removes nothing; uninstall (Work Package 10) is the only
- * place data or capabilities are ever removed.
+ * Deactivation callback. Reports open Support Chat adapter bindings as
+ * channel-unavailable (fail-closed for Telegram only) and marks them
+ * unavailable locally. Does not remove data or stop non-adapter features.
  */
 final class Deactivator {
 
 	/**
-	 * Deactivation callback. Intentionally empty at M00: deactivation must
-	 * not remove data, and the plugin owns no scheduled state that needs
-	 * pausing beyond what WordPress itself already does by unloading it.
+	 * Deactivation callback.
 	 */
-	public function deactivate(): void {}
+	public function deactivate(): void {
+		$schema_health = new SchemaHealth();
+		if ( ! $schema_health->is_available() ) {
+			return;
+		}
+
+		$bindings = new ChannelBindingRepository( $schema_health );
+		$client   = new SupportChatContractClient();
+		$uuids    = $bindings->list_active_binding_uuids( 200 );
+
+		foreach ( $uuids as $uuid ) {
+			$client->report_channel_unavailable( $uuid, 'adapter_deactivated' );
+		}
+
+		$bindings->mark_all_active_unavailable();
+	}
 }
