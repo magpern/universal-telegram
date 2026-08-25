@@ -6,7 +6,9 @@ Planned (documentation frozen; implementation not started)
 
 ## Dependencies
 
-M09 (implemented; Product Owner safety acceptance still gates M10, not necessarily M09.1 docs). M05.2 for Conversations operator-message path and escalated-topic mirror gate. ADR-0036.
+M09 (implemented; Product Owner safety acceptance still gates M10, not necessarily M09.1 docs). ADR-0036.
+
+M09.1 depends on M05.2 for escalation metadata and the conditional escalated-topic mirror gate. M09.1 itself delivers the Conversations-owned operator outbound-message service.
 
 ## Objective
 
@@ -50,7 +52,7 @@ Hub UI action, Conversations operator-message service, draft version/delivery fi
 
 ## Entry criteria
 
-ADR-0036 and plan frozen; M05.2 operator-message foundation available (or sequenced); branch from `origin/main`.
+ADR-0036 and plan frozen; M05.2 available for escalation metadata and the escalated-topic mirror gate (or sequenced); branch from `origin/main`. The Conversations-owned operator outbound-message service is delivered by this milestone, not by M05.2.
 
 ## Exit criteria
 

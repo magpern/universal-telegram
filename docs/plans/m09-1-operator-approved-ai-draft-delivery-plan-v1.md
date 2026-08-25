@@ -4,7 +4,9 @@
 
 - Charter: [`docs/milestones/m09-1-operator-approved-ai-draft-delivery.md`](../milestones/m09-1-operator-approved-ai-draft-delivery.md)
 - Governing ADR: [`docs/adr/0036-m09-1-version-bound-approve-and-send-support-team-attribution-and-conditional-telegram-mirror.md`](../adr/0036-m09-1-version-bound-approve-and-send-support-team-attribution-and-conditional-telegram-mirror.md)
-- Prior: ADR-0028 (unchanged except narrow allow-list exception), ADR-0033 (mirror gate)
+- Prior: ADR-0028 (unchanged except narrow allow-list exception), ADR-0033 (mirror gate via M05.2)
+
+**Dependency boundary:** M09.1 depends on M05.2 for escalation metadata and the conditional escalated-topic mirror gate. M09.1 itself delivers the Conversations-owned operator outbound-message service (`Approve and send to chat`, version-bound delivery, Support team attribution, and conditional Telegram mirror).
 
 ## 2. Repository findings
 

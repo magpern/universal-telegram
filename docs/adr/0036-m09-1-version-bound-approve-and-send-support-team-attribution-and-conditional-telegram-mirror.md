@@ -55,9 +55,10 @@ require Telegram, and must not present the message as AI or as a named individua
 
 ## Consequences
 
-M09.1 depends on M05.2's Conversations operator-message foundation (and escalation topic state
-for the mirror gate). M10's visitor-facing AI replies use distinct **AI assistant** attribution
-(chartered separately; requires its own future ADR) and must never reuse Support team labelling.
+M09.1 depends on M05.2 for escalation metadata and the conditional escalated-topic mirror
+gate. M09.1 itself delivers the Conversations-owned operator outbound-message service.
+M10's visitor-facing AI replies use distinct **AI assistant** attribution (chartered
+separately; requires its own future ADR) and must never reuse Support team labelling.
 Hub UI copy that today says "send manually via Telegram" is updated only in M09.1.
 
 ## Security and privacy impact
