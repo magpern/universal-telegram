@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned (documentation frozen; implementation not started)
+Implemented (closure record: `docs/closure/ut-adapter-m1-universal-support-chat-adapter-closure.md`; awaiting Product Owner acceptance / merge)
 
 ## Dependencies
 
