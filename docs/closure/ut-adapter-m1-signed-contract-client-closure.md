@@ -23,12 +23,18 @@ closure.
 **`SupportChatContractClient` no longer returns an unconditional stub: it
 builds and Ed25519-signs the exact ADR-0007 §3 ten-line canonical request
 and dispatches it, failing closed at every named gate. `OutboundContractController`
-now requires a valid ADR-0007 signature from Support Chat's currently
-paired, active peer key, in addition to (never instead of) the pre-existing
-default-deny discovery/filter gate. Administrator pairing UX, key custody,
-and the nonce-replay store are implemented. This closure record does not
-claim live interoperability against a running Support Chat installation —
-that is WP6, explicitly out of scope for this slice (see "Next" below).**
+requires a valid ADR-0007 signature from Support Chat's currently paired,
+active peer key, for an operation on that peer's own allow-list, as its
+mandatory production authorization decision — see "Production authorization
+correction" below for the design actually shipped (the first version of
+this slice required an additional external filter assertion with no
+production trust source that could ever set it, which would have denied
+every legitimate Support Chat call; that was corrected before merge, based
+on review feedback, without weakening `SignatureVerifier` or any negative
+case). Administrator pairing UX, key custody, and the nonce-replay store
+are implemented. This closure record does not claim live interoperability
+against a running Support Chat installation — that is WP6, explicitly out
+of scope for this slice (see "Next" below).**
 
 ## Scope closed (work packages 1–5)
 
@@ -77,13 +83,11 @@ that is WP6, explicitly out of scope for this slice (see "Next" below).**
   key; key-ID match; operation on the peer's allow-list; ±300s timestamp
   window; nonce-format and atomic replay-claim; exact raw-body SHA-256;
   Ed25519 signature). `OutboundContractController::authorize_operation()`
-  requires this verification to pass **and** the pre-existing
-  `universal_telegram_support_chat_adapter_rest_authorized` default-deny
-  filter/Compatible-discovery gate to pass — both, independently, for
+  requires this verification to pass **and** Compatible discovery, for
   every one of the four Support Chat → adapter operations
   (`ensure_channel_case`, `notify_operators`, `deliver_transcript_backfill`,
-  `deliver_message`). Neither check was weakened; the filter still defaults
-  false and is unchanged in shape.
+  `deliver_message`) — see "Production authorization correction" below for
+  exactly how the optional veto filter fits in.
 - **WP5 — nonce replay store and housekeeping.** `SupportChatAdapter\Auth\NonceReplayRepository`
   holds only `(sender, key_id, nonce, recorded_at)`, enforced race-free by
   a database UNIQUE key, with a 600-second retention window.
@@ -113,6 +117,41 @@ operations (those describe what Support Chat sends, not what it accepts).
 operations, so `AdapterAvailability::Compatible` reflects what real SC-M03
 discovery can actually report, instead of a combination that could never be
 satisfied.
+
+## Production authorization correction (pre-merge review finding, fixed on this branch)
+
+The version of this slice first opened for review made
+`OutboundContractController::authorize_operation()` require BOTH a valid
+ADR-0007 signature AND the pre-existing
+`universal_telegram_support_chat_adapter_rest_authorized` filter returning
+`true`, with that filter still defaulting `false` exactly as it did before
+any signature verification existed. Review correctly identified this as a
+merge blocker: nothing in this plugin, in Support Chat, or in any
+documented deployment step ever sets that filter `true` in production, so
+every legitimate, correctly signed, actively paired Support Chat call would
+have been denied forever — the filter had silently become the sole
+production trust source it was explicitly designed never to be.
+
+**Fix shipped on this branch:** `authorize_mutation()`'s filter default
+changed from `false` to `true`, and it now only ever runs *after*
+`verify_signed_request()` has already accepted an ADR-0007 signature from
+an active, `PairingService`-paired Support Chat peer key, for an operation
+on that peer's own allow-list, and Compatible discovery has separately
+held. A `PeerRecord` only exists because an administrator holding BOTH
+`universal_telegram_manage` and `universal_support_chat_manage` explicitly
+paired it — nothing the filter's old default could additionally assert
+would be stronger evidence than a signature that verifies against that
+record. The filter remains registered, documented, and testable: it is now
+an **optional additional veto** (a deployment may still add a narrower
+restriction, e.g. a maintenance kill switch, by returning `false`), never
+the primary trust source and never able to grant access `SignatureVerifier`
+or Compatible discovery did not already grant. No negative case was
+weakened: unpaired, disabled, revoked, expired, allow-list-violating,
+tampered, replayed, and unsigned requests are all still denied — see
+`OutboundContractAuthorizationTest`, which now also proves a validly
+signed, paired, allow-listed request reaches every one of the four
+acceptor routes with no test-only filter override, and that the filter can
+still veto such a request when explicitly set to return `false`.
 
 ## Schema (new, this slice)
 
@@ -160,23 +199,25 @@ satisfied.
   a method); `ContractConstants` operation allow-lists; a structural check
   that this plugin's `SupportChatAdapter` code never references Support
   Chat's own tables or a literal SQL table name.
-- Integration (`vendor/bin/phpunit -c phpunit-integration.xml.dist` against
-  WordPress 6.9, 1030 tests, all green): key generation/custody (idempotent,
-  private key never in the public option or in plaintext in the encrypted
-  option); pairing requires BOTH `universal_telegram_manage` and
-  `universal_support_chat_manage` (denied with either alone); idempotent
-  pairing; confirm-before-replace; rotate; revoke; disable/enable; expiry;
-  a full signed outbound dispatch through a local fixture Contract server
-  standing in for SC-M03 (asserting the exact headers/canonical-string/
-  signature sent and that they verify against this plugin's own public
-  key); fixture failure responses surfaced as not-ok; unpaired clients
-  never reaching the fixture; `OutboundContractController` requiring BOTH
-  gates (signature alone without the filter rejected; filter alone without
-  a valid signature rejected; both together reach the acceptor; an
-  operation outside the peer's allow-list rejected even with the filter
-  true; body tamper rejected; nonce replay on redelivery rejected); every
-  pre-existing Migrator/Hub-navigation/binding test updated for
-  `db_version` 32 and the new pairing tab, confirming no regression to
+- Integration (`vendor/bin/phpunit -c phpunit-integration.xml.dist`, 1031
+  tests, all green against both WordPress 6.9/PHP 8.1 and WordPress 7.1/
+  PHP 8.3): key generation/custody (idempotent, private key never in the
+  public option or in plaintext in the encrypted option); pairing requires
+  BOTH `universal_telegram_manage` and `universal_support_chat_manage`
+  (denied with either alone); idempotent pairing; confirm-before-replace;
+  rotate; revoke; disable/enable; expiry; a full signed outbound dispatch
+  through a local fixture Contract server standing in for SC-M03 (asserting
+  the exact headers/canonical-string/signature sent and that they verify
+  against this plugin's own public key); fixture failure responses
+  surfaced as not-ok; unpaired clients never reaching the fixture; and, for
+  `OutboundContractController`: a validly signed, paired, allow-listed
+  request reaches every one of the four acceptor routes with **no**
+  test-only filter override; the optional veto filter can still deny such
+  a request when explicitly returning `false`; a signed request against no
+  paired peer is rejected; an operation outside the peer's allow-list is
+  rejected; body tamper is rejected; nonce replay on redelivery is
+  rejected; every pre-existing Migrator/Hub-navigation/binding test updated
+  for `db_version` 32 and the new pairing tab, confirming no regression to
   unrelated M01–M11 functionality.
 - `phpcs` clean across the whole repository; `phpstan analyse
   --memory-limit=1G` clean (no errors).
@@ -201,12 +242,6 @@ satisfied.
   installation was paired or exercised in this closure. This is an
   explicit hard gate on Support Chat's own SC-M03 migration/cutover work,
   per plan v2 §8 WP6 and §11.
-- The `universal_telegram_support_chat_adapter_rest_authorized` filter's
-  production wiring to a real trust source beyond this plugin's own tests
-  (i.e. what legitimately sets it `true` outside a test's `add_filter`) is
-  intentionally left to the WP6 interoperability work — this slice proves
-  both gates are independently enforced, not how a production deployment
-  populates the second one operationally.
 
 ## Next
 

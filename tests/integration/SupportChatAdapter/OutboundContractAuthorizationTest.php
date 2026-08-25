@@ -275,82 +275,144 @@ final class OutboundContractAuthorizationTest extends WP_UnitTestCase {
 		);
 
 		$response = rest_do_request( $request );
-		// Permission fails (filter default false / discovery not Compatible) —
-		// never creates a binding or Telegram topic.
+		// No signature at all — SignatureVerifier is mandatory and denies
+		// first, regardless of the (now default-true) optional veto filter.
 		$this->assertTrue( $response->is_error() || $response->get_status() >= 400 );
 		$this->assertNull( $this->bindings->find_by_conversation_uuid( 'ffffffff-ffff-ffff-ffff-ffffffffffff' ) );
 	}
 
-	public function test_valid_signature_alone_is_rejected_while_the_default_deny_filter_stays_false(): void {
+	/**
+	 * Required test 1: a valid signed request from an active, paired
+	 * Support Chat peer, for an allowed operation, reaches the acceptor in
+	 * production — with no test-only `add_filter(..., '__return_true')`.
+	 * The filter is left completely untouched at its new default.
+	 */
+	public function test_valid_signed_paired_request_reaches_the_acceptor_without_any_filter_override(): void {
 		wp_set_current_user( 0 );
 		$this->pair_peer( array( 'ensure_channel_case' ) );
 
 		$route   = '/' . ContractConstants::UT_REST_NAMESPACE . ContractConstants::UT_REST_PREFIX . '/ensure_channel_case';
 		$body    = array(
 			'conversation_uuid' => 'a1111111-1111-1111-1111-111111111111',
-			'idempotency_key'   => 'ensure-sig-only-1',
+			'idempotency_key'   => 'ensure-prod-auth-1',
 		);
 		$request = $this->build_signed_request( 'ensure_channel_case', $route, $body );
 
-		// The default-deny filter is left at its default false — ADR-0038
-		// requires BOTH gates, never signature alone.
 		$response = rest_do_request( $request );
 
-		$this->assertTrue( $response->is_error() || $response->get_status() >= 400 );
-		$this->assertNull( $this->bindings->find_by_conversation_uuid( 'a1111111-1111-1111-1111-111111111111' ) );
+		// Not a WP_Error (permission denial) — the request reached the
+		// handler. This test environment has no configured bot/destination,
+		// so the handler's own domain logic returns a 200 "unavailable"
+		// business result; that is a distinct, later concern from
+		// authorization, which is what this test proves.
+		$this->assertFalse( $response->is_error() );
 	}
 
-	public function test_filter_true_alone_without_a_valid_signature_is_still_rejected(): void {
+	/**
+	 * Required test 1, continued: every one of the four Support Chat → UT
+	 * routes is reachable by a validly signed, paired, allow-listed
+	 * request — none of them silently kept the old default-false gate.
+	 */
+	public function test_valid_signed_paired_request_reaches_every_acceptor_route(): void {
 		wp_set_current_user( 0 );
-		add_filter( 'universal_telegram_support_chat_adapter_rest_authorized', '__return_true' );
-
-		$request = new WP_REST_Request( 'POST', '/' . ContractConstants::UT_REST_NAMESPACE . ContractConstants::UT_REST_PREFIX . '/ensure_channel_case' );
-		$request->set_header( 'Content-Type', 'application/json' );
-		$request->set_body(
-			wp_json_encode(
-				array(
-					'conversation_uuid' => 'a2222222-2222-2222-2222-222222222222',
-					'idempotency_key'   => 'ensure-filter-only-1',
-				)
-			)
+		$this->pair_peer(
+			array( 'ensure_channel_case', 'notify_operators', 'deliver_transcript_backfill', 'deliver_message' )
 		);
 
-		$response = rest_do_request( $request );
+		$cases = array(
+			'ensure_channel_case'         => array(
+				'conversation_uuid' => 'b1111111-1111-1111-1111-111111111111',
+				'idempotency_key'   => 'ensure-route-1',
+			),
+			'notify_operators'            => array(
+				'channel_case_ref' => 'b2222222-2222-2222-2222-222222222222',
+				'idempotency_key'  => 'notify-route-1',
+				'kind'             => 'attention',
+				'summary'          => 'test',
+			),
+			'deliver_transcript_backfill' => array(
+				'channel_case_ref' => 'b3333333-3333-3333-3333-333333333333',
+				'messages'         => array(),
+			),
+			'deliver_message'             => array(
+				'channel_case_ref' => 'b4444444-4444-4444-4444-444444444444',
+				'idempotency_key'  => 'deliver-route-1',
+				'body'             => 'hello',
+			),
+		);
 
-		$this->assertTrue( $response->is_error() || $response->get_status() >= 400 );
-		$this->assertNull( $this->bindings->find_by_conversation_uuid( 'a2222222-2222-2222-2222-222222222222' ) );
+		foreach ( $cases as $operation => $body ) {
+			$route   = '/' . ContractConstants::UT_REST_NAMESPACE . ContractConstants::UT_REST_PREFIX . '/' . $operation;
+			$request = $this->build_signed_request( $operation, $route, $body );
+
+			$response = rest_do_request( $request );
+
+			// 401/403 are the only statuses a permission_callback returning
+			// false can produce (WordPress core's rest_authorization_required_code()).
+			// A 503 here is a legitimate business-layer outcome (e.g. no
+			// matching binding for this fixture channel_case_ref) reached
+			// only AFTER authorization passed — WP_REST_Response::is_error()
+			// is not the right check, since it treats any >=400 status as
+			// an error regardless of cause.
+			$status = $response->get_status();
+			$this->assertNotSame( 401, $status, "Route {$operation} unexpectedly denied at the permission layer (401)." );
+			$this->assertNotSame( 403, $status, "Route {$operation} unexpectedly denied at the permission layer (403)." );
+		}
 	}
 
-	public function test_valid_signature_and_filter_together_reach_the_acceptor(): void {
+	/**
+	 * Required test 2: the optional veto filter can still deny an
+	 * otherwise fully valid, signed, paired, Compatible-discovery request.
+	 */
+	public function test_filter_can_still_veto_a_valid_signed_and_compatible_request(): void {
 		wp_set_current_user( 0 );
 		$this->pair_peer( array( 'ensure_channel_case' ) );
-		add_filter( 'universal_telegram_support_chat_adapter_rest_authorized', '__return_true' );
+		add_filter( 'universal_telegram_support_chat_adapter_rest_authorized', '__return_false' );
 
 		$route   = '/' . ContractConstants::UT_REST_NAMESPACE . ContractConstants::UT_REST_PREFIX . '/ensure_channel_case';
 		$body    = array(
 			'conversation_uuid' => 'a3333333-3333-3333-3333-333333333333',
-			'idempotency_key'   => 'ensure-both-gates-1',
+			'idempotency_key'   => 'ensure-filter-veto-1',
 		);
 		$request = $this->build_signed_request( 'ensure_channel_case', $route, $body );
 
 		$response = rest_do_request( $request );
 
-		// Discovery is not Compatible in this test environment (no real SC
-		// plugin), so the pre-existing require_compatible() gate inside the
-		// handler still yields a 503 "unavailable" — but critically the
-		// request is no longer denied at the permission layer, proving both
-		// authorize_operation() gates passed and control reached the
-		// handler unchanged.
-		$this->assertFalse( $response->is_error() );
-		$data = $response->get_data();
-		$this->assertIsArray( $data );
-		$this->assertArrayHasKey( 'status', $data );
+		$this->assertTrue( $response->is_error() || $response->get_status() >= 400 );
+		$this->assertNull( $this->bindings->find_by_conversation_uuid( 'a3333333-3333-3333-3333-333333333333' ) );
 	}
 
-	public function test_operation_not_on_peer_allow_list_is_rejected_even_with_filter_true(): void {
+	/**
+	 * Required test 3 (part 1): a signature that verifies against a real
+	 * key pair, but for which no Support Chat peer was ever paired, is
+	 * rejected — SignatureVerifier alone, without a paired PeerRecord,
+	 * never authorizes anything.
+	 */
+	public function test_signed_request_without_any_paired_peer_is_rejected(): void {
+		wp_set_current_user( 0 );
+		// Deliberately no pair_peer() call.
+
+		$route   = '/' . ContractConstants::UT_REST_NAMESPACE . ContractConstants::UT_REST_PREFIX . '/ensure_channel_case';
+		$body    = array(
+			'conversation_uuid' => 'a7777777-7777-7777-7777-777777777777',
+			'idempotency_key'   => 'ensure-unpaired-1',
+		);
+		$request = $this->build_signed_request( 'ensure_channel_case', $route, $body );
+
+		$response = rest_do_request( $request );
+
+		$this->assertTrue( $response->is_error() || $response->get_status() >= 400 );
+		$this->assertNull( $this->bindings->find_by_conversation_uuid( 'a7777777-7777-7777-7777-777777777777' ) );
+	}
+
+	/**
+	 * Required test 3 (part 2): an operation outside the paired peer's own
+	 * allow-list is rejected even though the signature itself is valid and
+	 * the (now default-true) veto filter is left untouched.
+	 */
+	public function test_operation_not_on_peer_allow_list_is_rejected(): void {
 		wp_set_current_user( 0 );
 		$this->pair_peer( array( 'notify_operators' ) ); // ensure_channel_case NOT granted.
-		add_filter( 'universal_telegram_support_chat_adapter_rest_authorized', '__return_true' );
 
 		$route   = '/' . ContractConstants::UT_REST_NAMESPACE . ContractConstants::UT_REST_PREFIX . '/ensure_channel_case';
 		$body    = array(
@@ -365,10 +427,13 @@ final class OutboundContractAuthorizationTest extends WP_UnitTestCase {
 		$this->assertNull( $this->bindings->find_by_conversation_uuid( 'a4444444-4444-4444-4444-444444444444' ) );
 	}
 
-	public function test_body_tamper_after_signing_is_rejected_even_with_filter_true(): void {
+	/**
+	 * Required test 4: body tamper after signing is still rejected under
+	 * the corrected default.
+	 */
+	public function test_body_tamper_after_signing_is_rejected(): void {
 		wp_set_current_user( 0 );
 		$this->pair_peer( array( 'ensure_channel_case' ) );
-		add_filter( 'universal_telegram_support_chat_adapter_rest_authorized', '__return_true' );
 
 		$route   = '/' . ContractConstants::UT_REST_NAMESPACE . ContractConstants::UT_REST_PREFIX . '/ensure_channel_case';
 		$request = $this->build_signed_request(
@@ -397,10 +462,15 @@ final class OutboundContractAuthorizationTest extends WP_UnitTestCase {
 		$this->assertNull( $this->bindings->find_by_conversation_uuid( 'a5555555-5555-5555-5555-555555555555' ) );
 	}
 
+	/**
+	 * Required test 4, continued: nonce replay on redelivery is still
+	 * rejected under the corrected default — the first (legitimate)
+	 * delivery now succeeds without any test-only filter override, and the
+	 * replayed duplicate is still denied.
+	 */
 	public function test_nonce_replay_is_rejected_on_second_delivery(): void {
 		wp_set_current_user( 0 );
 		$this->pair_peer( array( 'ensure_channel_case' ) );
-		add_filter( 'universal_telegram_support_chat_adapter_rest_authorized', '__return_true' );
 
 		$route = '/' . ContractConstants::UT_REST_NAMESPACE . ContractConstants::UT_REST_PREFIX . '/ensure_channel_case';
 		$body  = array(

@@ -23,16 +23,32 @@ use WP_REST_Response;
 /**
  * Exposes ensure / notify / backfill / deliver REST routes for Support Chat.
  *
- * Mutating acceptors stay closed unless **both** independent gates pass
- * (ADR-0038 §4, defense in depth — neither alone is sufficient):
+ * Mutating acceptors require, in order:
  *
- * 1. An ADR-0007 §3 Ed25519-signed Contract v1 request from Support Chat's
- *    currently paired, active peer key, verified by SignatureVerifier
- *    (signature, sender/audience, allow-list, timestamp window, nonce
- *    replay, body hash — all checked before any acceptor runs).
- * 2. Compatible discovery **and** an explicit authenticated Contract
- *    assertion via the `universal_telegram_support_chat_adapter_rest_authorized`
- *    filter (default false), retained exactly as before.
+ * 1. A valid ADR-0007 §3 Ed25519-signed Contract v1 request from Support
+ *    Chat's currently paired, active peer key, for an operation on that
+ *    peer's own allow-list, verified by SignatureVerifier (signature,
+ *    sender/audience, allow-list, timestamp window, nonce replay, body
+ *    hash — all checked before any acceptor runs). This is mandatory and
+ *    is never skipped or weakened.
+ * 2. Compatible discovery (an operational-readiness check — the paired
+ *    peer's own granted allow-list must currently satisfy every Adapter M1
+ *    required operation).
+ *
+ * A request that passes both is itself this route's production
+ * authorization decision (ADR-0038 §4 correction — see
+ * `docs/closure/ut-adapter-m1-signed-contract-client-closure.md`): a
+ * `PeerRecord` only exists because an administrator holding BOTH
+ * `universal_telegram_manage` and `universal_support_chat_manage`
+ * explicitly paired it (`PairingService`), so a signature that verifies
+ * against it already proves stronger trust than any WordPress capability
+ * check or `rest_do_request()` context ever could. The
+ * `universal_telegram_support_chat_adapter_rest_authorized` filter is
+ * retained only as an OPTIONAL additional veto (default `true` once both
+ * gates above have passed) — a deployment may still use it to add a
+ * narrower restriction (e.g. a maintenance kill switch), but it is no
+ * longer the primary trust source and its default no longer makes every
+ * legitimate signed call impossible.
  *
  * Holding only `universal_support_chat_manage` or even UT MANAGE — signed
  * or not — must not turn these routes into a general Telegram-send endpoint.
@@ -129,10 +145,15 @@ final class OutboundContractController {
 	}
 
 	/**
-	 * Authorises one SC → UT mutating Contract call. Requires, in order,
-	 * BOTH a valid ADR-0007 signature for this exact operation AND the
-	 * pre-existing discovery/filter gate — neither is ever sufficient alone
-	 * (ADR-0038 §4).
+	 * Authorises one SC → UT mutating Contract call.
+	 *
+	 * Requires, in order: (1) a valid ADR-0007 signature for this exact
+	 * operation from the paired, active Support Chat peer key (mandatory,
+	 * never skipped); (2) Compatible discovery (operational readiness).
+	 * Passing both is itself the production authorization decision — see
+	 * this class's own docblock and `authorize_mutation()`'s docblock for
+	 * why that is safe. `universal_support_chat_manage` or UT MANAGE alone
+	 * — signed or not — is never sufficient.
 	 *
 	 * @param WP_REST_Request $request   Request.
 	 * @param string          $operation Contract v1 operation this route serves.
@@ -180,10 +201,18 @@ final class OutboundContractController {
 	}
 
 	/**
-	 * Existing pre-ADR-0007 discovery/filter gate. Requires Compatible
-	 * discovery and an explicit authenticated Contract assertion via
-	 * filter. Does not accept UT MANAGE or Support Chat manage alone —
-	 * those must not become a Telegram-send shortcut.
+	 * Requires Compatible discovery, then applies the optional veto filter.
+	 *
+	 * Only ever called from `authorize_operation()`, after
+	 * `verify_signed_request()` has already accepted an ADR-0007 §3
+	 * signature from the paired, active Support Chat peer key for exactly
+	 * this operation — a `PeerRecord` that only exists because an
+	 * administrator holding BOTH `universal_telegram_manage` and
+	 * `universal_support_chat_manage` explicitly paired it. That is
+	 * already the strongest trust assertion this plugin can make; a bare
+	 * WordPress capability check or `rest_do_request()` context is never
+	 * treated as a substitute for it (nor could it be — this method never
+	 * inspects the current user at all).
 	 *
 	 * @param WP_REST_Request $request Request.
 	 */
@@ -195,18 +224,30 @@ final class OutboundContractController {
 		}
 
 		/**
-		 * Asserts an authenticated Support Chat → UT Contract caller.
+		 * Optional additional veto over an already-signature-verified,
+		 * Compatible-discovery Support Chat → UT Contract call.
 		 *
-		 * Default false. Set true only after the ADR-0007 signature has
-		 * already been verified (see authorize_operation()). Never treat a
-		 * bare capability check or rest_do_request context as sufficient.
+		 * Default true (ADR-0038 §4 correction, `docs/closure/
+		 * ut-adapter-m1-signed-contract-client-closure.md`): by the time
+		 * this filter runs, SignatureVerifier has already proved the
+		 * caller holds an active, administrator-paired Support Chat key
+		 * and that this exact operation is on that peer's own allow-list —
+		 * nothing this filter's default could assert would be stronger
+		 * evidence than that. It exists only so a deployment can layer on
+		 * a narrower restriction (e.g. a maintenance kill switch);
+		 * returning `false` here still denies the request, but the
+		 * default must never again make every legitimate signed call
+		 * impossible for want of an external trust source that does not
+		 * exist. This filter can veto; it cannot grant — it never runs
+		 * before, and can never substitute for, SignatureVerifier or the
+		 * Compatible-discovery check above.
 		 *
 		 * @since 0.16.0
 		 *
-		 * @param bool            $authorized Default false.
+		 * @param bool            $authorized Default true (already signature-verified and Compatible).
 		 * @param WP_REST_Request $request    Request.
 		 */
-		return (bool) apply_filters( 'universal_telegram_support_chat_adapter_rest_authorized', false, $request );
+		return (bool) apply_filters( 'universal_telegram_support_chat_adapter_rest_authorized', true, $request );
 	}
 
 	/**
