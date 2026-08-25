@@ -12,6 +12,7 @@ namespace UniversalTelegram\SupportChatAdapter\Outbound;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\SupportChatAdapter\AdapterAvailability;
+use UniversalTelegram\SupportChatAdapter\Auth\SignatureVerifier;
 use UniversalTelegram\SupportChatAdapter\ContractConstants;
 use UniversalTelegram\SupportChatAdapter\DiscoveryClient;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
@@ -21,11 +22,19 @@ use WP_REST_Response;
 /**
  * Exposes ensure / notify / backfill / deliver REST routes for Support Chat.
  *
- * Mutating acceptors stay closed until Support Chat discovery reports
- * Compatible **and** an authenticated Contract caller is asserted via the
- * `universal_telegram_support_chat_adapter_rest_authorized` filter (default
- * false). Holding only `universal_support_chat_manage` or even UT MANAGE
- * must not turn these routes into a general Telegram-send endpoint.
+ * Mutating acceptors stay closed unless **both** independent gates pass
+ * (ADR-0038 §4, defense in depth — neither alone is sufficient):
+ *
+ * 1. An ADR-0007 §3 Ed25519-signed Contract v1 request from Support Chat's
+ *    currently paired, active peer key, verified by SignatureVerifier
+ *    (signature, sender/audience, allow-list, timestamp window, nonce
+ *    replay, body hash — all checked before any acceptor runs).
+ * 2. Compatible discovery **and** an explicit authenticated Contract
+ *    assertion via the `universal_telegram_support_chat_adapter_rest_authorized`
+ *    filter (default false), retained exactly as before.
+ *
+ * Holding only `universal_support_chat_manage` or even UT MANAGE — signed
+ * or not — must not turn these routes into a general Telegram-send endpoint.
  */
 final class OutboundContractController {
 
@@ -39,6 +48,7 @@ final class OutboundContractController {
 	 * @param NotifyOperatorsService   $notify        Notify service.
 	 * @param BackfillService          $backfill      Backfill service.
 	 * @param DeliverMessageService    $deliver       Deliver service.
+	 * @param SignatureVerifier        $verifier      ADR-0007 signature verifier.
 	 */
 	public function __construct(
 		private readonly DiscoveryClient $discovery,
@@ -47,7 +57,8 @@ final class OutboundContractController {
 		private readonly EnsureChannelCaseService $ensure,
 		private readonly NotifyOperatorsService $notify,
 		private readonly BackfillService $backfill,
-		private readonly DeliverMessageService $deliver
+		private readonly DeliverMessageService $deliver,
+		private readonly SignatureVerifier $verifier
 	) {}
 
 	/**
@@ -63,7 +74,7 @@ final class OutboundContractController {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'handle_ensure' ),
-				'permission_callback' => array( $this, 'authorize_mutation' ),
+				'permission_callback' => fn ( WP_REST_Request $request ): bool => $this->authorize_operation( $request, 'ensure_channel_case' ),
 			)
 		);
 		register_rest_route(
@@ -72,7 +83,7 @@ final class OutboundContractController {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'handle_notify' ),
-				'permission_callback' => array( $this, 'authorize_mutation' ),
+				'permission_callback' => fn ( WP_REST_Request $request ): bool => $this->authorize_operation( $request, 'notify_operators' ),
 			)
 		);
 		register_rest_route(
@@ -81,7 +92,7 @@ final class OutboundContractController {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'handle_backfill' ),
-				'permission_callback' => array( $this, 'authorize_mutation' ),
+				'permission_callback' => fn ( WP_REST_Request $request ): bool => $this->authorize_operation( $request, 'deliver_transcript_backfill' ),
 			)
 		);
 		register_rest_route(
@@ -90,7 +101,7 @@ final class OutboundContractController {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'handle_deliver' ),
-				'permission_callback' => array( $this, 'authorize_mutation' ),
+				'permission_callback' => fn ( WP_REST_Request $request ): bool => $this->authorize_operation( $request, 'deliver_message' ),
 			)
 		);
 		register_rest_route(
@@ -115,11 +126,61 @@ final class OutboundContractController {
 	}
 
 	/**
-	 * Authorises SC → UT mutating Contract calls.
+	 * Authorises one SC → UT mutating Contract call. Requires, in order,
+	 * BOTH a valid ADR-0007 signature for this exact operation AND the
+	 * pre-existing discovery/filter gate — neither is ever sufficient alone
+	 * (ADR-0038 §4).
 	 *
-	 * Requires Compatible discovery and an explicit authenticated Contract
-	 * assertion via filter. Does not accept UT MANAGE or Support Chat manage
-	 * alone — those must not become a Telegram-send shortcut.
+	 * @param WP_REST_Request $request   Request.
+	 * @param string          $operation Contract v1 operation this route serves.
+	 */
+	private function authorize_operation( WP_REST_Request $request, string $operation ): bool {
+		if ( ! $this->verify_signed_request( $request, $operation ) ) {
+			return false;
+		}
+
+		return $this->authorize_mutation( $request );
+	}
+
+	/**
+	 * Verifies the ADR-0007 §3 signature on one inbound Support Chat →
+	 * adapter request. A pure gate: never mutates anything, never leaks
+	 * which specific check failed.
+	 *
+	 * @param WP_REST_Request $request   Request.
+	 * @param string          $operation Contract v1 operation this route serves.
+	 */
+	private function verify_signed_request( WP_REST_Request $request, string $operation ): bool {
+		$raw_body = (string) $request->get_body();
+		$headers  = array(
+			'contract_version' => (string) ( $request->get_header( 'X-SC-Contract-Version' ) ?? '' ),
+			'auth_profile'     => (string) ( $request->get_header( 'X-SC-Auth-Profile' ) ?? '' ),
+			'sender'           => (string) ( $request->get_header( 'X-SC-Sender' ) ?? '' ),
+			'audience'         => (string) ( $request->get_header( 'X-SC-Audience' ) ?? '' ),
+			'key_id'           => (string) ( $request->get_header( 'X-SC-Key-Id' ) ?? '' ),
+			'timestamp'        => (string) ( $request->get_header( 'X-SC-Timestamp' ) ?? '' ),
+			'nonce'            => (string) ( $request->get_header( 'X-SC-Nonce' ) ?? '' ),
+			'body_sha256'      => (string) ( $request->get_header( 'X-SC-Body-Sha256' ) ?? '' ),
+			'signature'        => (string) ( $request->get_header( 'X-SC-Signature' ) ?? '' ),
+		);
+
+		$route = $request->get_route();
+		if ( '' === $route ) {
+			$route = '/' . ContractConstants::UT_REST_NAMESPACE . ContractConstants::UT_REST_PREFIX . '/' . $operation;
+		}
+
+		$has_query_params = array() !== $request->get_query_params();
+
+		$result = $this->verifier->verify( 'POST', $route, $raw_body, $headers, $operation, $has_query_params );
+
+		return $result->ok();
+	}
+
+	/**
+	 * Existing pre-ADR-0007 discovery/filter gate. Requires Compatible
+	 * discovery and an explicit authenticated Contract assertion via
+	 * filter. Does not accept UT MANAGE or Support Chat manage alone —
+	 * those must not become a Telegram-send shortcut.
 	 *
 	 * @param WP_REST_Request $request Request.
 	 */
@@ -133,8 +194,8 @@ final class OutboundContractController {
 		/**
 		 * Asserts an authenticated Support Chat → UT Contract caller.
 		 *
-		 * Default false. SC-M03 must set this true only after verifying its
-		 * authoritative server-side Contract authentication. Never treat a
+		 * Default false. Set true only after the ADR-0007 signature has
+		 * already been verified (see authorize_operation()). Never treat a
 		 * bare capability check or rest_do_request context as sufficient.
 		 *
 		 * @since 0.16.0
