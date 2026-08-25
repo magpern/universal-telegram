@@ -137,16 +137,21 @@ final class NotificationTesterPage {
 			$sample_values = $this->collect_posted_sample_values( $rule->event_type() );
 		}
 
-		$this->render_example_values_form(
-			$rule->event_type(),
-			self::MODE_RULE,
-			array( 'rule_id' => (string) $rule->id() ),
-			$sample_values ?? array()
+		$this->render_form_and_result(
+			function () use ( $rule, $sample_values ): void {
+				$this->render_example_values_form(
+					$rule->event_type(),
+					self::MODE_RULE,
+					array( 'rule_id' => (string) $rule->id() ),
+					$sample_values ?? array()
+				);
+			},
+			null !== $sample_values
+				? function () use ( $rule, $sample_values ): void {
+					$this->render_result_region( array( $this->tester->test_rule( $rule, $sample_values ) ) );
+				}
+				: null
 		);
-
-		if ( null !== $sample_values ) {
-			$this->render_result_region( array( $this->tester->test_rule( $rule, $sample_values ) ) );
-		}
 	}
 
 	/**
@@ -273,26 +278,56 @@ final class NotificationTesterPage {
 			$sample_values = $this->collect_posted_sample_values( $event_type );
 		}
 
-		$this->render_example_values_form(
-			$event_type,
-			self::MODE_EVENT,
-			array( 'event_type' => $event_type ),
-			$sample_values ?? array()
+		$this->render_form_and_result(
+			function () use ( $event_type, $sample_values ): void {
+				$this->render_example_values_form(
+					$event_type,
+					self::MODE_EVENT,
+					array( 'event_type' => $event_type ),
+					$sample_values ?? array()
+				);
+			},
+			null !== $sample_values
+				? function () use ( $event_type, $sample_values ): void {
+					$results = $this->tester->test_event( $event_type, $sample_values );
+
+					if ( array() === $results ) {
+						echo '<p class="notice notice-info inline" tabindex="-1" id="ut-tester-result">' . esc_html__( 'No notification rules are currently set up for this event.', 'universal-telegram' ) . '</p>';
+						$this->render_focus_script();
+						return;
+					}
+
+					$this->render_result_region( $results );
+				}
+				: null
 		);
+	}
 
-		if ( null === $sample_values ) {
+	/**
+	 * Lays out the "Example values" form and its result side by side once
+	 * a result exists (a two-column row, form left / result right), so
+	 * seeing the outcome after submitting never requires scrolling past
+	 * the form again — a plain single-column render, unchanged, until
+	 * then. Both columns wrap to a single column on a narrow viewport
+	 * (`.ut-tester-columns`, flex-wrap).
+	 *
+	 * @param callable      $render_form   Renders the "Example values" form.
+	 * @param callable|null $render_result Renders the result region, or null if no test has run yet this request.
+	 */
+	private function render_form_and_result( callable $render_form, ?callable $render_result ): void {
+		if ( null === $render_result ) {
+			$render_form();
 			return;
 		}
 
-		$results = $this->tester->test_event( $event_type, $sample_values );
-
-		if ( array() === $results ) {
-			echo '<p class="notice notice-info inline" tabindex="-1" id="ut-tester-result">' . esc_html__( 'No notification rules are currently set up for this event.', 'universal-telegram' ) . '</p>';
-			$this->render_focus_script();
-			return;
-		}
-
-		$this->render_result_region( $results );
+		echo '<div class="ut-tester-columns">';
+		echo '<div class="ut-tester-col-form">';
+		$render_form();
+		echo '</div>';
+		echo '<div class="ut-tester-col-result">';
+		$render_result();
+		echo '</div>';
+		echo '</div>';
 	}
 
 	/**
@@ -636,6 +671,9 @@ final class NotificationTesterPage {
 		echo '<style>
 			.ut-mode-option { margin-right: 24px; font-weight: 600; }
 			.ut-tester-about, .ut-tester-result { border: 1px solid #dcdcde; border-radius: 4px; padding: 12px 16px; margin: 16px 0; background: #fff; }
+			.ut-tester-columns { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px; }
+			.ut-tester-col-form, .ut-tester-col-result { flex: 1 1 380px; min-width: 320px; }
+			.ut-tester-col-result .ut-tester-result { margin-top: 0; }
 			.ut-tester-preview { border-left: 4px solid #2271b1; margin: 8px 0; padding: 8px 12px; background: #f6f7f7; white-space: pre-wrap; }
 			.ut-tester-outcome { font-weight: 600; display: flex; align-items: center; gap: 6px; }
 			.ut-tester-outcome.is-success { color: #1a7f37; }
