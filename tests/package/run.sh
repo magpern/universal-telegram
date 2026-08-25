@@ -482,9 +482,9 @@ wp eval '
 	echo "OK: the Settings action link is present and points at the Settings tab.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
-echo "== Verifying the administration hub registers exactly the thirteen expected tabs, in order =="
+echo "== Verifying the administration hub registers exactly the seven grouped top-level areas, in order =="
 wp eval '
-	$expected_tabs = array( "overview", "bots", "events", "rules", "test-notifications", "event-history", "visitor-tracking", "settings", "operator-identities", "operator-inbox", "ai", "ai-content", "diagnostics" );
+	$expected_tabs = array( "overview", "bots", "notifications-activity", "conversations", "ai-hub", "settings", "diagnostics" );
 
 	$plugin   = UniversalTelegram\Core\Plugin::instance();
 	$registry = $plugin->hub_tab_registry();

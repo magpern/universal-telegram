@@ -5,7 +5,6 @@
 
 namespace UniversalTelegram\Tests\Integration\Administration\Hub;
 
-use UniversalTelegram\Administration\Automations\NotificationTesterPage;
 use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Administration\Hub\Tab;
 use UniversalTelegram\Administration\Hub\TabRegistry;
@@ -25,7 +24,7 @@ final class HubPageTest extends WP_UnitTestCase {
 	}
 
 	protected function tearDown(): void {
-		unset( $_GET['tab'] );
+		unset( $_GET['tab'], $_GET['section'] );
 		parent::tearDown();
 	}
 
@@ -126,15 +125,23 @@ final class HubPageTest extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( 'nav-tab-active" aria-current="page">Overview<', $output );
 	}
 
-	private function make_registry_with_test_notifications_tab(): TabRegistry {
+	/**
+	 * A registry with one synthetic "notifications-activity"-shaped area
+	 * tab whose own render echoes the requested `section`, so a test can
+	 * observe exactly which section HubPage's alias resolution selected —
+	 * without depending on the real Plugin wiring (covered separately by
+	 * PluginHubNavigationTest).
+	 */
+	private function make_registry_with_area_tab( string $area_id ): TabRegistry {
 		$registry = $this->make_registry();
 		$registry->register(
 			new Tab(
-				NotificationTesterPage::TAB_ID,
-				'Test notifications',
-				CapabilityRegistrar::MANAGE_AUTOMATIONS,
-				static function (): void {
-					echo 'test-notifications-content';
+				$area_id,
+				$area_id,
+				CapabilityRegistrar::MANAGE,
+				static function () use ( $area_id ): void {
+					$section = isset( $_GET['section'] ) ? sanitize_key( wp_unslash( (string) $_GET['section'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+					echo esc_html( $area_id . '-content:' . $section );
 				}
 			)
 		);
@@ -143,27 +150,131 @@ final class HubPageTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * M08.2 plan §4/§6: a bookmarked `?tab=simulator` URL from before the
-	 * Simulator tab was renamed must keep landing on its own content, not
-	 * silently fall back to the default Overview tab.
+	 * Every legacy id the M08.2 navigation addendum's LEGACY_TAB_ALIASES
+	 * table must still resolve — the original M08.2 `simulator` alias plus
+	 * every screen moved into a grouped area (M08.2 navigation addendum
+	 * plan §"Compatibility mechanism").
+	 *
+	 * @return array<string, array{0: string, 1: string, 2: string}>
 	 */
-	public function test_the_legacy_simulator_tab_id_resolves_to_test_notifications(): void {
-		$_GET['tab'] = 'simulator';
-		$page        = new HubPage( $this->make_registry_with_test_notifications_tab() );
-
-		$this->assertSame( NotificationTesterPage::TAB_ID, $page->resolve_tab_id() );
+	public static function legacy_alias_provider(): array {
+		return array(
+			'simulator (M08.2 original alias)' => array( 'simulator', 'notifications-activity', 'test-notifications' ),
+			'rules'                             => array( 'rules', 'notifications-activity', 'rules' ),
+			'test-notifications'                => array( 'test-notifications', 'notifications-activity', 'test-notifications' ),
+			'events'                             => array( 'events', 'notifications-activity', 'events' ),
+			'event-history'                      => array( 'event-history', 'notifications-activity', 'event-history' ),
+			'visitor-tracking'                   => array( 'visitor-tracking', 'notifications-activity', 'visitor-tracking' ),
+			'operator-inbox'                     => array( 'operator-inbox', 'conversations', 'operator-inbox' ),
+			'operator-identities'                => array( 'operator-identities', 'conversations', 'operator-identities' ),
+			'ai'                                  => array( 'ai', 'ai-hub', 'ai' ),
+			'ai-content'                          => array( 'ai-content', 'ai-hub', 'ai-content' ),
+		);
 	}
 
-	public function test_a_legacy_simulator_bookmark_renders_the_test_notifications_tabs_content_not_the_default(): void {
+	/**
+	 * @dataProvider legacy_alias_provider
+	 */
+	public function test_every_legacy_id_resolves_to_its_new_area_and_section( string $legacy_id, string $expected_area, string $expected_section ): void {
+		$_GET['tab'] = $legacy_id;
+		$page        = new HubPage( $this->make_registry_with_area_tab( $expected_area ) );
+
+		$this->assertSame( $expected_area, $page->resolve_tab_id() );
+		$this->assertSame( $expected_section, $_GET['section'] ?? null );
+
+		unset( $_GET['section'] );
+	}
+
+	/**
+	 * @dataProvider legacy_alias_provider
+	 */
+	public function test_every_legacy_id_renders_its_own_former_content_not_the_default( string $legacy_id, string $expected_area, string $expected_section ): void {
 		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
 		wp_set_current_user( $admin_id );
-		$_GET['tab'] = 'simulator';
+		$_GET['tab'] = $legacy_id;
 
 		ob_start();
-		( new HubPage( $this->make_registry_with_test_notifications_tab() ) )->render();
+		( new HubPage( $this->make_registry_with_area_tab( $expected_area ) ) )->render();
+		$output = ob_get_clean();
+		unset( $_GET['section'] );
+
+		$this->assertStringContainsString( $expected_area . '-content:' . $expected_section, $output );
+		$this->assertStringNotContainsString( 'overview-content', $output );
+	}
+
+	/**
+	 * A direct deep link (no legacy id involved) must resolve exactly as
+	 * requested, not only through the alias table.
+	 */
+	public function test_a_direct_area_and_section_deep_link_resolves_as_requested(): void {
+		$_GET['tab']     = 'notifications-activity';
+		$_GET['section'] = 'event-history';
+		$page            = new HubPage( $this->make_registry_with_area_tab( 'notifications-activity' ) );
+
+		$this->assertSame( 'notifications-activity', $page->resolve_tab_id() );
+		$this->assertSame( 'event-history', $_GET['section'] );
+
+		unset( $_GET['section'] );
+	}
+
+	/**
+	 * A parent area tab with a custom accessibility override is hidden
+	 * from the nav row entirely when that override fails — unlike a plain
+	 * solo tab (test_a_known_tab_without_the_required_capability_is_denied_by_wordpress_itself
+	 * above), which is still listed and only denied on click, preserving
+	 * that pre-addendum behavior exactly.
+	 */
+	public function test_an_inaccessible_area_tab_is_not_listed_in_the_nav(): void {
+		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $admin_id );
+
+		$registry = $this->make_registry();
+		$registry->register(
+			new Tab(
+				'grouped-area',
+				'Grouped Area',
+				CapabilityRegistrar::MANAGE,
+				static function (): void {
+					echo 'grouped-area-content';
+				},
+				static fn(): bool => false
+			)
+		);
+
+		ob_start();
+		( new HubPage( $registry ) )->render();
 		$output = ob_get_clean();
 
-		$this->assertStringContainsString( 'test-notifications-content', $output );
-		$this->assertStringNotContainsString( 'overview-content', $output );
+		$this->assertStringNotContainsString( '>Grouped Area<', $output );
+	}
+
+	/**
+	 * The same override, when it passes, keeps the tab listed and
+	 * reachable exactly like any other tab.
+	 */
+	public function test_an_accessible_area_tab_is_listed_in_the_nav_and_gets_the_active_class(): void {
+		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $admin_id );
+
+		$registry = $this->make_registry();
+		$registry->register(
+			new Tab(
+				'grouped-area',
+				'Grouped Area',
+				CapabilityRegistrar::MANAGE,
+				static function (): void {
+					echo 'grouped-area-content';
+				},
+				static fn(): bool => true
+			)
+		);
+		$_GET['tab'] = 'grouped-area';
+
+		ob_start();
+		( new HubPage( $registry ) )->render();
+		$output = ob_get_clean();
+
+		$this->assertMatchesRegularExpression( '/nav-tab-active" aria-current="page">Grouped Area</', $output );
+		$this->assertStringContainsString( 'grouped-area-content', $output );
 	}
 }

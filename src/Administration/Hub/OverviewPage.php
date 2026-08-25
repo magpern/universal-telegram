@@ -22,19 +22,22 @@ final class OverviewPage {
 	public const TAB_ID = 'overview';
 
 	/**
-	 * Ordered (tab id, label) pairs.
+	 * Ordered (tab id, label, section id or null) triples. A non-null
+	 * section routes into one of the M08.2-navigation-addendum grouped
+	 * areas' own secondary tab rows, exactly like a bookmark to that
+	 * former top-level tab now would (HubPage::LEGACY_TAB_ALIASES).
 	 *
-	 * @var array<int, array{0: string, 1: string}>
+	 * @var array<int, array{0: string, 1: string, 2: string|null}>
 	 */
 	private const OTHER_TABS = array(
-		array( 'bots', 'Bots' ),
-		array( 'events', 'Events' ),
-		array( 'rules', 'Notifications' ),
-		array( 'test-notifications', 'Test notifications' ),
-		array( 'event-history', 'Event History' ),
-		array( 'visitor-tracking', 'Visitor Tracking' ),
-		array( 'settings', 'Settings' ),
-		array( 'diagnostics', 'Diagnostics' ),
+		array( 'bots', 'Bots', null ),
+		array( 'notifications-activity', 'Events', 'events' ),
+		array( 'notifications-activity', 'Notifications', 'rules' ),
+		array( 'notifications-activity', 'Test notifications', 'test-notifications' ),
+		array( 'notifications-activity', 'Event History', 'event-history' ),
+		array( 'notifications-activity', 'Visitor Tracking', 'visitor-tracking' ),
+		array( 'settings', 'Settings', null ),
+		array( 'diagnostics', 'Diagnostics', null ),
 	);
 
 	/**
@@ -48,10 +51,14 @@ final class OverviewPage {
 		echo '<p>' . esc_html__( 'Welcome to the Telegram Operations Hub. Use the tabs above to configure bots, automation rules, visitor tracking, and plugin-wide settings.', 'universal-telegram' ) . '</p>';
 
 		echo '<ul>';
-		foreach ( self::OTHER_TABS as [ $tab_id, $label ] ) {
+		foreach ( self::OTHER_TABS as [ $tab_id, $label, $section_id ] ) {
+			$url = 'admin.php?page=' . HubPage::SLUG . '&tab=' . $tab_id;
+			if ( null !== $section_id ) {
+				$url .= '&section=' . $section_id;
+			}
 			printf(
 				'<li><a href="%s">%s</a></li>',
-				esc_url( admin_url( 'admin.php?page=' . HubPage::SLUG . '&tab=' . $tab_id ) ),
+				esc_url( admin_url( $url ) ),
 				esc_html( $label )
 			);
 		}

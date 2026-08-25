@@ -36,7 +36,22 @@ final class OverviewPageTest extends WP_UnitTestCase {
 		( new OverviewPage() )->render_tab_content();
 		$output = ob_get_clean();
 
-		foreach ( array( 'tab=bots', 'tab=events', 'tab=rules', 'tab=simulator', 'tab=event-history', 'tab=visitor-tracking', 'tab=settings', 'tab=diagnostics' ) as $needle ) {
+		// esc_url() entity-encodes '&' for HTML display, so each needle
+		// stays on one side of a query-string boundary rather than
+		// spanning it (matching this test's own pre-existing convention).
+		foreach (
+			array(
+				'tab=bots',
+				'tab=notifications-activity',
+				'section=events',
+				'section=rules',
+				'section=test-notifications',
+				'section=event-history',
+				'section=visitor-tracking',
+				'tab=settings',
+				'tab=diagnostics',
+			) as $needle
+		) {
 			$this->assertStringContainsString( $needle, $output );
 		}
 	}
