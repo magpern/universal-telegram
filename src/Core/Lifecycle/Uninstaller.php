@@ -86,6 +86,11 @@ final class Uninstaller {
 		Migrator::OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE,
 	);
 
+	private const ADAPTER_M1_TABLES = array(
+		Migrator::SUPPORT_CHAT_BINDINGS_TABLE,
+		Migrator::SUPPORT_CHAT_DELIVERY_KEYS_TABLE,
+	);
+
 	/**
 	 * Runs the uninstall routine.
 	 */
@@ -116,6 +121,7 @@ final class Uninstaller {
 		$this->drop_m09_tables();
 		$this->drop_m11a_tables();
 		$this->drop_m11b_tables();
+		$this->drop_adapter_m1_tables();
 		delete_option( Settings::OPTION_NAME );
 		delete_option( 'universal_telegram_db_version' );
 
@@ -259,6 +265,19 @@ final class Uninstaller {
 		global $wpdb;
 
 		foreach ( self::M11B_TABLES as $table_name ) {
+			$table = $wpdb->prefix . $table_name;
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
+			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
+		}
+	}
+
+	/**
+	 * Drops Support Chat adapter tables (UT Adapter M1).
+	 */
+	private function drop_adapter_m1_tables(): void {
+		global $wpdb;
+
+		foreach ( self::ADAPTER_M1_TABLES as $table_name ) {
 			$table = $wpdb->prefix . $table_name;
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
 			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );

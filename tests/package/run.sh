@@ -173,13 +173,22 @@ if [ -z "$(m06_column_exists "conversations" "owner_active_slot")" ]; then
 fi
 echo "OK: universal_telegram_conversations.owner_user_id and owner_active_slot columns exist."
 
-echo "== Verifying db_version reached 30 =="
+echo "== Verifying db_version reached 31 =="
 DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "30" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=30, got ${DB_VERSION}" >&2
+if [ "31" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=31, got ${DB_VERSION}" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 30."
+echo "OK: universal_telegram_db_version is 31."
+
+echo "== Verifying UT Adapter M1 Support Chat binding tables exist =="
+for TABLE in support_chat_bindings support_chat_delivery_keys; do
+	if [ -z "$(m02_table_exists "$TABLE")" ]; then
+		echo "FAIL: expected table universal_telegram_${TABLE} to exist" >&2
+		exit 1
+	fi
+done
+echo "OK: universal_telegram_support_chat_bindings and universal_telegram_support_chat_delivery_keys tables exist."
 
 echo "== Verifying M07.1 topic lifecycle columns exist =="
 if [ -z "$(m06_column_exists conversations topic_lifecycle_state)" ]; then
@@ -482,9 +491,9 @@ wp eval '
 	echo "OK: the Settings action link is present and points at the Settings tab.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
-echo "== Verifying the administration hub registers exactly the seven grouped top-level areas, in order =="
+echo "== Verifying the administration hub registers exactly the expected grouped top-level areas, in order =="
 wp eval '
-	$expected_tabs = array( "overview", "bots", "notifications-activity", "conversations", "ai-hub", "settings", "diagnostics" );
+	$expected_tabs = array( "overview", "bots", "notifications-activity", "conversations", "ai-hub", "settings", "diagnostics", "support-chat-adapter" );
 
 	$plugin   = UniversalTelegram\Core\Plugin::instance();
 	$registry = $plugin->hub_tab_registry();
@@ -499,7 +508,7 @@ wp eval '
 		fwrite( STDERR, "FAIL: hub tab set/order was " . implode( ",", $ids ) . ", expected " . implode( ",", $expected_tabs ) . "\n" );
 		exit( 1 );
 	}
-	echo "OK: the administration hub registers exactly the seven expected top-level areas, in order.\n";
+	echo "OK: the administration hub registers exactly the expected top-level areas, in order.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
 echo "== Verifying the hub shell renders the requested tab content and the full tab nav =="
@@ -621,7 +630,13 @@ for m09_table in ai_config ai_drafts; do
 		exit 1
 	fi
 done
-echo "OK: default-retention uninstall kept the plugin's own data, including the bots table, all four M02 tables, both M05 tables, all three M07 tables, and both M09 tables."
+for adapter_table in support_chat_bindings support_chat_delivery_keys; do
+	if [ -z "$(m02_table_exists "$adapter_table")" ]; then
+		echo "FAIL: default-retention uninstall removed universal_telegram_${adapter_table} despite remove_data_on_uninstall defaulting to false" >&2
+		exit 1
+	fi
+done
+echo "OK: default-retention uninstall kept the plugin's own data, including the bots table, all four M02 tables, both M05 tables, all three M07 tables, both M09 tables, and Adapter M1 tables."
 
 echo "== Reinstalling to verify uninstall with retention explicitly enabled removes data =="
 wp plugin install "$ZIP_PATH" --activate --path="$WP_DIR" --allow-root
@@ -668,6 +683,12 @@ for m09_table in ai_config ai_drafts; do
 		exit 1
 	fi
 done
-echo "OK: opt-in uninstall removed the plugin's own data, including all six M01 tables, all four M02 tables, both M05 tables, all three M07 tables, and both M09 tables."
+for adapter_table in support_chat_bindings support_chat_delivery_keys; do
+	if [ -n "$(m02_table_exists "$adapter_table")" ]; then
+		echo "FAIL: opt-in uninstall did not remove universal_telegram_${adapter_table}" >&2
+		exit 1
+	fi
+done
+echo "OK: opt-in uninstall removed the plugin's own data, including all six M01 tables, all four M02 tables, both M05 tables, all three M07 tables, both M09 tables, and Adapter M1 tables."
 
 echo "== PACKAGE TEST PASSED for WordPress ${WP_VERSION}${WC_VERSION:+, WooCommerce ${WC_VERSION}} =="

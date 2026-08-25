@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned (documentation frozen; implementation not started)
+Implemented with fail-closed Contract boundary (closure: `docs/closure/ut-adapter-m1-universal-support-chat-adapter-closure.md`; operational exchange waits for SC-M03 authenticated Contract server; awaiting Product Owner acceptance / merge)
 
 ## Dependencies
 

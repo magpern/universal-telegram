@@ -46,6 +46,8 @@ class Migrator {
 	public const INTELLIGENCE_SETTINGS_STATE_TABLE   = 'universal_telegram_intelligence_settings_state';
 	public const OPERATIONAL_ALERT_STATE_TABLE       = 'universal_telegram_operational_alert_state';
 	public const OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE = 'universal_telegram_operational_summary_ai_drafts';
+	public const SUPPORT_CHAT_BINDINGS_TABLE         = 'universal_telegram_support_chat_bindings';
+	public const SUPPORT_CHAT_DELIVERY_KEYS_TABLE    = 'universal_telegram_support_chat_delivery_keys';
 
 	private const DB_VERSION_OPTION = 'universal_telegram_db_version';
 
@@ -72,7 +74,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 30;
+		return 31;
 	}
 
 	/**
@@ -171,6 +173,7 @@ class Migrator {
 			28 => array( array( $this, 'step_28_create_operational_summary_ai_drafts_table' ), array( $this, 'verify_step_28' ) ),
 			29 => array( array( $this, 'step_29_add_conversation_topic_lifecycle_columns' ), array( $this, 'verify_step_29' ) ),
 			30 => array( array( $this, 'step_30_add_notification_rule_match_mode_column' ), array( $this, 'verify_step_30' ) ),
+			31 => array( array( $this, 'step_31_create_support_chat_adapter_tables' ), array( $this, 'verify_step_31' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -1937,6 +1940,98 @@ class Migrator {
 			$wpdb->prefix . self::NOTIFICATION_RULES_TABLE,
 			array( 'match_mode' )
 		);
+	}
+
+	/**
+	 * Creates Support Chat adapter binding and delivery-idempotency tables
+	 * (UT Adapter M1).
+	 */
+	private function step_31_create_support_chat_adapter_tables(): void {
+		global $wpdb;
+
+		$bindings = $wpdb->prefix . self::SUPPORT_CHAT_BINDINGS_TABLE;
+		$keys     = $wpdb->prefix . self::SUPPORT_CHAT_DELIVERY_KEYS_TABLE;
+		$charset  = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$bindings} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				binding_uuid CHAR(36) NOT NULL,
+				support_conversation_uuid CHAR(36) NOT NULL,
+				ensure_idempotency_key VARCHAR(191) NOT NULL,
+				bot_id BIGINT UNSIGNED NOT NULL,
+				destination_id BIGINT UNSIGNED NOT NULL,
+				telegram_topic_id BIGINT NOT NULL,
+				cas_version INT UNSIGNED NOT NULL DEFAULT 1,
+				status ENUM('active','unavailable','closed') NOT NULL DEFAULT 'active',
+				last_delivered_message_key VARCHAR(191) NULL,
+				last_ingest_update_id BIGINT NULL,
+				created_at DATETIME NOT NULL,
+				updated_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY binding_uuid (binding_uuid),
+				UNIQUE KEY support_conversation_uuid (support_conversation_uuid),
+				UNIQUE KEY ensure_idempotency_key (ensure_idempotency_key),
+				UNIQUE KEY bot_topic (bot_id, telegram_topic_id),
+				KEY status_idx (status)
+			) {$charset}"
+		);
+
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$keys} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				idempotency_key VARCHAR(191) NOT NULL,
+				binding_uuid CHAR(36) NOT NULL,
+				outbound_message_uuid CHAR(36) NULL,
+				created_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY idempotency_key (idempotency_key),
+				KEY binding_uuid (binding_uuid)
+			) {$charset}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies Adapter M1 tables.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_31(): bool {
+		global $wpdb;
+
+		$bindings_ok = $this->table_has_columns(
+			$wpdb->prefix . self::SUPPORT_CHAT_BINDINGS_TABLE,
+			array(
+				'id',
+				'binding_uuid',
+				'support_conversation_uuid',
+				'ensure_idempotency_key',
+				'bot_id',
+				'destination_id',
+				'telegram_topic_id',
+				'cas_version',
+				'status',
+				'last_delivered_message_key',
+				'last_ingest_update_id',
+				'created_at',
+				'updated_at',
+			)
+		);
+
+		$keys_ok = $this->table_has_columns(
+			$wpdb->prefix . self::SUPPORT_CHAT_DELIVERY_KEYS_TABLE,
+			array(
+				'id',
+				'idempotency_key',
+				'binding_uuid',
+				'outbound_message_uuid',
+				'created_at',
+			)
+		);
+
+		return $bindings_ok && $keys_ok;
 	}
 
 	/**

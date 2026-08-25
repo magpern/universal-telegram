@@ -163,6 +163,18 @@ use UniversalTelegram\Telegram\Configuration\WebhookRegistrationCoordinator;
 use UniversalTelegram\Telegram\Reliability\CircuitBreaker;
 use UniversalTelegram\Telegram\Reliability\QueueHealthAlert;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
+use UniversalTelegram\SupportChatAdapter\ChannelBindingRepository;
+use UniversalTelegram\SupportChatAdapter\Cli\BindingImportCommand;
+use UniversalTelegram\SupportChatAdapter\DeliveryIdempotencyRepository;
+use UniversalTelegram\SupportChatAdapter\Diagnostics\AdapterStatusPage;
+use UniversalTelegram\SupportChatAdapter\DiscoveryClient;
+use UniversalTelegram\SupportChatAdapter\Inbound\InboundAdapterBridge;
+use UniversalTelegram\SupportChatAdapter\Inbound\SupportChatContractClient;
+use UniversalTelegram\SupportChatAdapter\Outbound\BackfillService;
+use UniversalTelegram\SupportChatAdapter\Outbound\DeliverMessageService;
+use UniversalTelegram\SupportChatAdapter\Outbound\EnsureChannelCaseService;
+use UniversalTelegram\SupportChatAdapter\Outbound\NotifyOperatorsService;
+use UniversalTelegram\SupportChatAdapter\Outbound\OutboundContractController;
 
 /**
  * Singleton composition root. Constructs and wires every M00 service by
@@ -271,6 +283,27 @@ final class Plugin {
 	 * @var TabRegistry|null
 	 */
 	private ?TabRegistry $hub_tab_registry = null;
+
+	/**
+	 * Support Chat adapter binding repository (UT Adapter M1).
+	 *
+	 * @var ChannelBindingRepository|null
+	 */
+	private ?ChannelBindingRepository $support_chat_adapter_bindings = null;
+
+	/**
+	 * Support Chat adapter discovery client (UT Adapter M1).
+	 *
+	 * @var DiscoveryClient|null
+	 */
+	private ?DiscoveryClient $support_chat_adapter_discovery = null;
+
+	/**
+	 * Settings instance retained for adapter Hub tab (UT Adapter M1).
+	 *
+	 * @var Settings|null
+	 */
+	private ?Settings $support_chat_adapter_settings = null;
 
 	/**
 	 * The administration hub shell page, constructed by init().
@@ -786,6 +819,19 @@ final class Plugin {
 			$this->audit_logger
 		);
 
+		$adapter_enabled   = ! empty( $settings_values['support_chat_adapter_enabled'] );
+		$adapter_bindings  = new ChannelBindingRepository( $this->schema_health );
+		$adapter_discovery = new DiscoveryClient();
+		$adapter_sc_client = new SupportChatContractClient();
+		$adapter_inbound   = new InboundAdapterBridge(
+			$adapter_bindings,
+			$adapter_discovery,
+			$adapter_sc_client,
+			$this->operator_identity_repository,
+			$this->audit_logger,
+			$adapter_enabled
+		);
+
 		$this->webhook_controller = new WebhookController(
 			$this->schema_health,
 			$this->bot_profile_repository,
@@ -797,9 +843,42 @@ final class Plugin {
 			$this->operator_identity_repository,
 			$this->audit_logger,
 			$this->bot_command_dispatcher,
-			(int) $settings_values['telegram_webhook_max_body_bytes']
+			(int) $settings_values['telegram_webhook_max_body_bytes'],
+			$adapter_inbound
 		);
 		add_action( 'rest_api_init', array( $this->webhook_controller, 'register_routes' ) );
+
+		$adapter_delivery_keys = new DeliveryIdempotencyRepository( $this->schema_health );
+		$adapter_ensure        = new EnsureChannelCaseService(
+			$adapter_bindings,
+			$this->bot_profile_repository,
+			$this->destination_repository,
+			$this->telegram_api_client
+		);
+		$adapter_deliver       = new DeliverMessageService(
+			$adapter_bindings,
+			$adapter_delivery_keys,
+			$this->outbound_message_repository,
+			$this->dispatcher
+		);
+		$adapter_notify        = new NotifyOperatorsService( $adapter_deliver );
+		$adapter_backfill      = new BackfillService( $adapter_deliver );
+		$adapter_outbound      = new OutboundContractController(
+			$adapter_discovery,
+			$settings,
+			$this->destination_repository,
+			$adapter_ensure,
+			$adapter_notify,
+			$adapter_backfill,
+			$adapter_deliver
+		);
+		add_action( 'rest_api_init', array( $adapter_outbound, 'register_routes' ) );
+		( new BindingImportCommand( $adapter_bindings ) )->register();
+
+		// Stash for Hub tab registration after TabRegistry exists.
+		$this->support_chat_adapter_bindings  = $adapter_bindings;
+		$this->support_chat_adapter_discovery = $adapter_discovery;
+		$this->support_chat_adapter_settings  = $settings;
 
 		$this->topic_creation_dispatcher = new TopicCreationDispatcher( $this->conversation_repository, $this->dispatcher );
 		$topic_creation_handler          = new TopicCreationHandler(
@@ -1596,6 +1675,24 @@ final class Plugin {
 
 		$this->hub_tab_registry->register(
 			new Tab( 'diagnostics', __( 'Diagnostics', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->diagnostics_page, 'render_tab_content' ) )
+		);
+
+		// Adapter deps are assigned unconditionally earlier in init(); PHPStan
+		// narrows the nullable properties through that same method path.
+		$adapter_status_page = new AdapterStatusPage(
+			$this->support_chat_adapter_settings,
+			$this->support_chat_adapter_discovery,
+			$this->support_chat_adapter_bindings,
+			$this->bot_profile_repository,
+			$this->digest_eligibility
+		);
+		$this->hub_tab_registry->register(
+			new Tab(
+				AdapterStatusPage::TAB_ID,
+				__( 'Support Chat adapter', 'universal-telegram' ),
+				CapabilityRegistrar::MANAGE,
+				array( $adapter_status_page, 'render_tab_content' )
+			)
 		);
 
 		// Legacy URL compatibility (M04.1 plan §5, ADR-0020): every

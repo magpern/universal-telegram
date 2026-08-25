@@ -23,7 +23,7 @@ Statuses below reflect closure records and architecture documentation on `main` 
 | M09 | AI draft assistant | [m09-ai-draft-assistant.md](m09-ai-draft-assistant.md) | Implemented (tech PASS; PO acceptance may remain pending) — **historical/legacy** until Support Chat SC-AI1 | M05, M07 |
 | M09.1 | Operator-approved AI draft delivery | [m09-1-operator-approved-ai-draft-delivery.md](m09-1-operator-approved-ai-draft-delivery.md) | **Superseded for UT implementation** (ADR-0037); rehomed to Support Chat SC-AI1 | historical: M09; ADR-0036 |
 | M10 | Controlled AI responses | [m10-controlled-ai-responses.md](m10-controlled-ai-responses.md) | **Superseded for UT implementation** (ADR-0037); rehomed to Support Chat SC-AI2 | historical: M09 / M07.2 / M09.1 |
-| UT Adapter M1 | Universal Support Chat Adapter | [ut-adapter-m1-universal-support-chat-adapter.md](ut-adapter-m1-universal-support-chat-adapter.md) | Planned | ADR-0037; Support Chat Contract v1 pin; SC-M01/SC-M02 |
+| UT Adapter M1 | Universal Support Chat Adapter | [ut-adapter-m1-universal-support-chat-adapter.md](ut-adapter-m1-universal-support-chat-adapter.md) | Implemented (awaiting merge) | ADR-0037; Contract v1 pin; SC-M01/SC-M02; closure `docs/closure/ut-adapter-m1-universal-support-chat-adapter-closure.md` |
 | M11 | Digests and operational intelligence | [m11-digests-and-operational-intelligence.md](m11-digests-and-operational-intelligence.md) | Split M11A/M11B — see charter | M02, M03, M04, M09 (M11B) |
 | M12 | Hardening and release | [m12-hardening-and-release.md](m12-hardening-and-release.md) | Not Started | M00–M07 |
 

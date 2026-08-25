@@ -18,6 +18,7 @@ use UniversalTelegram\Conversations\OperatorIdentityRepository;
 use UniversalTelegram\Conversations\TopicLifecycleState;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Classification;
+use UniversalTelegram\SupportChatAdapter\Inbound\InboundAdapterBridge;
 use UniversalTelegram\Telegram\Commands\BotCommandDispatcher;
 use UniversalTelegram\Telegram\Commands\CommandParser;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
@@ -65,6 +66,7 @@ final class WebhookController {
 	 * @param AuditLogger                $audit         Records a rejected-unmapped-sender attempt.
 	 * @param BotCommandDispatcher       $bot_commands  Handles a recognized administrative bot command (M08, docs/adr/0027) in place of reply capture.
 	 * @param int                        $max_body_bytes Request body size cap, enforced before JSON decoding.
+	 * @param InboundAdapterBridge|null  $adapter_bridge Optional Support Chat adapter inbound bridge (UT Adapter M1).
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
@@ -77,7 +79,8 @@ final class WebhookController {
 		private readonly OperatorIdentityRepository $operator_identities,
 		private readonly AuditLogger $audit,
 		private readonly BotCommandDispatcher $bot_commands,
-		private readonly int $max_body_bytes = 1048576
+		private readonly int $max_body_bytes = 1048576,
+		private readonly ?InboundAdapterBridge $adapter_bridge = null
 	) {}
 
 	/**
@@ -150,6 +153,11 @@ final class WebhookController {
 
 		if ( $is_new_update && UpdateType::MESSAGE === $update_type ) {
 			if ( $this->maybe_mark_topic_unavailable( $bot->id(), $chat_id, $message_thread_id, $decoded ) ) {
+				return new WP_REST_Response( array( 'ok' => true ), 200 );
+			}
+
+			if ( null !== $this->adapter_bridge
+				&& $this->adapter_bridge->try_handle( $bot, $chat_id, $message_thread_id, $decoded, $decoded['update_id'] ) ) {
 				return new WP_REST_Response( array( 'ok' => true ), 200 );
 			}
 

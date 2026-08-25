@@ -11,13 +11,12 @@ use WP_UnitTestCase;
 
 /**
  * M08.2 navigation addendum: the real, plugin-wired hub tab registry must
- * register exactly the seven grouped top-level areas, in the Product
- * Owner's own requested order, with none of the nine moved child screens
- * left registered a second time as their own top-level tab (which would
- * both duplicate the screen and break the legacy-alias fallback).
+ * register the grouped top-level areas (plus the Support Chat adapter tab),
+ * in Product Owner order, with none of the nine moved child screens left
+ * registered a second time as their own top-level tab (which would both
+ * duplicate the screen and break the legacy-alias fallback).
  */
 final class PluginHubNavigationTest extends WP_UnitTestCase {
-
 	protected function setUp(): void {
 		parent::setUp();
 
@@ -25,14 +24,23 @@ final class PluginHubNavigationTest extends WP_UnitTestCase {
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
 	}
 
-	public function test_the_hub_registers_exactly_the_seven_grouped_areas_in_order(): void {
+	public function test_the_hub_registers_exactly_the_expected_grouped_areas_in_order(): void {
 		$registry = Plugin::instance()->hub_tab_registry();
 		$this->assertNotNull( $registry );
 
 		$ids = array_map( static fn( $tab ) => $tab->id(), $registry->all() );
 
 		$this->assertSame(
-			array( 'overview', 'bots', 'notifications-activity', 'conversations', 'ai-hub', 'settings', 'diagnostics' ),
+			array(
+				'overview',
+				'bots',
+				'notifications-activity',
+				'conversations',
+				'ai-hub',
+				'settings',
+				'diagnostics',
+				'support-chat-adapter',
+			),
 			$ids
 		);
 	}
