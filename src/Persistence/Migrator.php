@@ -48,6 +48,8 @@ class Migrator {
 	public const OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE = 'universal_telegram_operational_summary_ai_drafts';
 	public const SUPPORT_CHAT_BINDINGS_TABLE         = 'universal_telegram_support_chat_bindings';
 	public const SUPPORT_CHAT_DELIVERY_KEYS_TABLE    = 'universal_telegram_support_chat_delivery_keys';
+	public const SUPPORT_CHAT_PEERS_TABLE            = 'universal_telegram_support_chat_peers';
+	public const CONTRACT_NONCES_TABLE               = 'universal_telegram_support_chat_contract_nonces';
 
 	private const DB_VERSION_OPTION = 'universal_telegram_db_version';
 
@@ -74,7 +76,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 31;
+		return 32;
 	}
 
 	/**
@@ -174,6 +176,7 @@ class Migrator {
 			29 => array( array( $this, 'step_29_add_conversation_topic_lifecycle_columns' ), array( $this, 'verify_step_29' ) ),
 			30 => array( array( $this, 'step_30_add_notification_rule_match_mode_column' ), array( $this, 'verify_step_30' ) ),
 			31 => array( array( $this, 'step_31_create_support_chat_adapter_tables' ), array( $this, 'verify_step_31' ) ),
+			32 => array( array( $this, 'step_32_create_support_chat_contract_auth_tables' ), array( $this, 'verify_step_32' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -2032,6 +2035,93 @@ class Migrator {
 		);
 
 		return $bindings_ok && $keys_ok;
+	}
+
+	/**
+	 * Creates the ADR-0007 signed Contract v1 peer-key and nonce-replay
+	 * tables (UT Adapter M1 signed-client follow-up, ADR-0038).
+	 */
+	private function step_32_create_support_chat_contract_auth_tables(): void {
+		global $wpdb;
+
+		$peers   = $wpdb->prefix . self::SUPPORT_CHAT_PEERS_TABLE;
+		$nonces  = $wpdb->prefix . self::CONTRACT_NONCES_TABLE;
+		$charset = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$peers} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				peer_id VARCHAR(191) NOT NULL,
+				public_key VARCHAR(191) NOT NULL,
+				key_id VARCHAR(191) NOT NULL,
+				allowed_operations TEXT NOT NULL,
+				required_peer_capability VARCHAR(191) NULL,
+				status VARCHAR(16) NOT NULL DEFAULT 'active',
+				created_at DATETIME NOT NULL,
+				last_rotated_at DATETIME NULL,
+				last_used_at DATETIME NULL,
+				expires_at DATETIME NULL,
+				revoked_at DATETIME NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY peer_id (peer_id),
+				KEY status_idx (status)
+			) {$charset}"
+		);
+
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$nonces} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				sender VARCHAR(191) NOT NULL,
+				key_id VARCHAR(191) NOT NULL,
+				nonce VARCHAR(64) NOT NULL,
+				recorded_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY sender_key_nonce (sender, key_id, nonce),
+				KEY recorded_at_idx (recorded_at)
+			) {$charset}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the ADR-0007 signed Contract v1 auth tables.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_32(): bool {
+		global $wpdb;
+
+		$peers_ok = $this->table_has_columns(
+			$wpdb->prefix . self::SUPPORT_CHAT_PEERS_TABLE,
+			array(
+				'id',
+				'peer_id',
+				'public_key',
+				'key_id',
+				'allowed_operations',
+				'required_peer_capability',
+				'status',
+				'created_at',
+				'last_rotated_at',
+				'last_used_at',
+				'expires_at',
+				'revoked_at',
+			)
+		);
+
+		$nonces_ok = $this->table_has_columns(
+			$wpdb->prefix . self::CONTRACT_NONCES_TABLE,
+			array(
+				'id',
+				'sender',
+				'key_id',
+				'nonce',
+				'recorded_at',
+			)
+		);
+
+		return $peers_ok && $nonces_ok;
 	}
 
 	/**

@@ -125,7 +125,11 @@ final class InboundAdapterBridge {
 			return true;
 		}
 
-		// Fail-closed until SC-M03 authenticated Contract server; result intentionally unused.
+		// Signed and dispatched (or fail-closed per SupportChatContractClient's
+		// own gates); result intentionally unused here — Telegram-side
+		// bookkeeping below (record_ingest_update_id) proceeds regardless so
+		// this inbound update is never redelivered, matching this bridge's
+		// existing at-most-once ingest semantics.
 		$ingest = $this->sc_client->ingest_operator_reply(
 			$binding->binding_uuid(),
 			'tg-update-' . $bot->id() . '-' . $update_id,

@@ -20,6 +20,7 @@ use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Queue\WorkerRunner;
+use UniversalTelegram\SupportChatAdapter\Auth\OwnKeyManager;
 use UniversalTelegram\Telegram\Client\TelegramApiClient;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 
@@ -91,6 +92,11 @@ final class Uninstaller {
 		Migrator::SUPPORT_CHAT_DELIVERY_KEYS_TABLE,
 	);
 
+	private const ADAPTER_M1_AUTH_TABLES = array(
+		Migrator::SUPPORT_CHAT_PEERS_TABLE,
+		Migrator::CONTRACT_NONCES_TABLE,
+	);
+
 	/**
 	 * Runs the uninstall routine.
 	 */
@@ -122,8 +128,11 @@ final class Uninstaller {
 		$this->drop_m11a_tables();
 		$this->drop_m11b_tables();
 		$this->drop_adapter_m1_tables();
+		$this->drop_adapter_m1_auth_tables();
 		delete_option( Settings::OPTION_NAME );
 		delete_option( 'universal_telegram_db_version' );
+		delete_option( OwnKeyManager::OPTION_PUBLIC );
+		delete_option( OwnKeyManager::OPTION_SECRET );
 
 		$this->remove_historical_actions();
 	}
@@ -278,6 +287,20 @@ final class Uninstaller {
 		global $wpdb;
 
 		foreach ( self::ADAPTER_M1_TABLES as $table_name ) {
+			$table = $wpdb->prefix . $table_name;
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
+			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
+		}
+	}
+
+	/**
+	 * Drops the signed Contract v1 peer-key and nonce-replay tables (UT
+	 * Adapter M1 signed-client follow-up, ADR-0038).
+	 */
+	private function drop_adapter_m1_auth_tables(): void {
+		global $wpdb;
+
+		foreach ( self::ADAPTER_M1_AUTH_TABLES as $table_name ) {
 			$table = $wpdb->prefix . $table_name;
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
 			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );

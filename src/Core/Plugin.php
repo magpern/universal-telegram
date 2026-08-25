@@ -163,6 +163,13 @@ use UniversalTelegram\Telegram\Configuration\WebhookRegistrationCoordinator;
 use UniversalTelegram\Telegram\Reliability\CircuitBreaker;
 use UniversalTelegram\Telegram\Reliability\QueueHealthAlert;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
+use UniversalTelegram\SupportChatAdapter\Auth\NonceReplayRepository;
+use UniversalTelegram\SupportChatAdapter\Auth\NonceReplaySweep;
+use UniversalTelegram\SupportChatAdapter\Auth\OwnKeyManager;
+use UniversalTelegram\SupportChatAdapter\Auth\PairingService;
+use UniversalTelegram\SupportChatAdapter\Auth\PeerRepository;
+use UniversalTelegram\SupportChatAdapter\Auth\SignatureSigner;
+use UniversalTelegram\SupportChatAdapter\Auth\SignatureVerifier;
 use UniversalTelegram\SupportChatAdapter\ChannelBindingRepository;
 use UniversalTelegram\SupportChatAdapter\Cli\BindingImportCommand;
 use UniversalTelegram\SupportChatAdapter\DeliveryIdempotencyRepository;
@@ -175,6 +182,7 @@ use UniversalTelegram\SupportChatAdapter\Outbound\DeliverMessageService;
 use UniversalTelegram\SupportChatAdapter\Outbound\EnsureChannelCaseService;
 use UniversalTelegram\SupportChatAdapter\Outbound\NotifyOperatorsService;
 use UniversalTelegram\SupportChatAdapter\Outbound\OutboundContractController;
+use UniversalTelegram\SupportChatAdapter\Pairing\PairingController;
 
 /**
  * Singleton composition root. Constructs and wires every M00 service by
@@ -304,6 +312,14 @@ final class Plugin {
 	 * @var Settings|null
 	 */
 	private ?Settings $support_chat_adapter_settings = null;
+
+	/**
+	 * Support Chat signed-pairing Hub tab controller (UT Adapter M1 signed
+	 * client follow-up, ADR-0038).
+	 *
+	 * @var PairingController|null
+	 */
+	private ?PairingController $support_chat_pairing_controller = null;
 
 	/**
 	 * The administration hub shell page, constructed by init().
@@ -822,7 +838,24 @@ final class Plugin {
 		$adapter_enabled   = ! empty( $settings_values['support_chat_adapter_enabled'] );
 		$adapter_bindings  = new ChannelBindingRepository( $this->schema_health );
 		$adapter_discovery = new DiscoveryClient();
-		$adapter_sc_client = new SupportChatContractClient();
+
+		$adapter_own_key     = new OwnKeyManager( $this->credential_vault );
+		$adapter_peers       = new PeerRepository( $this->schema_health );
+		$adapter_nonces      = new NonceReplayRepository( $this->schema_health );
+		$adapter_signer      = new SignatureSigner( $adapter_own_key );
+		$adapter_verifier    = new SignatureVerifier( $adapter_peers, $adapter_nonces );
+		$adapter_pairing     = new PairingService( $adapter_peers, $this->audit_logger );
+		$adapter_nonce_sweep = new NonceReplaySweep( $adapter_nonces );
+		add_action( NonceReplaySweep::JOB_TYPE, array( $adapter_nonce_sweep, 'run' ) );
+		$adapter_nonce_sweep->register();
+
+		$adapter_sc_client = new SupportChatContractClient(
+			$adapter_peers,
+			$adapter_own_key,
+			$adapter_discovery,
+			$adapter_signer,
+			$adapter_enabled
+		);
 		$adapter_inbound   = new InboundAdapterBridge(
 			$adapter_bindings,
 			$adapter_discovery,
@@ -870,15 +903,18 @@ final class Plugin {
 			$adapter_ensure,
 			$adapter_notify,
 			$adapter_backfill,
-			$adapter_deliver
+			$adapter_deliver,
+			$adapter_verifier,
+			$adapter_peers
 		);
 		add_action( 'rest_api_init', array( $adapter_outbound, 'register_routes' ) );
 		( new BindingImportCommand( $adapter_bindings ) )->register();
 
 		// Stash for Hub tab registration after TabRegistry exists.
-		$this->support_chat_adapter_bindings  = $adapter_bindings;
-		$this->support_chat_adapter_discovery = $adapter_discovery;
-		$this->support_chat_adapter_settings  = $settings;
+		$this->support_chat_adapter_bindings   = $adapter_bindings;
+		$this->support_chat_adapter_discovery  = $adapter_discovery;
+		$this->support_chat_adapter_settings   = $settings;
+		$this->support_chat_pairing_controller = new PairingController( $adapter_own_key, $adapter_peers, $adapter_pairing );
 
 		$this->topic_creation_dispatcher = new TopicCreationDispatcher( $this->conversation_repository, $this->dispatcher );
 		$topic_creation_handler          = new TopicCreationHandler(
@@ -1692,6 +1728,17 @@ final class Plugin {
 				__( 'Support Chat adapter', 'universal-telegram' ),
 				CapabilityRegistrar::MANAGE,
 				array( $adapter_status_page, 'render_tab_content' )
+			)
+		);
+
+		// Adapter deps are assigned unconditionally earlier in init(); PHPStan
+		// narrows the nullable property through that same method path.
+		$this->hub_tab_registry->register(
+			new Tab(
+				PairingController::TAB_ID,
+				__( 'Support Chat pairing', 'universal-telegram' ),
+				CapabilityRegistrar::MANAGE,
+				array( $this->support_chat_pairing_controller, 'render_tab_content' )
 			)
 		);
 

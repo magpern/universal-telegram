@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented with fail-closed Contract boundary (closure: `docs/closure/ut-adapter-m1-universal-support-chat-adapter-closure.md`). **Signed Contract client follow-up now pinned and scoped by ADR-0038** (§0 below); implementation of that follow-up has not begun.
+Implemented with fail-closed Contract boundary (closure: `docs/closure/ut-adapter-m1-universal-support-chat-adapter-closure.md`). **Signed Contract client follow-up (ADR-0038, §0 below):** work packages 1–5 of plan v2 implemented — real ADR-0007 mutual Ed25519 signing/verification, administrator pairing, and nonce-replay housekeeping (closure: `docs/closure/ut-adapter-m1-signed-contract-client-closure.md`). Work package 6 (joint interoperability tests against a live Support Chat authenticated Contract server) remains outstanding and gates Support Chat's own SC-M03 migration/cutover work.
 
 ## Dependencies
 

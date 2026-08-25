@@ -136,7 +136,7 @@ final class AdapterStatusPage {
 		if ( $enabled && AdapterAvailability::Compatible !== $state ) {
 			echo '<div class="notice notice-info inline"><p>';
 			echo esc_html__(
-				'Universal Telegram is installed and can be configured here, but the Support Chat channel remains Unavailable until Support Chat advertises an available Contract v1 with the Adapter M1 capability set. Current Support Chat (SC-M02) discovery is inert (channel_available=false). Operational Contract exchange waits for SC-M03 authenticated, capability-advertising Contract server.',
+				'Universal Telegram is installed and can be configured here, but the Support Chat channel remains Unavailable until both plugins are paired (see the "Support Chat pairing" tab) and Support Chat\'s discovery advertises every Adapter M1 required operation for this plugin\'s paired key.',
 				'universal-telegram'
 			);
 			echo '</p></div>';
