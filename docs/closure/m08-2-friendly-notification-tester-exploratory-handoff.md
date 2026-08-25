@@ -91,7 +91,18 @@ travels only by nonce-protected POST and is never persisted, cached, or
 logged; and no external call of any kind was made during this task's
 implementation work.
 
-## Ready for
+## Closure
+
+**Superseded by acceptance.** The Product Owner approved both the grouped
+menu/tab rearrangement and M08.2 as a whole. The previously-deferred
+combined validation gate has since been run and repaired (commit
+`398ab18`) — see `docs/closure/m08-2-friendly-notification-tester-closure.md`
+for the full closure record, validation evidence, and version/database
+transition. This document is retained as the historical record of the
+pre-acceptance exploratory-testing state; it no longer reflects "not yet
+validated."
+
+## Ready for (historical — see Closure above)
 
 **Product Owner exploratory UI testing only**, against a local/staging
 WordPress install with this branch checked out. Formal validation (the
