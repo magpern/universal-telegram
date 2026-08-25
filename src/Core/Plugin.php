@@ -16,7 +16,9 @@ use UniversalTelegram\Administration\Automations\EventHistoryPage;
 use UniversalTelegram\Administration\Automations\IntelligencePanel;
 use UniversalTelegram\Administration\Automations\RuleBuilderPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderRequestHandler;
-use UniversalTelegram\Administration\Automations\RuleSimulatorPage;
+use UniversalTelegram\Administration\Automations\NotificationTester;
+use UniversalTelegram\Administration\Automations\NotificationTesterPage;
+use UniversalTelegram\Administration\Automations\PreviewRenderer;
 use UniversalTelegram\Administration\Conversations\ConversationActionHandler;
 use UniversalTelegram\Administration\Conversations\ConversationDetailPage;
 use UniversalTelegram\Administration\Conversations\ConversationInboxPage;
@@ -25,6 +27,7 @@ use UniversalTelegram\Administration\Conversations\OperatorIdentityRequestHandle
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
 use UniversalTelegram\Administration\Diagnostics\SelfTest;
+use UniversalTelegram\Administration\Hub\AreaPage;
 use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Administration\Hub\LegacyUrlRedirector;
 use UniversalTelegram\Administration\Hub\OverviewPage;
@@ -71,7 +74,6 @@ use UniversalTelegram\Automations\DispatchLogRepository;
 use UniversalTelegram\Automations\NotificationDispatcher;
 use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Automations\RuleEvaluator;
-use UniversalTelegram\Automations\RuleSimulator;
 use UniversalTelegram\Automations\TemplateRenderer;
 use UniversalTelegram\ChatWidget\AccountUrlResolver;
 use UniversalTelegram\ChatWidget\ChatWidgetAssets;
@@ -624,11 +626,11 @@ final class Plugin {
 	private ?RuleBuilderRequestHandler $rule_builder_request_handler = null;
 
 	/**
-	 * The rule simulator admin page, constructed by init().
+	 * The notification tester admin page, constructed by init().
 	 *
-	 * @var RuleSimulatorPage|null
+	 * @var NotificationTesterPage|null
 	 */
-	private ?RuleSimulatorPage $rule_simulator_page = null;
+	private ?NotificationTesterPage $notification_tester_page = null;
 
 	/**
 	 * The event history browser admin page, constructed by init().
@@ -1106,7 +1108,7 @@ final class Plugin {
 		);
 		// 'diagnostics' is registered last of all (see below), so display
 		// order matches the plan's mapping (M04.1 plan §3): Overview,
-		// Bots, Events, Rules, Simulator, Event History, Visitor
+		// Bots, Events, Rules, Test notifications, Event History, Visitor
 		// Tracking, Settings, Diagnostics.
 		$this->hub_page = new HubPage( $this->hub_tab_registry );
 		add_action( 'admin_menu', array( $this->hub_page, 'register_menu' ) );
@@ -1280,12 +1282,12 @@ final class Plugin {
 		( new FatalErrorMarkerWriter() )->register();
 
 		// Administration (M02, migrated into the hub at M04.1/ADR-0020):
-		// capability-gated event catalog and rule builder screens, now
-		// Events/Rules tabs of the single administration hub.
+		// capability-gated event catalog and rule builder screens. Since
+		// the M08.2 navigation addendum, reached as a section of the
+		// "Notifications & activity" area rather than its own top-level
+		// tab (registered as such further below, once every section in
+		// that area has been constructed).
 		$this->event_catalog_page = new EventCatalogPage( $this->event_registry );
-		$this->hub_tab_registry->register(
-			new Tab( 'events', __( 'Events', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_catalog_page, 'render_tab_content' ) )
-		);
 
 		$intelligence_settings = new IntelligenceSettings( $settings );
 		$intelligence_panel    = new IntelligencePanel(
@@ -1295,7 +1297,7 @@ final class Plugin {
 		);
 		add_action( 'admin_post_' . IntelligencePanel::ADMIN_POST_ACTION, array( $intelligence_panel, 'handle_request' ) );
 
-		$this->rule_builder_page = new RuleBuilderPage(
+		$this->rule_builder_page            = new RuleBuilderPage(
 			$this->notification_rule_repository,
 			$this->event_registry,
 			$this->bot_profile_repository,
@@ -1306,10 +1308,6 @@ final class Plugin {
 			$intelligence_panel,
 			$this->woocommerce_support
 		);
-		$this->hub_tab_registry->register(
-			new Tab( 'rules', __( 'Notifications', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_builder_page, 'render_tab_content' ) )
-		);
-
 		$this->rule_builder_request_handler = new RuleBuilderRequestHandler( $this->notification_rule_repository );
 		add_action( 'admin_post_' . RuleBuilderRequestHandler::ADMIN_POST_ACTION, array( $this->rule_builder_request_handler, 'handle_request' ) );
 		add_action( 'admin_post_' . RuleBuilderPage::INTELLIGENCE_ADMIN_POST_ACTION, array( $this->rule_builder_page, 'handle_intelligence_settings_request' ) );
@@ -1319,34 +1317,64 @@ final class Plugin {
 			( new PluginActionLinks( plugin_basename( UNIVERSAL_TELEGRAM_PLUGIN_FILE ) ) )->register();
 		}
 
-		$rule_simulator = new RuleSimulator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher, $this->digest_eligibility );
+		$notification_tester = new NotificationTester(
+			$rule_evaluator,
+			$this->notification_rule_repository,
+			$this->bot_profile_repository,
+			$this->destination_repository,
+			$this->event_registry,
+			new PreviewRenderer( $this->event_registry )
+		);
 
-		$this->rule_simulator_page = new RuleSimulatorPage( $rule_simulator, $this->event_registry );
-		$this->hub_tab_registry->register(
-			new Tab( RuleSimulatorPage::TAB_ID, __( 'Simulator', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_simulator_page, 'render_tab_content' ) )
+		$this->notification_tester_page = new NotificationTesterPage(
+			$notification_tester,
+			$this->notification_rule_repository,
+			$this->event_registry,
+			$this->bot_profile_repository,
+			$this->destination_repository,
+			$this->woocommerce_support
 		);
 
 		$this->event_history_page = new EventHistoryPage( $this->schema_health );
-		$this->hub_tab_registry->register(
-			new Tab( EventHistoryPage::TAB_ID, __( 'Event History', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_history_page, 'render_tab_content' ) )
-		);
 
 		// $this->digest_eligibility is already constructed above, ahead of
 		// RuleEvaluator; reused unchanged here.
 		$this->visitor_tracking_page = new VisitorTrackingPage( $settings, $this->bot_profile_repository, $this->digest_eligibility );
-		$this->hub_tab_registry->register(
-			new Tab( VisitorTrackingPage::TAB_ID, __( 'Visitor Tracking', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->visitor_tracking_page, 'render_tab_content' ) )
-		);
 		add_action( 'admin_post_' . VisitorTrackingPage::ADMIN_POST_ACTION, array( $this->visitor_tracking_page, 'handle_request' ) );
 
-		// Settings (M04.1 plan §6): plugin-wide configuration that
-		// previously had no admin UI at all. Registered second-to-last;
-		// 'diagnostics' is registered last of all, so display order
-		// matches the plan's mapping (M04.1 plan §3).
-		$this->settings_page = new SettingsPage( $settings );
-		$this->hub_tab_registry->register(
-			new Tab( SettingsPage::TAB_ID, __( 'Settings', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->settings_page, 'render_tab_content' ) )
+		// M08.2 navigation addendum: "Notifications & activity" groups the
+		// five screens above under one top-level area with its own
+		// accessible secondary tab row (AreaPage), rather than five flat
+		// top-level tabs. Every section here is the exact existing page
+		// object above, reused unchanged.
+		$notifications_activity_area = new AreaPage(
+			'notifications-activity',
+			__( 'Notifications & activity', 'universal-telegram' ),
+			array(
+				new Tab( RuleBuilderPage::TAB_ID, __( 'Notifications', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_builder_page, 'render_tab_content' ) ),
+				new Tab( NotificationTesterPage::TAB_ID, __( 'Test notifications', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->notification_tester_page, 'render_tab_content' ) ),
+				new Tab( 'events', __( 'Events', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_catalog_page, 'render_tab_content' ) ),
+				new Tab( EventHistoryPage::TAB_ID, __( 'Event History', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_history_page, 'render_tab_content' ) ),
+				new Tab( VisitorTrackingPage::TAB_ID, __( 'Visitor Tracking', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->visitor_tracking_page, 'render_tab_content' ) ),
+			)
 		);
+		$this->hub_tab_registry->register(
+			new Tab(
+				'notifications-activity',
+				__( 'Notifications & activity', 'universal-telegram' ),
+				CapabilityRegistrar::MANAGE_AUTOMATIONS,
+				array( $notifications_activity_area, 'render_tab_content' ),
+				array( $notifications_activity_area, 'is_accessible' )
+			)
+		);
+
+		// Settings (M04.1 plan §6): plugin-wide configuration that
+		// previously had no admin UI at all. Its own top-level tab is
+		// registered further below, after the M08.2-navigation-addendum
+		// grouped areas, so display order stays Overview, Bots,
+		// Notifications & activity, Conversations, AI, Settings,
+		// Diagnostics — 'diagnostics' remains registered last of all.
+		$this->settings_page = new SettingsPage( $settings );
 		add_action( 'admin_post_' . SettingsPage::ADMIN_POST_ACTION, array( $this->settings_page, 'handle_request' ) );
 
 		// Operator identity mappings (M07, docs/adr/0026): the manual
@@ -1354,11 +1382,12 @@ final class Plugin {
 		// must have before their first Telegram reply is accepted.
 		// MANAGE-gated, since creating a mapping grants inbound Telegram
 		// operator-acting trust.
+		// Since the M08.2 navigation addendum, reached as a section of the
+		// "Conversations" area (registered further below, once
+		// ConversationInboxPage also exists) rather than its own top-level
+		// tab.
 		$this->operator_identity_page            = new OperatorIdentityPage( $this->operator_identity_repository );
 		$this->operator_identity_request_handler = new OperatorIdentityRequestHandler( $this->operator_identity_repository );
-		$this->hub_tab_registry->register(
-			new Tab( OperatorIdentityPage::TAB_ID, __( 'Operator Identities', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->operator_identity_page, 'render_tab_content' ) )
-		);
 		add_action( 'admin_post_' . OperatorIdentityRequestHandler::ADMIN_POST_ACTION, array( $this->operator_identity_request_handler, 'handle_request' ) );
 
 		// Operator conversation-workflow actions (M07, docs/adr/0026):
@@ -1401,17 +1430,34 @@ final class Plugin {
 			$this->operator_availability_repository,
 			$this->conversation_detail_page
 		);
+		// M08.2 navigation addendum: "Conversations" groups the operator
+		// inbox and the operator identity mappings under one top-level
+		// area. Both sections are the exact existing page objects above,
+		// reused unchanged.
+		$conversations_area = new AreaPage(
+			'conversations',
+			__( 'Conversations', 'universal-telegram' ),
+			array(
+				new Tab( ConversationInboxPage::TAB_ID, __( 'Conversations', 'universal-telegram' ), CapabilityRegistrar::MANAGE_CONVERSATIONS, array( $this->conversation_inbox_page, 'render_tab_content' ) ),
+				new Tab( OperatorIdentityPage::TAB_ID, __( 'Operator Identities', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->operator_identity_page, 'render_tab_content' ) ),
+			)
+		);
 		$this->hub_tab_registry->register(
-			new Tab( ConversationInboxPage::TAB_ID, __( 'Conversations', 'universal-telegram' ), CapabilityRegistrar::MANAGE_CONVERSATIONS, array( $this->conversation_inbox_page, 'render_tab_content' ) )
+			new Tab(
+				'conversations',
+				__( 'Conversations', 'universal-telegram' ),
+				CapabilityRegistrar::MANAGE_CONVERSATIONS,
+				array( $conversations_area, 'render_tab_content' ),
+				array( $conversations_area, 'is_accessible' )
+			)
 		);
 
 		// AI draft assistant (M09, docs/adr/0028): operator-assist-only
-		// provider configuration and visitor-disclosure text. Registered
-		// after Conversations, before 'diagnostics' (which stays last).
+		// provider configuration and visitor-disclosure text. Since the
+		// M08.2 navigation addendum, reached as a section of the "AI" area
+		// (registered further below, once ApprovedContentPage also
+		// exists) rather than its own top-level tab.
 		$this->ai_settings_page = new AISettingsPage( $this->ai_provider_repository );
-		$this->hub_tab_registry->register(
-			new Tab( AISettingsPage::TAB_ID, __( 'AI', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->ai_settings_page, 'render_tab_content' ) )
-		);
 		add_action( 'admin_post_' . AISettingsPage::ACTION_SAVE_SETTINGS, array( $this->ai_settings_page, 'handle_save_settings' ) );
 		add_action( 'admin_post_' . AISettingsPage::ACTION_SET_CREDENTIAL, array( $this->ai_settings_page, 'handle_set_credential' ) );
 		add_action( 'admin_post_' . AISettingsPage::ACTION_DELETE_CREDENTIAL, array( $this->ai_settings_page, 'handle_delete_credential' ) );
@@ -1419,10 +1465,33 @@ final class Plugin {
 
 		$this->approved_content_repository = new ApprovedContentRepository( $this->message_repository );
 		$this->approved_content_page       = new ApprovedContentPage( $this->approved_content_repository );
-		$this->hub_tab_registry->register(
-			new Tab( ApprovedContentPage::TAB_ID, __( 'AI Content', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->approved_content_page, 'render_tab_content' ) )
-		);
 		add_action( 'admin_post_' . ApprovedContentPage::ADMIN_POST_ACTION, array( $this->approved_content_page, 'handle_request' ) );
+
+		// M08.2 navigation addendum: "AI" groups the draft assistant and
+		// the approved-source-content screens under one top-level area.
+		// Registered after Conversations, before Settings/'diagnostics'
+		// (which stay last).
+		$ai_area = new AreaPage(
+			'ai-hub',
+			__( 'AI', 'universal-telegram' ),
+			array(
+				new Tab( AISettingsPage::TAB_ID, __( 'AI drafts', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->ai_settings_page, 'render_tab_content' ) ),
+				new Tab( ApprovedContentPage::TAB_ID, __( 'AI content', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->approved_content_page, 'render_tab_content' ) ),
+			)
+		);
+		$this->hub_tab_registry->register(
+			new Tab(
+				'ai-hub',
+				__( 'AI', 'universal-telegram' ),
+				CapabilityRegistrar::MANAGE,
+				array( $ai_area, 'render_tab_content' ),
+				array( $ai_area, 'is_accessible' )
+			)
+		);
+
+		$this->hub_tab_registry->register(
+			new Tab( SettingsPage::TAB_ID, __( 'Settings', 'universal-telegram' ), CapabilityRegistrar::MANAGE, array( $this->settings_page, 'render_tab_content' ) )
+		);
 
 		// Shared, cross-feature provider-concurrency admission mutex (M11B
 		// plan §3): the single instance both AIDraftGenerationHandler and
@@ -1957,10 +2026,11 @@ final class Plugin {
 	}
 
 	/**
-	 * The rule simulator admin page. Available only after init() has run.
+	 * The notification tester admin page. Available only after init() has
+	 * run.
 	 */
-	public function rule_simulator_page(): ?RuleSimulatorPage {
-		return $this->rule_simulator_page;
+	public function notification_tester_page(): ?NotificationTesterPage {
+		return $this->notification_tester_page;
 	}
 
 	/**

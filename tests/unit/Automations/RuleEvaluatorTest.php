@@ -482,6 +482,148 @@ final class RuleEvaluatorTest extends TestCase {
 		);
 	}
 
+	/**
+	 * M08.2 plan §1: evaluate_conditions() must return a non-short-
+	 * circuited trace, so both clauses of an all-mode rule are present
+	 * even though the first clause already fails.
+	 */
+	public function test_evaluate_conditions_all_mode_records_every_clause_even_after_a_failure(): void {
+		$registry  = $this->registry();
+		$evaluator = new RuleEvaluator( $this->createMock( NotificationRuleRepository::class ), $registry, $this->fake_dispatch_log(), $this->fake_dispatcher() );
+		$rule      = $this->rule(
+			1,
+			array(
+				array(
+					'field'    => 'subject.post_id',
+					'operator' => 'equals',
+					'value'    => 999,
+				),
+				array(
+					'field'    => 'context.post_type',
+					'operator' => 'equals',
+					'value'    => 'post',
+				),
+			),
+			100,
+			'all'
+		);
+
+		$trace = $evaluator->evaluate_conditions( $rule, $this->envelope( $registry, 5 ) );
+
+		$this->assertFalse( $trace->matched() );
+		$this->assertSame( 'all', $trace->match_mode() );
+		$this->assertCount( 2, $trace->clause_results() );
+		$this->assertFalse( $trace->clause_results()[0]->matched() );
+		$this->assertSame( 5, $trace->clause_results()[0]->actual_value() );
+		$this->assertTrue( $trace->clause_results()[0]->field_present() );
+	}
+
+	public function test_evaluate_conditions_any_mode_records_every_clause_even_when_one_already_matched(): void {
+		$registry  = $this->registry();
+		$evaluator = new RuleEvaluator( $this->createMock( NotificationRuleRepository::class ), $registry, $this->fake_dispatch_log(), $this->fake_dispatcher() );
+		$rule      = $this->rule(
+			1,
+			array(
+				array(
+					'field'    => 'subject.post_id',
+					'operator' => 'equals',
+					'value'    => 5,
+				),
+				array(
+					'field'    => 'context.post_type',
+					'operator' => 'equals',
+					'value'    => 'post',
+				),
+			),
+			100,
+			'any'
+		);
+
+		$trace = $evaluator->evaluate_conditions( $rule, $this->envelope( $registry, 5 ) );
+
+		$this->assertTrue( $trace->matched() );
+		$this->assertCount( 2, $trace->clause_results() );
+		$this->assertTrue( $trace->clause_results()[0]->matched() );
+		$this->assertFalse( $trace->clause_results()[1]->matched() );
+		$this->assertFalse( $trace->clause_results()[1]->field_present() );
+	}
+
+	public function test_evaluate_conditions_reports_an_absent_field_distinctly_from_a_non_matching_value(): void {
+		$registry  = $this->registry();
+		$evaluator = new RuleEvaluator( $this->createMock( NotificationRuleRepository::class ), $registry, $this->fake_dispatch_log(), $this->fake_dispatcher() );
+		$rule      = $this->rule(
+			1,
+			array(
+				array(
+					'field'    => 'context.post_type',
+					'operator' => 'equals',
+					'value'    => 'post',
+				),
+			)
+		);
+
+		$trace  = $evaluator->evaluate_conditions( $rule, $this->envelope( $registry, 5 ) );
+		$clause = $trace->clause_results()[0];
+
+		$this->assertFalse( $clause->field_present() );
+		$this->assertNull( $clause->actual_value() );
+		$this->assertFalse( $clause->matched() );
+	}
+
+	public function test_evaluate_conditions_flags_an_invalid_field_and_matches_nothing(): void {
+		$registry  = $this->registry();
+		$evaluator = new RuleEvaluator( $this->createMock( NotificationRuleRepository::class ), $registry, $this->fake_dispatch_log(), $this->fake_dispatcher() );
+		$rule      = $this->rule(
+			1,
+			array(
+				array(
+					'field'    => 'payload.does_not_exist',
+					'operator' => 'equals',
+					'value'    => 'x',
+				),
+			)
+		);
+
+		$trace = $evaluator->evaluate_conditions( $rule, $this->envelope( $registry, 5 ) );
+
+		$this->assertFalse( $trace->matched() );
+		$this->assertTrue( $trace->has_invalid_clause() );
+		$this->assertFalse( $trace->clause_results()[0]->field_valid() );
+	}
+
+	public function test_evaluate_conditions_flags_an_invalid_operator_and_matches_nothing(): void {
+		$registry  = $this->registry();
+		$evaluator = new RuleEvaluator( $this->createMock( NotificationRuleRepository::class ), $registry, $this->fake_dispatch_log(), $this->fake_dispatcher() );
+		$rule      = $this->rule(
+			1,
+			array(
+				array(
+					'field'    => 'subject.post_id',
+					'operator' => 'not_a_real_operator',
+					'value'    => 5,
+				),
+			)
+		);
+
+		$trace = $evaluator->evaluate_conditions( $rule, $this->envelope( $registry, 5 ) );
+
+		$this->assertFalse( $trace->matched() );
+		$this->assertTrue( $trace->has_invalid_clause() );
+		$this->assertTrue( $trace->clause_results()[0]->field_valid() );
+		$this->assertFalse( $trace->clause_results()[0]->operator_valid() );
+	}
+
+	public function test_evaluate_conditions_on_an_empty_condition_list_matches_with_no_clauses(): void {
+		$registry  = $this->registry();
+		$evaluator = new RuleEvaluator( $this->createMock( NotificationRuleRepository::class ), $registry, $this->fake_dispatch_log(), $this->fake_dispatcher() );
+		$rule      = $this->rule( 1, array() );
+
+		$trace = $evaluator->evaluate_conditions( $rule, $this->envelope( $registry, 5 ) );
+
+		$this->assertTrue( $trace->matched() );
+		$this->assertSame( array(), $trace->clause_results() );
+	}
+
 	private function recording_evaluator( $repo, Registry $registry, array &$matched, array &$rejected ): RuleEvaluator {
 		return new class( $repo, $registry, $this->fake_dispatch_log(), $this->fake_dispatcher(), $matched, $rejected ) extends RuleEvaluator {
 			private array $matched_ref;

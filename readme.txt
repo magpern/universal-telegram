@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.15.0
+Stable tag: 0.16.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,18 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.16.0 =
+* Friendly notification tester and grouped Hub navigation (M08.2): the developer-oriented Simulator
+  tab is replaced by "Test notifications" — pick an existing notification or a custom event scenario,
+  fill in plain-language example values, and see a friendly would-send/would-not-send result with a
+  rendered preview, inline beside the form, never a raw event id, field path, or `{{token}}` syntax.
+  No Telegram message is ever sent and no dispatch log, event history, or audit log row is ever
+  written by a test. The Hub's flat top-level tab row is also reduced to seven grouped areas
+  (Overview, Bots, Notifications & activity, Conversations, AI, Settings, Diagnostics), with every
+  existing screen reused unchanged as an accessible secondary tab within its new area; every old
+  direct tab link, including a bookmarked Simulator URL, still resolves to its own content.
+* No database change (db_version stays 30).
 
 = 0.15.0 =
 * Friendly rule builder and notification presets (M08.1, ADR-0032): the Rules tab is now a

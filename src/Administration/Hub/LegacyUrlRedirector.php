@@ -12,7 +12,7 @@ namespace UniversalTelegram\Administration\Hub;
 use UniversalTelegram\Administration\Automations\EventCatalogPage;
 use UniversalTelegram\Administration\Automations\EventHistoryPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderPage;
-use UniversalTelegram\Administration\Automations\RuleSimulatorPage;
+use UniversalTelegram\Administration\Automations\NotificationTesterPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
 use UniversalTelegram\Administration\Telegram\BotManagementPage;
 use UniversalTelegram\Administration\Visitor\VisitorTrackingPage;
@@ -48,13 +48,13 @@ class LegacyUrlRedirector {
 	 */
 	private static function map(): array {
 		return array(
-			DiagnosticsPage::SLUG     => array( 'diagnostics', CapabilityRegistrar::MANAGE ),
-			BotManagementPage::SLUG   => array( BotManagementPage::TAB_ID, CapabilityRegistrar::MANAGE ),
-			EventCatalogPage::SLUG    => array( 'events', CapabilityRegistrar::MANAGE_AUTOMATIONS ),
-			RuleBuilderPage::SLUG     => array( RuleBuilderPage::TAB_ID, CapabilityRegistrar::MANAGE_AUTOMATIONS ),
-			RuleSimulatorPage::SLUG   => array( RuleSimulatorPage::TAB_ID, CapabilityRegistrar::MANAGE_AUTOMATIONS ),
-			EventHistoryPage::SLUG    => array( EventHistoryPage::TAB_ID, CapabilityRegistrar::MANAGE_AUTOMATIONS ),
-			VisitorTrackingPage::SLUG => array( VisitorTrackingPage::TAB_ID, CapabilityRegistrar::MANAGE ),
+			DiagnosticsPage::SLUG        => array( 'diagnostics', CapabilityRegistrar::MANAGE ),
+			BotManagementPage::SLUG      => array( BotManagementPage::TAB_ID, CapabilityRegistrar::MANAGE ),
+			EventCatalogPage::SLUG       => array( 'events', CapabilityRegistrar::MANAGE_AUTOMATIONS ),
+			RuleBuilderPage::SLUG        => array( RuleBuilderPage::TAB_ID, CapabilityRegistrar::MANAGE_AUTOMATIONS ),
+			NotificationTesterPage::SLUG => array( NotificationTesterPage::TAB_ID, CapabilityRegistrar::MANAGE_AUTOMATIONS ),
+			EventHistoryPage::SLUG       => array( EventHistoryPage::TAB_ID, CapabilityRegistrar::MANAGE_AUTOMATIONS ),
+			VisitorTrackingPage::SLUG    => array( VisitorTrackingPage::TAB_ID, CapabilityRegistrar::MANAGE ),
 		);
 	}
 

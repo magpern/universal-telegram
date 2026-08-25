@@ -71,81 +71,18 @@ final class RuleBuilderPage {
 	) {}
 
 	/**
-	 * Plain-language event families (M08.1 plan "Friendly labels"): grouping
-	 * only, derived from the existing event_type list — no Registry change.
-	 * `visitor.click` is deliberately excluded from every family (task
-	 * requirement); it keeps its EventCatalogLabels entry for other read
-	 * paths (Events tab, history) unaffected.
+	 * Plain-language event families (M08.1 plan "Friendly labels"):
+	 * grouping only, derived from the existing event_type list — no
+	 * Registry change. Relocated to EventFamilyCatalog (M08.2 plan §4) so
+	 * the notification tester can reuse the exact same grouping rather
+	 * than duplicating it; this delegation is a pure relocation with no
+	 * behavior change.
 	 *
-	 * @var array<string, array{label: string, requires_woocommerce: bool, event_types: array<int, string>}>
+	 * @return array<string, array{label: string, requires_woocommerce: bool, event_types: array<int, string>}>
 	 */
-	private const EVENT_FAMILIES = array(
-		'website_and_users'  => array(
-			'label'                => 'Website and users',
-			'requires_woocommerce' => false,
-			'event_types'          => array(
-				'wordpress.login_succeeded',
-				'wordpress.admin_login',
-				'wordpress.login_failed',
-				'wordpress.user_registered',
-				'wordpress.user_role_changed',
-				'wordpress.password_reset',
-				'wordpress.post_published',
-				'wordpress.comment_submitted',
-				'wordpress.plugin_activated',
-				'wordpress.plugin_deactivated',
-				'wordpress.update_available',
-				'wordpress.update_completed',
-			),
-		),
-		'store_orders'       => array(
-			'label'                => 'Store orders and payments',
-			'requires_woocommerce' => true,
-			'event_types'          => array(
-				'woocommerce.order_created',
-				'woocommerce.order_status_changed',
-				'woocommerce.payment_completed',
-				'woocommerce.order_failed',
-				'woocommerce.order_cancelled',
-				'woocommerce.refund_created',
-			),
-		),
-		'stock_and_checkout' => array(
-			'label'                => 'Stock and checkout',
-			'requires_woocommerce' => true,
-			'event_types'          => array(
-				'woocommerce.stock_threshold_crossed',
-				'woocommerce.cart_item_added',
-				'woocommerce.coupon_applied',
-				'woocommerce.coupon_rejected',
-				'woocommerce.checkout_validation_failed',
-			),
-		),
-		'website_health'     => array(
-			'label'                => 'Website health',
-			'requires_woocommerce' => false,
-			'event_types'          => array(
-				'wordpress.scheduled_task_failed',
-				'wordpress.rest_request_failed',
-				'wordpress.email_sending_failed',
-				'wordpress.fatal_error',
-			),
-		),
-		'visitor_activity'   => array(
-			'label'                => 'Visitor activity',
-			'requires_woocommerce' => false,
-			'event_types'          => array(
-				'visitor.session_started',
-				'visitor.page_viewed',
-				'visitor.navigation',
-				'visitor.search_performed',
-				'visitor.javascript_error',
-				'visitor.product_viewed',
-				'visitor.add_to_cart_intent',
-				'visitor.checkout_started_intent',
-			),
-		),
-	);
+	private static function event_families(): array {
+		return EventFamilyCatalog::families(); // phpcs:ignore PHPCompatibility.Extensions.RemovedExtensions.famRemoved -- false positive: the sniff misidentifies the `families(` call as the removed ext/fam extension.
+	}
 
 	/**
 	 * Renders this tab's content only (no outer .wrap/<h1> — owned by
@@ -408,7 +345,7 @@ final class RuleBuilderPage {
 	private function render_more_templates(): void {
 		echo '<h3>' . esc_html__( 'More notification templates', 'universal-telegram' ) . '</h3>';
 
-		foreach ( self::EVENT_FAMILIES as $family ) {
+		foreach ( self::event_families() as $family ) {
 			if ( $family['requires_woocommerce'] && ! $this->woocommerce_active() ) {
 				continue;
 			}
@@ -977,7 +914,7 @@ final class RuleBuilderPage {
 		echo '<p><label for="ut-rule-event-type" class="screen-reader-text">' . esc_html__( 'When this happens', 'universal-telegram' ) . '</label>';
 		echo '<select id="ut-rule-event-type" name="' . ( $locked ? '' : 'event_type' ) . '"' . ( $locked ? ' disabled="disabled"' : '' ) . '>';
 
-		foreach ( self::EVENT_FAMILIES as $family ) {
+		foreach ( self::event_families() as $family ) {
 			$family_disabled = $family['requires_woocommerce'] && ! $woocommerce_active;
 
 			printf(
@@ -1009,7 +946,7 @@ final class RuleBuilderPage {
 		}
 		echo '</p>';
 
-		foreach ( self::EVENT_FAMILIES as $family ) {
+		foreach ( self::event_families() as $family ) {
 			if ( $family['requires_woocommerce'] && ! $woocommerce_active ) {
 				printf(
 					'<p class="description">%s: %s</p>',

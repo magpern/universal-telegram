@@ -173,13 +173,13 @@ if [ -z "$(m06_column_exists "conversations" "owner_active_slot")" ]; then
 fi
 echo "OK: universal_telegram_conversations.owner_user_id and owner_active_slot columns exist."
 
-echo "== Verifying db_version reached 29 =="
+echo "== Verifying db_version reached 30 =="
 DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "29" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=29, got ${DB_VERSION}" >&2
+if [ "30" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=30, got ${DB_VERSION}" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 29."
+echo "OK: universal_telegram_db_version is 30."
 
 echo "== Verifying M07.1 topic lifecycle columns exist =="
 if [ -z "$(m06_column_exists conversations topic_lifecycle_state)" ]; then
@@ -346,11 +346,11 @@ wp eval '
 	echo "OK: diagnostics page rendered the Automations section with no raw exception detail.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
-echo "== Verifying rule simulation never sends a live message or writes to the dispatch log =="
+echo "== Verifying the notification tester never sends a live message or writes to the dispatch log =="
 wp eval '
 	$plugin    = UniversalTelegram\Core\Plugin::instance();
 	$registry  = $plugin->event_registry();
-	$simulator = new UniversalTelegram\Automations\RuleSimulator(
+	$evaluator = new UniversalTelegram\Automations\RuleEvaluator(
 		$plugin->notification_rule_repository(),
 		$registry,
 		$plugin->dispatch_log_repository(),
@@ -363,20 +363,28 @@ wp eval '
 			$plugin->message_dispatcher()
 		)
 	);
+	$tester = new UniversalTelegram\Administration\Automations\NotificationTester(
+		$evaluator,
+		$plugin->notification_rule_repository(),
+		$plugin->bot_profile_repository(),
+		$plugin->destination_repository(),
+		$registry,
+		new UniversalTelegram\Administration\Automations\PreviewRenderer( $registry )
+	);
 
 	global $wpdb;
 	$dispatch_log_table = $wpdb->prefix . "universal_telegram_notification_dispatch_log";
 	$before              = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$dispatch_log_table}" );
 
-	$result = $simulator->simulate( "wordpress.user_role_changed", array( "subject" => array( "user_id" => 1 ), "payload" => array( "new_role" => "editor" ) ), "package-test-sim" );
+	$results = $tester->test_event( "wordpress.user_role_changed", array( "subject.user_id" => "1", "payload.new_role" => "editor" ) );
 
 	$after = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$dispatch_log_table}" );
 
 	if ( $before !== $after ) {
-		fwrite( STDERR, "FAIL: rule simulation wrote to notification_dispatch_log\n" );
+		fwrite( STDERR, "FAIL: notification test wrote to notification_dispatch_log\n" );
 		exit( 1 );
 	}
-	echo "OK: rule simulation wrote no dispatch-log row.\n";
+	echo "OK: notification test wrote no dispatch-log row.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
 echo "== Verifying the diagnostics page renders with the self-test control present =="
@@ -474,9 +482,9 @@ wp eval '
 	echo "OK: the Settings action link is present and points at the Settings tab.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
-echo "== Verifying the administration hub registers exactly the thirteen expected tabs, in order =="
+echo "== Verifying the administration hub registers exactly the seven grouped top-level areas, in order =="
 wp eval '
-	$expected_tabs = array( "overview", "bots", "events", "rules", "simulator", "event-history", "visitor-tracking", "settings", "operator-identities", "operator-inbox", "ai", "ai-content", "diagnostics" );
+	$expected_tabs = array( "overview", "bots", "notifications-activity", "conversations", "ai-hub", "settings", "diagnostics" );
 
 	$plugin   = UniversalTelegram\Core\Plugin::instance();
 	$registry = $plugin->hub_tab_registry();
@@ -491,7 +499,7 @@ wp eval '
 		fwrite( STDERR, "FAIL: hub tab set/order was " . implode( ",", $ids ) . ", expected " . implode( ",", $expected_tabs ) . "\n" );
 		exit( 1 );
 	}
-	echo "OK: the administration hub registers exactly the thirteen expected tabs, in order.\n";
+	echo "OK: the administration hub registers exactly the seven expected top-level areas, in order.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
 echo "== Verifying the hub shell renders the requested tab content and the full tab nav =="

@@ -16,15 +16,5 @@ parameters:
     scanDirectories:
         - vendor/woocommerce/action-scheduler/classes
 
-    ignoreErrors:
-        -
-            # RuleSimulator's anonymous RuleEvaluator subclass binds
-            # $entries_ref by reference to simulate()'s own local $entries
-            # variable, which is read after evaluate() returns. PHPStan's
-            # property-usage analysis does not track cross-scope
-            # by-reference constructor bindings, so it sees only writes.
-            message: '#Property .*\$entries_ref is never read, only written#'
-            path: src/Automations/RuleSimulator.php
-
 includes:
     - vendor/szepeviktor/phpstan-wordpress/extension.neon

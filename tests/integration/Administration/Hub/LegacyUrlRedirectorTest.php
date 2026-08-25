@@ -8,7 +8,7 @@ namespace UniversalTelegram\Tests\Integration\Administration\Hub;
 use UniversalTelegram\Administration\Automations\EventCatalogPage;
 use UniversalTelegram\Administration\Automations\EventHistoryPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderPage;
-use UniversalTelegram\Administration\Automations\RuleSimulatorPage;
+use UniversalTelegram\Administration\Automations\NotificationTesterPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
 use UniversalTelegram\Administration\Hub\LegacyUrlRedirector;
 use UniversalTelegram\Administration\Telegram\BotManagementPage;
@@ -38,7 +38,7 @@ final class LegacyUrlRedirectorTest extends WP_UnitTestCase {
 			array( BotManagementPage::SLUG, 'bots' ),
 			array( EventCatalogPage::SLUG, 'events' ),
 			array( RuleBuilderPage::SLUG, 'rules' ),
-			array( RuleSimulatorPage::SLUG, 'simulator' ),
+			array( NotificationTesterPage::SLUG, 'test-notifications' ),
 			array( EventHistoryPage::SLUG, 'event-history' ),
 			array( VisitorTrackingPage::SLUG, 'visitor-tracking' ),
 		);

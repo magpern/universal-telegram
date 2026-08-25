@@ -30,7 +30,7 @@ use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
  * enforced by construction.
  *
  * Not declared final: tests/unit/Automations/RuleEvaluatorTest.php and
- * RuleSimulatorTest.php double this class via PHPUnit's createMock(),
+ * NotificationTesterTest.php double this class via PHPUnit's createMock(),
  * which cannot double a final class.
  */
 class NotificationDispatcher {
