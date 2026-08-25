@@ -72,6 +72,11 @@ final class UninstallTest extends WP_UnitTestCase {
 		Migrator::OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE,
 	);
 
+	private const ADAPTER_M1_TABLES = array(
+		Migrator::SUPPORT_CHAT_BINDINGS_TABLE,
+		Migrator::SUPPORT_CHAT_DELIVERY_KEYS_TABLE,
+	);
+
 	protected function setUp(): void {
 		parent::setUp();
 		( new CapabilityRegistrar() )->grant_to_administrator();
@@ -193,7 +198,7 @@ final class UninstallTest extends WP_UnitTestCase {
 			$table = $wpdb->prefix . Migrator::AUDIT_LOG_TABLE;
 			$this->assertFalse( $this->table_exists( $table ) );
 
-			foreach ( array_merge( self::M01_TABLES, self::M02_TABLES, self::M05_TABLES, self::M07_TABLES, self::M11A_TABLES, self::M11B_TABLES ) as $table_name ) {
+			foreach ( array_merge( self::M01_TABLES, self::M02_TABLES, self::M05_TABLES, self::M07_TABLES, self::M11A_TABLES, self::M11B_TABLES, self::ADAPTER_M1_TABLES ) as $table_name ) {
 				$this->assertFalse( $this->table_exists( $wpdb->prefix . $table_name ), "Expected {$table_name} to have been dropped." );
 			}
 
