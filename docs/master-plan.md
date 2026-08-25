@@ -41,15 +41,15 @@ The official product name and technical identifiers are finalized in ADR-0002.
 
 ### Website chat
 
-* Display a configurable chat widget on selected pages (authenticated access per ADR-0025).
-* Store every conversation in WordPress as the system of record.
-* Route visitor messages according to site routing policy (ADR-0033):
-  * **human-first** (default while M10 direct AI is disabled): preserve Telegram human-support delivery (topic + outbound), matching historical behaviour.
-  * **ai-first** (only when M10 direct AI is enabled): ordinary AI-only exchanges stay in WordPress with zero Telegram traffic; create a Telegram topic only on human request or defined escalation.
-* Allow staff to reply from Telegram after a topic exists; deliver replies back to the website chat.
-* Preserve conversations if the visitor navigates between pages.
-* Site support availability combines weekly schedule (site timezone), exceptions, and manual override (`automatic|online|offline`), with `/support` site commands distinct from per-operator `/presence` (ADR-0034, ADR-0035).
-* Offline human requests create a durable waiting case and Telegram topic immediately, with truthful visitor wording.
+> **Product direction (ADR-0037):** Website chat SoR, widget, Hub replies, availability, and future chat AI are owned by **Universal Support Chat**. The bullets below describe **legacy Universal Telegram chat behaviour** still present in runtime until Support Chat SC-M03 cutover, plus historical PR #30 planning (ADR-0033–0036) that is **superseded for UT implementation**. New chat-product work is not implemented in this plugin; optional escalated Telegram support continues via **UT Adapter M1**.
+
+* Display a configurable chat widget on selected pages (authenticated access per ADR-0025) — **legacy until SC-M03**.
+* Store every conversation in WordPress as the system of record — **moving to Support Chat**; UT retains legacy tables until cutover.
+* Historical routing-policy planning (ADR-0033, superseded): `human-first` / `ai-first` — **do not implement as UT M05.2/M10**.
+* Allow staff to reply from Telegram after a topic exists; deliver replies back to the website chat — **future path: adapter → Support Chat Contract v1**.
+* Preserve conversations if the visitor navigates between pages — **Support Chat ownership after cutover**.
+* Site support availability / offline waiting — **rehomed to Support Chat SC-M06**; UT `/support` only when adapter active.
+* Offline human requests must create a durable ticket that **does not depend on Telegram** (Support Chat R7); Telegram notify is optional via adapter.
 
 ### Telegram administration
 
@@ -1060,7 +1060,10 @@ Validation:
 
 **Objective:** Permit narrowly scoped AI-first chat.
 
-**Status:** Not started. Charter amended by the chat-experience architecture documentation freeze (ADR-0033–0036). A **future M10 ADR** is required before any M10 implementation.
+**Status:** Superseded for Universal Telegram implementation (ADR-0037). Historical charter retained; product requirements rehomed to Support Chat SC-AI2. A future M10 ADR inside Universal Telegram is **not** authorised.
+
+Charter previously amended by the chat-experience architecture documentation freeze (ADR-0033–0036). That UT implementation path is superseded.
+
 
 Prerequisite:
 
@@ -1091,9 +1094,9 @@ Validation:
 
 ---
 
-## Chat-experience architecture amendment (documentation)
+## Chat-experience architecture amendment (documentation) — historical
 
-Follow-on milestones (plans frozen; code not started):
+PR #30 froze follow-on milestones (plans frozen; UT code not started):
 
 * **M05.2** — Escalation-aware conversation routing (ADR-0033)
 * **M06.4** — Professional chat-widget visual revamp (no live/offline until M07.2)
@@ -1101,7 +1104,19 @@ Follow-on milestones (plans frozen; code not started):
 * **M09.1** — Operator approve-and-send as Support team (ADR-0036)
 * **M10** — Controlled direct AI (future ADR required)
 
-M08.1 is closed, PO-approved, and merged to `main` (out of scope). M08.2 is closed (out of scope). M09 remains operator-draft-only until M09.1/M10.
+M08.1 is closed, PO-approved, and merged to `main` (out of scope). M08.2 is closed (out of scope). M09 remains operator-draft-only in this plugin until Support Chat SC-AI1.
+
+**Supersession (ADR-0037):** the UT implementation path above is **no longer authorised**. M05.2 / M06.4 / M07.2 / M09.1 / M10 are superseded for Universal Telegram implementation; requirements are rehomed to Universal Support Chat. No M05.2 code was ever implemented. See the next section.
+
+## Support Chat extraction and optional adapter (ADR-0037)
+
+Website chat SoR, widget, Hub replies, availability, and future chat AI are owned by **Universal Support Chat**. Universal Telegram remains bots/destinations/webhooks/commands, event notifications, Telegram transport, and an optional Support Chat adapter.
+
+* Authorised UT milestone: **UT Adapter M1** — `docs/milestones/ut-adapter-m1-universal-support-chat-adapter.md`
+* Contract v1 pin: Support Chat commit `dff2730e24b7d3f70f15f706305e12e14fdcc6c8` —
+  `https://github.com/magpern/universal-support-chat/blob/dff2730e24b7d3f70f15f706305e12e14fdcc6c8/docs/adr/0005-canonical-support-channel-contract-v1.md`
+* Sequence: `SC-M00–M02` → UT Adapter M1 → `SC-M03` → `SC-M04`
+* Legacy UT chat runtime remains until SC-M03; this documentation does not extract or disable it
 
 ## M11 — Digests and operational intelligence
 

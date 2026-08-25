@@ -23,14 +23,18 @@ Each plan, stored at docs/plans/mNN-slug-plan-vN.md, must contain:
 M02's frozen plan is `docs/plans/m02-normalized-events-and-notifications-plan-v1.md`, together with
 ADR-0015 through ADR-0017.
 
-Chat-experience architecture amendment (documentation freeze) adds:
+Chat-experience architecture amendment (PR #30 documentation freeze) added — now **historical**; UT implementation superseded by ADR-0037:
 
-- `docs/plans/m05-2-escalation-aware-conversation-routing-plan-v1.md` (ADR-0033)
-- `docs/plans/m06-4-professional-chat-widget-visual-revamp-plan-v1.md`
-- `docs/plans/m07-2-site-support-availability-and-waiting-queue-plan-v1.md` (ADR-0034, ADR-0035)
-- `docs/plans/m09-1-operator-approved-ai-draft-delivery-plan-v1.md` (ADR-0036)
+- `docs/plans/m05-2-escalation-aware-conversation-routing-plan-v1.md` (ADR-0033; superseded for UT implementation)
+- `docs/plans/m06-4-professional-chat-widget-visual-revamp-plan-v1.md` (superseded for UT implementation)
+- `docs/plans/m07-2-site-support-availability-and-waiting-queue-plan-v1.md` (ADR-0034, ADR-0035; superseded for UT implementation)
+- `docs/plans/m09-1-operator-approved-ai-draft-delivery-plan-v1.md` (ADR-0036; superseded for UT implementation)
 
-M10 has no implementation plan in this freeze; its charter requires a future M10 ADR before planning/implementation.
+M10 had no implementation plan in that freeze; its UT path is also superseded (rehomed to Support Chat SC-AI2).
+
+Support Chat extraction supersession (ADR-0037) adds the authorised adapter plan:
+
+- `docs/plans/ut-adapter-m1-universal-support-chat-adapter-plan-v1.md` (ADR-0037; pins Support Chat Contract v1 SHA `dff2730e24b7d3f70f15f706305e12e14fdcc6c8`)
 
 - A plan is committed standalone, code-free, together with every new ADR it depends on, or after those ADRs already exist from an earlier documentation-only commit — see docs/governance.md, Freeze model.
 - Once committed, a plan is immutable. A required change is a new file that supersedes the prior plan; the prior plan file is never edited or deleted.
