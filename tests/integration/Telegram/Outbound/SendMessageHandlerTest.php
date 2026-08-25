@@ -296,7 +296,9 @@ final class SendMessageHandlerTest extends WP_UnitTestCase {
 				$resolved = $message->message_uuid() === $uuid
 					&& 'failed' === $outcome
 					&& 'telegram_destination_removed' === $failure_code;
-			}
+			},
+			10,
+			3
 		);
 
 		$this->destinations->delete( $destination->id() );

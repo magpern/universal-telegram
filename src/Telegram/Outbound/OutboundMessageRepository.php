@@ -442,8 +442,10 @@ final class OutboundMessageRepository {
 	}
 
 	/**
-	 * @param string              $where_clause A single equality predicate with one placeholder.
-	 * @param array<int, int>     $values       The placeholder value(s).
+	 * Rows still pending resolution, filtered by a single caller-supplied predicate.
+	 *
+	 * @param string          $where_clause A single equality predicate with one placeholder.
+	 * @param array<int, int> $values       The placeholder value(s).
 	 *
 	 * @return array<int, OutboundMessage>
 	 */
@@ -455,14 +457,15 @@ final class OutboundMessageRepository {
 		global $wpdb;
 
 		$table = $wpdb->prefix . Migrator::OUTBOUND_MESSAGES_TABLE;
-		$sql   = $wpdb->prepare(
+		// $where_clause always contributes exactly one further %d, matched by the one value in $values; the sniff cannot see the placeholder inside the interpolated variable.
+		$sql  = $wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber
 			"SELECT * FROM {$table} WHERE status IN (%s, %s, %s) AND {$where_clause}", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			OutboundMessageStatus::PENDING->value,
 			OutboundMessageStatus::RETRY_SCHEDULED->value,
 			OutboundMessageStatus::SENDING->value,
 			...$values
 		);
-		$rows  = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		return array_map( array( $this, 'hydrate' ), null === $rows ? array() : $rows );
 	}

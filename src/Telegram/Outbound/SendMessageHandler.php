@@ -61,18 +61,18 @@ class SendMessageHandler {
 	/**
 	 * Constructor.
 	 *
-	 * @param OutboundMessageRepository $messages                     Durable, encrypted message storage.
-	 * @param BotProfileRepository      $bots                         Bot profiles, including token decryption.
-	 * @param DestinationRepository     $destinations                 Destinations.
-	 * @param TelegramApiClient         $client                       The Telegram Bot API client.
-	 * @param TelegramFailureClassifier $classifier                   Classifies a failed response.
-	 * @param RateLimiter               $rate_limiter                 Per-bot/per-destination token buckets.
-	 * @param CircuitBreaker            $circuit_breaker              Per-bot/per-destination breakers.
-	 * @param AuditLogger               $audit_logger                 Records Telegram-specific delivery events.
-	 * @param RetryPolicy                  $retry_policy                 Consulted only for its own max_attempts().
-	 * @param UnresolvedOutboundAbandoner  $unresolved_abandoner         Drops rows whose target no longer exists.
-	 * @param int                          $rate_limit_fallback_wait_seconds Used only when a 429's retry_after is absent/invalid.
-	 * @param int                          $max_pending_seconds           The unbounded-deferral safety ceiling.
+	 * @param OutboundMessageRepository   $messages                     Durable, encrypted message storage.
+	 * @param BotProfileRepository        $bots                         Bot profiles, including token decryption.
+	 * @param DestinationRepository       $destinations                 Destinations.
+	 * @param TelegramApiClient           $client                       The Telegram Bot API client.
+	 * @param TelegramFailureClassifier   $classifier                   Classifies a failed response.
+	 * @param RateLimiter                 $rate_limiter                 Per-bot/per-destination token buckets.
+	 * @param CircuitBreaker              $circuit_breaker              Per-bot/per-destination breakers.
+	 * @param AuditLogger                 $audit_logger                 Records Telegram-specific delivery events.
+	 * @param RetryPolicy                 $retry_policy                 Consulted only for its own max_attempts().
+	 * @param UnresolvedOutboundAbandoner $unresolved_abandoner         Drops rows whose target no longer exists.
+	 * @param int                         $rate_limit_fallback_wait_seconds Used only when a 429's retry_after is absent/invalid.
+	 * @param int                         $max_pending_seconds           The unbounded-deferral safety ceiling.
 	 */
 	public function __construct(
 		private readonly OutboundMessageRepository $messages,

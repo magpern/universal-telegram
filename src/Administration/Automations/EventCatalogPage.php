@@ -82,16 +82,11 @@ final class EventCatalogPage {
 			echo '<tr>';
 			printf(
 				'<td>%s</td><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td>',
-				esc_html(
-					__(
-						EventCatalogLabels::event_type_label( $entry['event_type'] ),
-						'universal-telegram'
-					)
-				),
+				esc_html( EventCatalogLabels::event_type_label( $entry['event_type'] ) ),
 				esc_html( $entry['event_type'] ),
 				esc_html( (string) $entry['schema_version'] ),
-				$this->render_field_list( $entry['allowed_variable_fields'] ),
-				$this->render_field_list( $entry['history_projection_fields'] )
+				$this->render_field_list( $entry['allowed_variable_fields'] ), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_field_list() returns already-escaped HTML.
+				$this->render_field_list( $entry['history_projection_fields'] ) // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_field_list() returns already-escaped HTML.
 			);
 			echo '</tr>';
 		}
@@ -130,7 +125,7 @@ final class EventCatalogPage {
 		foreach ( $fields as $field ) {
 			$items[] = sprintf(
 				'<li>%s <code>%s</code></li>',
-				esc_html( __( EventCatalogLabels::field_label( $field ), 'universal-telegram' ) ),
+				esc_html( EventCatalogLabels::field_label( $field ) ),
 				esc_html( $field )
 			);
 		}
