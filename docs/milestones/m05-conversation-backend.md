@@ -2,7 +2,11 @@
 
 ## Status
 
-Not Started
+Closed (PASS) — see `docs/closure/m05-conversation-backend-closure.md`.
+
+### Architecture amendment note (documentation only)
+
+Follow-on **M05.2** (ADR-0033) amends routing policy for future AI-first Telegram silence while defaulting to human-first compatibility. This closed charter and its closure record are not rewritten; M05.2 is separately planned.
 
 ## Dependencies
 

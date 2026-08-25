@@ -2,7 +2,11 @@
 
 ## Status
 
-Not Started
+Closed (PASS) for delivered core and follow-ons (M06–M06.3.1); deferred charter items (profiles, business hours, custom CSS, etc.) remain unscheduled except where later follow-ons explicitly claim them. See `docs/closure/m06-chat-widget-core-closure.md` and later M06.* closures.
+
+### Architecture amendment note (documentation only)
+
+Follow-on **M06.4** covers professional visual revamp; live/offline status claims remain gated on **M07.2**. Business-hours **engine** is M07.2, not a silent reopen of this charter's deferred list as completed.
 
 ## Dependencies
 

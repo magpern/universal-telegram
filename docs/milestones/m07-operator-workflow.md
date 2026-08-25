@@ -5,6 +5,10 @@
 Technical verification PASS, merged to `main` (`c0b45b0`). Product Owner acceptance pending manual
 Telegram/topic operator-workflow testing — see `docs/closure/m07-operator-workflow-closure.md`.
 
+### Architecture amendment note (documentation only)
+
+Follow-on **M07.2** (ADR-0034, ADR-0035) adds site-wide support hours, `/support`, waiting-queue surfacing, and the availability transition sweep. Per-operator `/presence` and ADR-0026 availability remain. This charter is not reopened.
+
 ## Dependencies
 
 M05, M06
