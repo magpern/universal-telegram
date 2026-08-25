@@ -125,7 +125,8 @@ final class InboundAdapterBridge {
 			return true;
 		}
 
-		$this->sc_client->ingest_operator_reply(
+		// Fail-closed until SC-M03 authenticated Contract server; result intentionally unused.
+		$ingest = $this->sc_client->ingest_operator_reply(
 			$binding->binding_uuid(),
 			'tg-update-' . $bot->id() . '-' . $update_id,
 			$text,
@@ -134,6 +135,7 @@ final class InboundAdapterBridge {
 				'telegram_update_id' => $update_id,
 			)
 		);
+		unset( $ingest );
 
 		$this->bindings->record_ingest_update_id( $binding->binding_uuid(), $update_id, $binding->cas_version() );
 
@@ -152,13 +154,14 @@ final class InboundAdapterBridge {
 		$key     = 'tg-cmd-' . $update_id;
 		$command = $parsed->command();
 
-		match ( $command ) {
+		$result = match ( $command ) {
 			'claim'   => $this->sc_client->claim( $binding_uuid, $user_id, $key ),
 			'release' => $this->sc_client->release( $binding_uuid, $user_id, $key ),
 			'resolve' => $this->sc_client->resolve( $binding_uuid, $user_id, $key ),
 			'reopen'  => $this->sc_client->reopen( $binding_uuid, $user_id, $key ),
 			default   => null,
 		};
+		unset( $result );
 	}
 
 	/**

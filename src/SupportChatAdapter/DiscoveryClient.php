@@ -12,8 +12,11 @@ namespace UniversalTelegram\SupportChatAdapter;
 use WP_REST_Request;
 
 /**
- * Discovers whether Support Chat advertises a compatible Contract v1.
- * Fail-closed: any transport/schema/version mismatch yields Unavailable.
+ * Discovers whether Support Chat advertises a compatible, available Contract
+ * v1 with the Adapter M1 operation set. Fail-closed: version match alone is
+ * not enough — channel_available must be true and every required operation
+ * must be advertised. Current SC-M02 inert discovery (channel_available false)
+ * therefore yields Unavailable.
  */
 final class DiscoveryClient {
 
@@ -48,12 +51,48 @@ final class DiscoveryClient {
 			return AdapterAvailability::Unavailable;
 		}
 
+		return $this->evaluate( $data );
+	}
+
+	/**
+	 * Evaluates a discovery payload without transport.
+	 *
+	 * Compatible only when all of the following hold:
+	 * - contract_version is exactly support-channel-contract/v1
+	 * - channel_available is true
+	 * - operations advertises every Adapter M1 required capability
+	 *
+	 * @param array<string, mixed> $data Discovery response body.
+	 */
+	public function evaluate( array $data ): AdapterAvailability {
 		$version = isset( $data['contract_version'] ) && is_string( $data['contract_version'] )
 			? $data['contract_version']
 			: '';
 
 		if ( ContractConstants::CONTRACT_VERSION_ID !== $version ) {
 			return AdapterAvailability::Unavailable;
+		}
+
+		$channel_available = isset( $data['channel_available'] ) && true === $data['channel_available'];
+		if ( ! $channel_available ) {
+			return AdapterAvailability::Unavailable;
+		}
+
+		$operations = isset( $data['operations'] ) && is_array( $data['operations'] )
+			? $data['operations']
+			: array();
+
+		$advertised = array();
+		foreach ( $operations as $operation ) {
+			if ( is_string( $operation ) && '' !== $operation ) {
+				$advertised[] = $operation;
+			}
+		}
+
+		foreach ( ContractConstants::required_operations() as $required ) {
+			if ( ! in_array( $required, $advertised, true ) ) {
+				return AdapterAvailability::Unavailable;
+			}
 		}
 
 		return AdapterAvailability::Compatible;

@@ -28,6 +28,30 @@ final class ContractConstants {
 	public const UT_REST_PREFIX = '/support-chat';
 
 	/**
+	 * Operations Support Chat must advertise before UT treats the channel as
+	 * Compatible (Adapter M1 required set).
+	 *
+	 * @return array<int, string>
+	 */
+	public static function required_operations(): array {
+		return array(
+			'ensure_channel_case',
+			'notify_operators',
+			'deliver_transcript_backfill',
+			'deliver_message',
+			'ingest_operator_reply',
+			'claim',
+			'release',
+			'resolve',
+			'reopen',
+			'update_assignment',
+			'update_operator_presence',
+			'report_channel_unavailable',
+			'report_delivery_failure',
+		);
+	}
+
+	/**
 	 * Not instantiable.
 	 */
 	private function __construct() {}

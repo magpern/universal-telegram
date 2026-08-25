@@ -13,6 +13,7 @@ use UniversalTelegram\Administration\Shared\BotDestinationPairFields;
 use UniversalTelegram\Automations\Digest\DigestEligibility;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
+use UniversalTelegram\SupportChatAdapter\AdapterAvailability;
 use UniversalTelegram\SupportChatAdapter\ChannelBindingRepository;
 use UniversalTelegram\SupportChatAdapter\ContractConstants;
 use UniversalTelegram\SupportChatAdapter\DiscoveryClient;
@@ -131,6 +132,16 @@ final class AdapterStatusPage {
 		echo '<tr><th>' . esc_html__( 'Unavailable bindings', 'universal-telegram' ) . '</th><td>' . esc_html( (string) $counts['unavailable'] ) . '</td></tr>';
 		echo '<tr><th>' . esc_html__( 'Closed bindings', 'universal-telegram' ) . '</th><td>' . esc_html( (string) $counts['closed'] ) . '</td></tr>';
 		echo '</tbody></table>';
+
+		if ( $enabled && AdapterAvailability::Compatible !== $state ) {
+			echo '<div class="notice notice-info inline"><p>';
+			echo esc_html__(
+				'Universal Telegram is installed and can be configured here, but the Support Chat channel remains Unavailable until Support Chat advertises an available Contract v1 with the Adapter M1 capability set. Current Support Chat (SC-M02) discovery is inert (channel_available=false). Operational Contract exchange waits for SC-M03 authenticated, capability-advertising Contract server.',
+				'universal-telegram'
+			);
+			echo '</p></div>';
+		}
+
 		echo '<p><a href="' . esc_url( ContractConstants::CONTRACT_PIN_URL ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'Open pinned Contract v1', 'universal-telegram' ) . '</a></p>';
 		echo '<p class="description">' . esc_html__( 'SC-M03 binding import: wp universal-telegram support-chat-bindings import [--dry-run|--apply]', 'universal-telegram' ) . '</p>';
 		echo '</div>';

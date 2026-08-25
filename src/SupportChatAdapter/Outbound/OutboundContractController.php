@@ -20,6 +20,12 @@ use WP_REST_Response;
 
 /**
  * Exposes ensure / notify / backfill / deliver REST routes for Support Chat.
+ *
+ * Mutating acceptors stay closed until Support Chat discovery reports
+ * Compatible **and** an authenticated Contract caller is asserted via the
+ * `universal_telegram_support_chat_adapter_rest_authorized` filter (default
+ * false). Holding only `universal_support_chat_manage` or even UT MANAGE
+ * must not turn these routes into a general Telegram-send endpoint.
  */
 final class OutboundContractController {
 
@@ -57,7 +63,7 @@ final class OutboundContractController {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'handle_ensure' ),
-				'permission_callback' => array( $this, 'authorize' ),
+				'permission_callback' => array( $this, 'authorize_mutation' ),
 			)
 		);
 		register_rest_route(
@@ -66,7 +72,7 @@ final class OutboundContractController {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'handle_notify' ),
-				'permission_callback' => array( $this, 'authorize' ),
+				'permission_callback' => array( $this, 'authorize_mutation' ),
 			)
 		);
 		register_rest_route(
@@ -75,7 +81,7 @@ final class OutboundContractController {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'handle_backfill' ),
-				'permission_callback' => array( $this, 'authorize' ),
+				'permission_callback' => array( $this, 'authorize_mutation' ),
 			)
 		);
 		register_rest_route(
@@ -84,7 +90,7 @@ final class OutboundContractController {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'handle_deliver' ),
-				'permission_callback' => array( $this, 'authorize' ),
+				'permission_callback' => array( $this, 'authorize_mutation' ),
 			)
 		);
 		register_rest_route(
@@ -93,27 +99,43 @@ final class OutboundContractController {
 			array(
 				'methods'             => 'GET',
 				'callback'            => array( $this, 'handle_status' ),
-				'permission_callback' => array( $this, 'authorize' ),
+				'permission_callback' => array( $this, 'authorize_status' ),
 			)
 		);
 	}
 
 	/**
-	 * Authorises SC → UT Contract calls.
+	 * Authorises diagnostic adapter-status reads (UT manage only).
 	 *
 	 * @param WP_REST_Request $request Request.
 	 */
-	public function authorize( WP_REST_Request $request ): bool {
-		if ( current_user_can( CapabilityRegistrar::MANAGE ) ) {
-			return true;
-		}
+	public function authorize_status( WP_REST_Request $request ): bool {
+		unset( $request );
+		return current_user_can( CapabilityRegistrar::MANAGE );
+	}
 
-		if ( current_user_can( 'universal_support_chat_manage' ) ) { // phpcs:ignore WordPress.WP.Capabilities.Unknown -- Support Chat plugin capability when present.
-			return true;
+	/**
+	 * Authorises SC → UT mutating Contract calls.
+	 *
+	 * Requires Compatible discovery and an explicit authenticated Contract
+	 * assertion via filter. Does not accept UT MANAGE or Support Chat manage
+	 * alone — those must not become a Telegram-send shortcut.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 */
+	public function authorize_mutation( WP_REST_Request $request ): bool {
+		$values  = $this->settings->get();
+		$enabled = ! empty( $values['support_chat_adapter_enabled'] );
+		if ( AdapterAvailability::Compatible !== $this->discovery->resolve( $enabled ) ) {
+			return false;
 		}
 
 		/**
-		 * Filters whether a Support Chat adapter REST call is authorised.
+		 * Asserts an authenticated Support Chat → UT Contract caller.
+		 *
+		 * Default false. SC-M03 must set this true only after verifying its
+		 * authoritative server-side Contract authentication. Never treat a
+		 * bare capability check or rest_do_request context as sufficient.
 		 *
 		 * @since 0.16.0
 		 *
@@ -139,6 +161,10 @@ final class OutboundContractController {
 				'contract_version' => ContractConstants::CONTRACT_VERSION_ID,
 				'contract_pin_sha' => ContractConstants::CONTRACT_PIN_SHA,
 				'contract_pin_url' => ContractConstants::CONTRACT_PIN_URL,
+				'operational'      => AdapterAvailability::Compatible === $availability,
+				'waiting_for'      => AdapterAvailability::Compatible === $availability
+					? null
+					: 'sc_m03_authenticated_contract_server',
 			),
 			200
 		);
