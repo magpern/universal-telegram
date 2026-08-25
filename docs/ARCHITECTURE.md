@@ -33,7 +33,8 @@ Website support chat is extracted to standalone **Universal Support Chat**. This
 - Canonical Contract v1 lives only in Support Chat; pin:
   - SHA `dff2730e24b7d3f70f15f706305e12e14fdcc6c8`
   - URL `https://github.com/magpern/universal-support-chat/blob/dff2730e24b7d3f70f15f706305e12e14fdcc6c8/docs/adr/0005-canonical-support-channel-contract-v1.md`
-- Cross-repo sequence: `SC-M00–M02` → **UT Adapter M1** → `SC-M03` → `SC-M04`.
+- **Contract v1 authentication (ADR-0038, pinning Support Chat ADR-0007):** UT Adapter M1's `SupportChatContractClient` currently stubs every adapter → Support Chat call to fail closed (`sc_authenticated_contract_unavailable`) because Contract v1 required authentication without specifying a mechanism. That mechanism is now fixed — mutual Ed25519 request signing, auth profile `support-channel-contract-auth/v1` — pinned to Support Chat commit `8ee396d8b8edcbf526797c0a1f5741f3842df57a`: `https://github.com/magpern/universal-support-chat/blob/8ee396d8b8edcbf526797c0a1f5741f3842df57a/docs/adr/0007-contract-v1-mutual-signed-adapter-authentication-profile.md`. Replacing the stubs with a signed client is UT Adapter M1's authorised follow-up slice (ADR-0038); not implemented as of this documentation freeze.
+- Cross-repo sequence: `SC-M00–M02` → **UT Adapter M1** → **ADR-0038 signed-client follow-up** → `SC-M03` → `SC-M04`.
 - Non-chat notification/Automations behaviour (including M08.1 / M08.2 / ADR-0032) is unchanged.
 
 ## Versioning conventions
