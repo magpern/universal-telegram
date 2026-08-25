@@ -4,6 +4,25 @@ Branch: `feature/m08-2-friendly-notification-tester`
 Baseline: `main` @ `31c5480e416f2f3786663d128c0839ab8625a27e` (M08.1 merged, PR #28)
 Freeze commit: `036479d` (`docs: freeze M08.2 friendly notification tester plan`)
 Latest commit at handoff time: `9bbe61c` (`feat(admin): preserve legacy tab=simulator bookmarks and accessibility-pass the Test notifications page`)
+Addendum freeze commit: `dcfef34` (`docs(m08-2): freeze grouped Hub navigation addendum`)
+Addendum implementation commit: `b93bc02` (`feat(admin): group Hub navigation into related areas`)
+
+## Addendum: grouped Hub navigation
+
+This branch also includes the M08.2 grouped-Hub-navigation addendum
+(`docs/plans/m08-2-friendly-notification-tester-navigation-addendum-v1.md`):
+the Hub's flat 13-tab top-level row is reduced to seven top-level areas
+(Overview, Bots, Notifications & activity, Conversations, AI, Settings,
+Diagnostics), with every existing screen reused unchanged as an accessible
+secondary-tab-row section of its new area. "Test notifications" (this
+milestone's own new screen) is now reached via Notifications & activity →
+Test notifications, rather than as its own top-level tab. This is a
+presentation/navigation refinement only — no capability model,
+persistence, event contract, Telegram, or AI behavior changed, and every
+section's own capability check is untouched. It is included in this same
+exploratory-testing branch and remains **unvalidated and unmerged**,
+exactly like the rest of M08.2: its own tests were written but not
+executed, and it is not a separate milestone.
 
 ## Status
 
@@ -82,8 +101,9 @@ steps.
 
 ### Suggested exploratory checks (from the frozen plan's manual PO checklist, §9)
 
-1. **Existing-notification mode** — Hub → "Test notifications" tab →
-   "Test an existing notification" → pick a real notification → confirm the
+1. **Existing-notification mode** — Hub → "Notifications & activity" →
+   "Test notifications" → "Test an existing notification" → pick a real
+   notification → confirm the
    "About this notification" section shows only friendly labels and a
    rendered example preview (never `{{...}}` syntax, an event id, or a
    field path) → change one example value so a condition fails → confirm a
@@ -106,7 +126,17 @@ steps.
    `notification_dispatch_log`, `event_history`, or audit-log row, and that
    no Telegram message was sent.
 7. **The legacy bookmark** — visit `admin.php?page=universal-telegram&tab=simulator`
-   directly and confirm it lands on "Test notifications," not "Overview."
+   directly and confirm it lands on "Test notifications" inside "Notifications
+   & activity," not "Overview."
+8. **Grouped navigation** — confirm the top nav shows exactly the seven
+   areas (Overview, Bots, Notifications & activity, Conversations, AI,
+   Settings, Diagnostics); open "Notifications & activity" and confirm its
+   own secondary tab row lists Notifications, Test notifications, Events,
+   Event History, Visitor Tracking with correct active-state highlighting;
+   confirm "Daily operations summary" and "Threshold alerts" are still
+   visible on the Notifications section; visit an old direct link such as
+   `?tab=rules`, `?tab=ai`, or `?tab=operator-inbox` and confirm each lands
+   on its own correct area/section rather than the default Overview tab.
 
 Formal validation (the combined test/lint/static-analysis gate), code
 review, PR, merge, release, and production approval all remain pending and
