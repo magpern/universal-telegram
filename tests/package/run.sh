@@ -173,13 +173,13 @@ if [ -z "$(m06_column_exists "conversations" "owner_active_slot")" ]; then
 fi
 echo "OK: universal_telegram_conversations.owner_user_id and owner_active_slot columns exist."
 
-echo "== Verifying db_version reached 31 =="
+echo "== Verifying db_version reached 32 =="
 DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "31" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=31, got ${DB_VERSION}" >&2
+if [ "32" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=32, got ${DB_VERSION}" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 31."
+echo "OK: universal_telegram_db_version is 32."
 
 echo "== Verifying UT Adapter M1 Support Chat binding tables exist =="
 for TABLE in support_chat_bindings support_chat_delivery_keys; do
@@ -493,7 +493,7 @@ wp eval '
 
 echo "== Verifying the administration hub registers exactly the expected grouped top-level areas, in order =="
 wp eval '
-	$expected_tabs = array( "overview", "bots", "notifications-activity", "conversations", "ai-hub", "settings", "diagnostics", "support-chat-adapter" );
+	$expected_tabs = array( "overview", "bots", "notifications-activity", "conversations", "ai-hub", "settings", "diagnostics", "support-chat-adapter", "support-chat-pairing" );
 
 	$plugin   = UniversalTelegram\Core\Plugin::instance();
 	$registry = $plugin->hub_tab_registry();
