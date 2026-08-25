@@ -70,6 +70,6 @@ final class PreviewRendererTest extends TestCase {
 	public function test_an_unregistered_event_type_renders_an_empty_string_not_a_fatal(): void {
 		$renderer = new PreviewRenderer( $this->registry() );
 
-		$this->assertSame( '', $renderer->render( 'wordpress.never_registered', 'Hello {{subject.order_id}}' ) );
+		$this->assertSame( '', $renderer->render( 'wordpress.never_registered', 'Hello {{subject.order_id}}' ) ); // phpcs:ignore WordPress.WP.CapitalPDangit.MisspelledInText -- this is the literal event_type identifier string, not prose.
 	}
 }

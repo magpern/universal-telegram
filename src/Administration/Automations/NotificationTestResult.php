@@ -22,12 +22,12 @@ final class NotificationTestResult {
 	/**
 	 * Constructor.
 	 *
-	 * @param int                       $rule_id                              The tested rule's primary key.
-	 * @param string                    $rule_name                            The tested rule's admin-facing name.
-	 * @param NotificationTestOutcome   $outcome                              This rule's own outcome.
-	 * @param array<int, string>        $failing_reasons                      Plain-language failing-condition sentences; non-empty only for NOT_MATCHED.
-	 * @param string|null               $rendered_preview                     The rendered example notification preview; non-null only for WOULD_SEND.
-	 * @param bool                      $has_unrepresentable_legacy_conditions Whether this rule's stored conditions include a clause the friendly builder cannot represent.
+	 * @param int                     $rule_id                              The tested rule's primary key.
+	 * @param string                  $rule_name                            The tested rule's admin-facing name.
+	 * @param NotificationTestOutcome $outcome                              This rule's own outcome.
+	 * @param array<int, string>      $failing_reasons                      Plain-language failing-condition sentences; non-empty only for NOT_MATCHED.
+	 * @param string|null             $rendered_preview                     The rendered example notification preview; non-null only for WOULD_SEND.
+	 * @param bool                    $has_unrepresentable_legacy_conditions Whether this rule's stored conditions include a clause the friendly builder cannot represent.
 	 */
 	public function __construct(
 		private readonly int $rule_id,

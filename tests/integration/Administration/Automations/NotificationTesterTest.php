@@ -152,7 +152,13 @@ final class NotificationTesterTest extends WP_UnitTestCase {
 			'any'
 		);
 
-		$result = $this->tester( $rules )->test_rule( $rule, array( 'subject.username' => 'jsmith', 'subject.email' => 'wrong@example.com' ) );
+		$result = $this->tester( $rules )->test_rule(
+			$rule,
+			array(
+				'subject.username' => 'jsmith',
+				'subject.email'    => 'wrong@example.com',
+			)
+		);
 
 		$this->assertSame( NotificationTestOutcome::WOULD_SEND, $result->outcome() );
 	}
@@ -179,7 +185,13 @@ final class NotificationTesterTest extends WP_UnitTestCase {
 			'any'
 		);
 
-		$result = $this->tester( $rules )->test_rule( $rule, array( 'subject.username' => 'someone-else', 'subject.email' => 'wrong@example.com' ) );
+		$result = $this->tester( $rules )->test_rule(
+			$rule,
+			array(
+				'subject.username' => 'someone-else',
+				'subject.email'    => 'wrong@example.com',
+			)
+		);
 
 		$this->assertSame( NotificationTestOutcome::NOT_MATCHED, $result->outcome() );
 		$this->assertCount( 2, $result->failing_reasons() );
@@ -316,9 +328,9 @@ final class NotificationTesterTest extends WP_UnitTestCase {
 	public function test_no_scenario_in_this_suite_writes_dispatch_log_event_history_or_audit_log_rows(): void {
 		global $wpdb;
 
-		$before_dispatch_log = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $wpdb->prefix . Migrator::DISPATCH_LOG_TABLE );
-		$before_event_history = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE );
-		$before_audit_log      = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $wpdb->prefix . Migrator::AUDIT_LOG_TABLE );
+		$before_dispatch_log  = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $wpdb->prefix . Migrator::DISPATCH_LOG_TABLE ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- fixed table name, never user input.
+		$before_event_history = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- fixed table name, never user input.
+		$before_audit_log     = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $wpdb->prefix . Migrator::AUDIT_LOG_TABLE ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- fixed table name, never user input.
 
 		[ $bot, $destination ] = $this->eligible_bot_and_destination();
 		$rules                 = $this->rules();
@@ -340,8 +352,8 @@ final class NotificationTesterTest extends WP_UnitTestCase {
 		$tester->test_rule( $rule, array( 'subject.username' => 'someone-else' ) );
 		$tester->test_event( self::EVENT_TYPE, array() );
 
-		$this->assertSame( $before_dispatch_log, (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $wpdb->prefix . Migrator::DISPATCH_LOG_TABLE ) );
-		$this->assertSame( $before_event_history, (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE ) );
-		$this->assertSame( $before_audit_log, (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $wpdb->prefix . Migrator::AUDIT_LOG_TABLE ) );
+		$this->assertSame( $before_dispatch_log, (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $wpdb->prefix . Migrator::DISPATCH_LOG_TABLE ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- fixed table name, never user input.
+		$this->assertSame( $before_event_history, (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $wpdb->prefix . Migrator::EVENT_HISTORY_TABLE ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- fixed table name, never user input.
+		$this->assertSame( $before_audit_log, (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $wpdb->prefix . Migrator::AUDIT_LOG_TABLE ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- fixed table name, never user input.
 	}
 }

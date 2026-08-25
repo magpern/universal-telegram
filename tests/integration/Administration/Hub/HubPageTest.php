@@ -42,11 +42,11 @@ final class HubPageTest extends WP_UnitTestCase {
 		);
 		$registry->register(
 			new Tab(
-				'events',
-				'Events',
+				'reports',
+				'Reports',
 				CapabilityRegistrar::MANAGE_AUTOMATIONS,
 				static function (): void {
-					echo 'events-content';
+					echo 'reports-content';
 				}
 			)
 		);
@@ -68,10 +68,10 @@ final class HubPageTest extends WP_UnitTestCase {
 	}
 
 	public function test_a_known_tab_value_resolves_to_itself(): void {
-		$_GET['tab'] = 'events';
+		$_GET['tab'] = 'reports';
 		$page        = new HubPage( $this->make_registry() );
 
-		$this->assertSame( 'events', $page->resolve_tab_id() );
+		$this->assertSame( 'reports', $page->resolve_tab_id() );
 	}
 
 	public function test_an_unknown_tab_renders_the_default_tabs_content_not_an_error(): void {
@@ -84,13 +84,13 @@ final class HubPageTest extends WP_UnitTestCase {
 		$output = ob_get_clean();
 
 		$this->assertStringContainsString( 'overview-content', $output );
-		$this->assertStringNotContainsString( 'events-content', $output );
+		$this->assertStringNotContainsString( 'reports-content', $output );
 	}
 
 	public function test_a_known_tab_without_the_required_capability_is_denied_by_wordpress_itself(): void {
 		$subscriber_id = self::factory()->user->create( array( 'role' => 'subscriber' ) );
 		wp_set_current_user( $subscriber_id );
-		$_GET['tab'] = 'events';
+		$_GET['tab'] = 'reports';
 
 		$this->expectException( \WPDieException::class );
 		( new HubPage( $this->make_registry() ) )->render();
@@ -99,7 +99,7 @@ final class HubPageTest extends WP_UnitTestCase {
 	public function test_a_denied_tab_never_renders_its_content(): void {
 		$subscriber_id = self::factory()->user->create( array( 'role' => 'subscriber' ) );
 		wp_set_current_user( $subscriber_id );
-		$_GET['tab'] = 'events';
+		$_GET['tab'] = 'reports';
 
 		ob_start();
 		try {
@@ -109,19 +109,19 @@ final class HubPageTest extends WP_UnitTestCase {
 		}
 		$output = ob_get_clean();
 
-		$this->assertStringNotContainsString( 'events-content', $output );
+		$this->assertStringNotContainsString( 'reports-content', $output );
 	}
 
 	public function test_the_active_tab_carries_the_active_class_and_aria_current(): void {
 		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
 		wp_set_current_user( $admin_id );
-		$_GET['tab'] = 'events';
+		$_GET['tab'] = 'reports';
 
 		ob_start();
 		( new HubPage( $this->make_registry() ) )->render();
 		$output = ob_get_clean();
 
-		$this->assertMatchesRegularExpression( '/nav-tab-active" aria-current="page">Events</', $output );
+		$this->assertMatchesRegularExpression( '/nav-tab-active" aria-current="page">Reports</', $output );
 		$this->assertStringNotContainsString( 'nav-tab-active" aria-current="page">Overview<', $output );
 	}
 
@@ -160,15 +160,15 @@ final class HubPageTest extends WP_UnitTestCase {
 	public static function legacy_alias_provider(): array {
 		return array(
 			'simulator (M08.2 original alias)' => array( 'simulator', 'notifications-activity', 'test-notifications' ),
-			'rules'                             => array( 'rules', 'notifications-activity', 'rules' ),
-			'test-notifications'                => array( 'test-notifications', 'notifications-activity', 'test-notifications' ),
-			'events'                             => array( 'events', 'notifications-activity', 'events' ),
-			'event-history'                      => array( 'event-history', 'notifications-activity', 'event-history' ),
-			'visitor-tracking'                   => array( 'visitor-tracking', 'notifications-activity', 'visitor-tracking' ),
-			'operator-inbox'                     => array( 'operator-inbox', 'conversations', 'operator-inbox' ),
-			'operator-identities'                => array( 'operator-identities', 'conversations', 'operator-identities' ),
-			'ai'                                  => array( 'ai', 'ai-hub', 'ai' ),
-			'ai-content'                          => array( 'ai-content', 'ai-hub', 'ai-content' ),
+			'rules'                            => array( 'rules', 'notifications-activity', 'rules' ),
+			'test-notifications'               => array( 'test-notifications', 'notifications-activity', 'test-notifications' ),
+			'events'                           => array( 'events', 'notifications-activity', 'events' ),
+			'event-history'                    => array( 'event-history', 'notifications-activity', 'event-history' ),
+			'visitor-tracking'                 => array( 'visitor-tracking', 'notifications-activity', 'visitor-tracking' ),
+			'operator-inbox'                   => array( 'operator-inbox', 'conversations', 'operator-inbox' ),
+			'operator-identities'              => array( 'operator-identities', 'conversations', 'operator-identities' ),
+			'ai'                               => array( 'ai', 'ai-hub', 'ai' ),
+			'ai-content'                       => array( 'ai-content', 'ai-hub', 'ai-content' ),
 		);
 	}
 
@@ -180,7 +180,7 @@ final class HubPageTest extends WP_UnitTestCase {
 		$page        = new HubPage( $this->make_registry_with_area_tab( $expected_area ) );
 
 		$this->assertSame( $expected_area, $page->resolve_tab_id() );
-		$this->assertSame( $expected_section, $_GET['section'] ?? null );
+		$this->assertSame( $expected_section, $_GET['section'] ?? null ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- test assertion reading the exact value this test itself set via HubPage::resolve_tab_id(), not user input.
 
 		unset( $_GET['section'] );
 	}
@@ -212,7 +212,7 @@ final class HubPageTest extends WP_UnitTestCase {
 		$page            = new HubPage( $this->make_registry_with_area_tab( 'notifications-activity' ) );
 
 		$this->assertSame( 'notifications-activity', $page->resolve_tab_id() );
-		$this->assertSame( 'event-history', $_GET['section'] );
+		$this->assertSame( 'event-history', $_GET['section'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.InputNotValidated -- test assertion reading the exact value this test itself set two lines above, not user input.
 
 		unset( $_GET['section'] );
 	}

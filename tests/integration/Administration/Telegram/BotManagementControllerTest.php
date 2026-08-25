@@ -339,8 +339,8 @@ final class BotManagementControllerTest extends WP_UnitTestCase {
 			}
 		};
 
-		$messages = new OutboundMessageRepository( $this->schema_health, new CredentialVault() );
-		$client   = new TelegramApiClient();
+		$messages     = new OutboundMessageRepository( $this->schema_health, new CredentialVault() );
+		$client       = new TelegramApiClient();
 		$destinations = new DestinationRepository( $this->schema_health );
 
 		$controller = new class(

@@ -30,7 +30,7 @@ final class NotificationTesterPageAccessibilityTest extends WP_UnitTestCase {
 	private const EVENT_TYPE = 'wordpress.user_registered';
 
 	protected function tearDown(): void {
-		unset( $_GET['mode'], $_GET['rule_id'], $_POST['mode'], $_POST['rule_id'], $_POST['values'], $_POST['_wpnonce'], $_SERVER['REQUEST_METHOD'] );
+		unset( $_GET['mode'], $_GET['rule_id'], $_POST['mode'], $_POST['rule_id'], $_POST['values'], $_POST['_wpnonce'], $_REQUEST['_wpnonce'], $_SERVER['REQUEST_METHOD'] );
 		parent::tearDown();
 	}
 
@@ -94,8 +94,8 @@ final class NotificationTesterPageAccessibilityTest extends WP_UnitTestCase {
 	}
 
 	public function test_the_example_values_section_is_a_fieldset_with_a_legend_and_labelled_inputs(): void {
-		$rules = $this->rules();
-		$rule  = $this->eligible_rule( $rules );
+		$rules           = $this->rules();
+		$rule            = $this->eligible_rule( $rules );
 		$_GET['rule_id'] = (string) $rule->id();
 
 		ob_start();
@@ -114,7 +114,9 @@ final class NotificationTesterPageAccessibilityTest extends WP_UnitTestCase {
 		$_SERVER['REQUEST_METHOD'] = 'POST';
 		$_POST['mode']             = 'rule';
 		$_POST['rule_id']          = (string) $rule->id();
-		$_POST['_wpnonce']         = wp_create_nonce( NotificationTesterPage::NONCE_ACTION );
+		$nonce                     = wp_create_nonce( NotificationTesterPage::NONCE_ACTION );
+		$_POST['_wpnonce']         = $nonce;
+		$_REQUEST['_wpnonce']      = $nonce;
 		$_POST['values']           = array( 'subject.username' => 'jsmith' );
 
 		ob_start();
@@ -130,13 +132,34 @@ final class NotificationTesterPageAccessibilityTest extends WP_UnitTestCase {
 		// A condition that the submitted example value deliberately fails,
 		// so this rule's own outcome is genuinely NOT_MATCHED rather than
 		// the always-true empty-condition default.
-		$rules->save( $rule->id(), $rule->name(), $rule->event_type(), 1, array( array( 'field' => 'subject.username', 'operator' => 'equals', 'value' => 'jsmith' ) ), $rule->bot_id(), $rule->destination_id(), $rule->template(), true, 100, 0, 'all' );
+		$rules->save(
+			$rule->id(),
+			$rule->name(),
+			$rule->event_type(),
+			1,
+			array(
+				array(
+					'field'    => 'subject.username',
+					'operator' => 'equals',
+					'value'    => 'jsmith',
+				),
+			),
+			$rule->bot_id(),
+			$rule->destination_id(),
+			$rule->template(),
+			true,
+			100,
+			0,
+			'all'
+		);
 
 		$_GET['rule_id']           = (string) $rule->id();
 		$_SERVER['REQUEST_METHOD'] = 'POST';
 		$_POST['mode']             = 'rule';
 		$_POST['rule_id']          = (string) $rule->id();
-		$_POST['_wpnonce']         = wp_create_nonce( NotificationTesterPage::NONCE_ACTION );
+		$nonce                     = wp_create_nonce( NotificationTesterPage::NONCE_ACTION );
+		$_POST['_wpnonce']         = $nonce;
+		$_REQUEST['_wpnonce']      = $nonce;
 		$_POST['values']           = array( 'subject.username' => 'not-a-match' );
 
 		ob_start();

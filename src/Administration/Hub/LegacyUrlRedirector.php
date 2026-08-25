@@ -48,13 +48,13 @@ class LegacyUrlRedirector {
 	 */
 	private static function map(): array {
 		return array(
-			DiagnosticsPage::SLUG     => array( 'diagnostics', CapabilityRegistrar::MANAGE ),
-			BotManagementPage::SLUG   => array( BotManagementPage::TAB_ID, CapabilityRegistrar::MANAGE ),
-			EventCatalogPage::SLUG    => array( 'events', CapabilityRegistrar::MANAGE_AUTOMATIONS ),
-			RuleBuilderPage::SLUG     => array( RuleBuilderPage::TAB_ID, CapabilityRegistrar::MANAGE_AUTOMATIONS ),
+			DiagnosticsPage::SLUG        => array( 'diagnostics', CapabilityRegistrar::MANAGE ),
+			BotManagementPage::SLUG      => array( BotManagementPage::TAB_ID, CapabilityRegistrar::MANAGE ),
+			EventCatalogPage::SLUG       => array( 'events', CapabilityRegistrar::MANAGE_AUTOMATIONS ),
+			RuleBuilderPage::SLUG        => array( RuleBuilderPage::TAB_ID, CapabilityRegistrar::MANAGE_AUTOMATIONS ),
 			NotificationTesterPage::SLUG => array( NotificationTesterPage::TAB_ID, CapabilityRegistrar::MANAGE_AUTOMATIONS ),
-			EventHistoryPage::SLUG    => array( EventHistoryPage::TAB_ID, CapabilityRegistrar::MANAGE_AUTOMATIONS ),
-			VisitorTrackingPage::SLUG => array( VisitorTrackingPage::TAB_ID, CapabilityRegistrar::MANAGE ),
+			EventHistoryPage::SLUG       => array( EventHistoryPage::TAB_ID, CapabilityRegistrar::MANAGE_AUTOMATIONS ),
+			VisitorTrackingPage::SLUG    => array( VisitorTrackingPage::TAB_ID, CapabilityRegistrar::MANAGE ),
 		);
 	}
 

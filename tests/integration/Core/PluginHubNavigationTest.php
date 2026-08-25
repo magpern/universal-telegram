@@ -83,8 +83,8 @@ final class PluginHubNavigationTest extends WP_UnitTestCase {
 	 * "Notifications & activity" rather than its own top-level tab.
 	 */
 	public function test_daily_operations_summary_and_threshold_alerts_remain_reachable_via_the_notifications_section(): void {
-		$registry         = Plugin::instance()->hub_tab_registry();
-		$_GET['section']  = 'rules';
+		$registry        = Plugin::instance()->hub_tab_registry();
+		$_GET['section'] = 'rules';
 
 		ob_start();
 		$registry->get( 'notifications-activity' )->render();

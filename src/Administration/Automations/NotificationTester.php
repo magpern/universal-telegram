@@ -31,10 +31,10 @@ use UniversalTelegram\Telegram\Configuration\DestinationRepository;
  * RuleEvaluator's structured evaluate_conditions() trace — RuleEvaluator
  * itself remains free of any such dependency.
  *
- * Match/no-match evaluation uses the administrator's own example values
- * (merged over FieldTypeCatalog's own fixed defaults for any field left
- * unset), so a changed example value genuinely changes the outcome; the
- * rendered message preview, on a WOULD_SEND outcome, is always
+ * Match/no-match evaluation uses only the administrator's own example
+ * values — a field left unset stays genuinely absent, not defaulted, so a
+ * condition depending on it is explained distinctly from a present but
+ * non-matching value; the rendered message preview, on a WOULD_SEND outcome, is always
  * PreviewRenderer's own fixed, non-sensitive synthetic rendering — never
  * the raw stored template — so the preview is stable and safe regardless
  * of what an administrator typed into the example-values fields.
@@ -46,8 +46,8 @@ final class NotificationTester {
 	/**
 	 * Constructor.
 	 *
-	 * @param RuleEvaluator               $evaluator        The pure condition-evaluation engine (M08.2 plan §1).
-	 * @param NotificationRuleRepository  $rules            Supplies each event type's own enabled rules for the custom-scenario mode.
+	 * @param RuleEvaluator              $evaluator        The pure condition-evaluation engine (M08.2 plan §1).
+	 * @param NotificationRuleRepository $rules            Supplies each event type's own enabled rules for the custom-scenario mode.
 	 * @param BotProfileRepository       $bots             Re-checked, never mutated, to determine destination eligibility.
 	 * @param DestinationRepository      $destinations     Re-checked, never mutated, to determine destination eligibility.
 	 * @param Registry                   $registry         The current request's event registry.
@@ -94,8 +94,8 @@ final class NotificationTester {
 	 * custom scenario") — the same enabled-only rule set a real occurrence
 	 * of this event would be evaluated against.
 	 *
-	 * @param string                $event_type    The event type to test.
-	 * @param array<string, mixed>  $sample_values Administrator-supplied example values, keyed by field path.
+	 * @param string               $event_type    The event type to test.
+	 * @param array<string, mixed> $sample_values Administrator-supplied example values, keyed by field path.
 	 *
 	 * @return array<int, NotificationTestResult>
 	 */
@@ -149,15 +149,16 @@ final class NotificationTester {
 
 	/**
 	 * Builds a synthetic EventEnvelope for one event type from the
-	 * administrator's own example values, defaulting any field left unset
-	 * to FieldTypeCatalog::preview_value() (mirrors PreviewRenderer's own
-	 * envelope-building loop, but honors the caller's own overrides so a
-	 * changed example value can genuinely change the match outcome).
-	 * Returns null, never throws, if the event type is unregistered or the
-	 * envelope otherwise cannot be constructed.
+	 * administrator's own example values only — a field the administrator
+	 * left unset stays genuinely absent from the envelope rather than
+	 * being defaulted, so a condition depending on it is explained as "no
+	 * value supplied" (plan §8 scenario 5), distinct from a present value
+	 * that simply doesn't match. Returns null, never throws, if the event
+	 * type is unregistered or the envelope otherwise cannot be
+	 * constructed.
 	 *
-	 * @param string                $event_type    The event type.
-	 * @param array<string, mixed>  $sample_values Administrator-supplied example values, keyed by field path.
+	 * @param string               $event_type    The event type.
+	 * @param array<string, mixed> $sample_values Administrator-supplied example values, keyed by field path.
 	 *
 	 * @return EventEnvelope|null
 	 */
@@ -174,12 +175,16 @@ final class NotificationTester {
 		);
 
 		foreach ( ConditionRowRenderer::eligible_fields( $event_type, $this->registry ) as $field_path ) {
+			if ( ! array_key_exists( $field_path, $sample_values ) ) {
+				continue;
+			}
+
 			$segments = explode( '.', $field_path, 2 );
 			if ( 2 !== count( $segments ) || ! isset( $sample[ $segments[0] ] ) ) {
 				continue;
 			}
 
-			$sample[ $segments[0] ][ $segments[1] ] = $sample_values[ $field_path ] ?? FieldTypeCatalog::preview_value( $field_path );
+			$sample[ $segments[0] ][ $segments[1] ] = $sample_values[ $field_path ];
 		}
 
 		try {

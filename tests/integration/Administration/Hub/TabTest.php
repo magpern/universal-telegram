@@ -32,7 +32,17 @@ final class TabTest extends WP_UnitTestCase {
 		$this->assertTrue( $tab->is_accessible() );
 		$this->assertSame( current_user_can( CapabilityRegistrar::MANAGE_CONVERSATIONS ), $tab->is_accessible() );
 
-		get_userdata( $admin )->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		// A role-inherited cap (CapabilityRegistrar grants to the
+		// 'administrator' role, not per-user) can only be denied by
+		// removing it from the role itself — WP_User::remove_cap() only
+		// ever removes a directly-assigned user meta cap and cannot
+		// override one the user still holds via their role. The already-
+		// instantiated current-user object also caches its allcaps at
+		// construction time (wp_set_current_user() is a no-op for the same
+		// user id), so get_role_caps() must be called to recompute them in
+		// place.
+		get_role( 'administrator' )->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_get_current_user()->get_role_caps();
 
 		$this->assertFalse( $tab->is_accessible() );
 	}

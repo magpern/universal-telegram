@@ -510,7 +510,7 @@ final class BotManagementPageTest extends WP_UnitTestCase {
 		update_option( Settings::OPTION_NAME, $settings->sanitize( array_merge( $settings->get(), array( 'chat_widget_enabled' => true ) ) ) );
 
 		$destination = $destinations->for_bot( $bot->id() )[0];
-		$message       = $messages->create( $bot->id(), $destination->id(), 'digest body', 'MarkdownV2' );
+		$message     = $messages->create( $bot->id(), $destination->id(), 'digest body', 'MarkdownV2' );
 		$messages->mark_dead_letter( $message->id(), 'telegram_terminal_rejection' );
 
 		$page = $this->make_page( $bots, $destinations );

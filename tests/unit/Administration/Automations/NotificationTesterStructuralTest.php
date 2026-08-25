@@ -111,7 +111,8 @@ final class NotificationTesterStructuralTest extends TestCase {
 	 */
 	private static function queue_namespace_classes(): array {
 		$plugin_root = dirname( __DIR__, 4 );
-		$files       = glob( $plugin_root . '/src/Queue/*.php' ) ?: array();
+		$found = glob( $plugin_root . '/src/Queue/*.php' );
+		$files = false !== $found ? $found : array();
 
 		$classes = array();
 		foreach ( $files as $file ) {

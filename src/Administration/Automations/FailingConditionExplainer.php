@@ -78,9 +78,9 @@ final class FailingConditionExplainer {
 			);
 		}
 
-		$operator_label    = self::operator_label( $clause_result->operator() );
-		$actual_display    = self::format_value( $clause_result->field(), $clause_result->actual_value() );
-		$expected_display  = self::format_value( $clause_result->field(), $clause_result->expected_value() );
+		$operator_label   = self::operator_label( $clause_result->operator() );
+		$actual_display   = self::format_value( $clause_result->field(), $clause_result->actual_value() );
+		$expected_display = self::format_value( $clause_result->field(), $clause_result->expected_value() );
 
 		return sprintf(
 			'%1$s is currently "%2$s", which does not %3$s "%4$s".',

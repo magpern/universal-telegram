@@ -22,8 +22,8 @@ final class RuleMatchTrace {
 	/**
 	 * Constructor.
 	 *
-	 * @param bool                            $matched         Whether the rule's conditions matched overall.
-	 * @param string                          $match_mode      'all' or 'any' (ADR-0032).
+	 * @param bool                              $matched         Whether the rule's conditions matched overall.
+	 * @param string                            $match_mode      'all' or 'any' (ADR-0032).
 	 * @param array<int, ConditionClauseResult> $clause_results Every clause's own result, in configured order.
 	 */
 	public function __construct(

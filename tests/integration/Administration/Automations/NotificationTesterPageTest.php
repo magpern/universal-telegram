@@ -31,7 +31,7 @@ final class NotificationTesterPageTest extends WP_UnitTestCase {
 	private const EVENT_TYPE = 'wordpress.user_registered';
 
 	protected function tearDown(): void {
-		unset( $_GET['mode'], $_GET['rule_id'], $_GET['event_type'], $_POST['mode'], $_POST['rule_id'], $_POST['event_type'], $_POST['values'], $_POST['_wpnonce'], $_SERVER['REQUEST_METHOD'] );
+		unset( $_GET['mode'], $_GET['rule_id'], $_GET['event_type'], $_POST['mode'], $_POST['rule_id'], $_POST['event_type'], $_POST['values'], $_POST['_wpnonce'], $_REQUEST['_wpnonce'], $_SERVER['REQUEST_METHOD'] );
 		parent::tearDown();
 	}
 
@@ -86,8 +86,8 @@ final class NotificationTesterPageTest extends WP_UnitTestCase {
 
 	public function test_the_page_shows_the_safety_intro_and_never_shows_raw_technical_identifiers(): void {
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
-		$rules = $this->rules();
-		$rule  = $this->eligible_rule( $rules );
+		$rules           = $this->rules();
+		$rule            = $this->eligible_rule( $rules );
 		$_GET['rule_id'] = (string) $rule->id();
 
 		ob_start();
@@ -103,8 +103,8 @@ final class NotificationTesterPageTest extends WP_UnitTestCase {
 
 	public function test_a_get_request_never_runs_a_test_only_a_verified_post_does(): void {
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
-		$rules = $this->rules();
-		$rule  = $this->eligible_rule( $rules );
+		$rules           = $this->rules();
+		$rule            = $this->eligible_rule( $rules );
 		$_GET['rule_id'] = (string) $rule->id();
 
 		ob_start();
@@ -124,8 +124,8 @@ final class NotificationTesterPageTest extends WP_UnitTestCase {
 	 */
 	public function test_the_example_values_forms_action_url_carries_mode_and_rule_id_so_submitting_does_not_lose_the_selection(): void {
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
-		$rules = $this->rules();
-		$rule  = $this->eligible_rule( $rules );
+		$rules           = $this->rules();
+		$rule            = $this->eligible_rule( $rules );
 		$_GET['rule_id'] = (string) $rule->id();
 
 		ob_start();
@@ -141,12 +141,12 @@ final class NotificationTesterPageTest extends WP_UnitTestCase {
 		$rules = $this->rules();
 		$rule  = $this->eligible_rule( $rules );
 
-		$_GET['rule_id']            = (string) $rule->id();
-		$_SERVER['REQUEST_METHOD']  = 'POST';
-		$_POST['mode']              = 'rule';
-		$_POST['rule_id']           = (string) $rule->id();
-		$_POST['_wpnonce']          = 'not-a-real-nonce';
-		$_POST['values']            = array( 'subject.username' => 'jsmith' );
+		$_GET['rule_id']           = (string) $rule->id();
+		$_SERVER['REQUEST_METHOD'] = 'POST';
+		$_POST['mode']             = 'rule';
+		$_POST['rule_id']          = (string) $rule->id();
+		$_POST['_wpnonce']         = 'not-a-real-nonce';
+		$_POST['values']           = array( 'subject.username' => 'jsmith' );
 
 		$this->expectException( \WPDieException::class );
 		$this->page( $rules )->render_tab_content();
@@ -161,7 +161,9 @@ final class NotificationTesterPageTest extends WP_UnitTestCase {
 		$_SERVER['REQUEST_METHOD'] = 'POST';
 		$_POST['mode']             = 'rule';
 		$_POST['rule_id']          = (string) $rule->id();
-		$_POST['_wpnonce']         = wp_create_nonce( NotificationTesterPage::NONCE_ACTION );
+		$nonce                     = wp_create_nonce( NotificationTesterPage::NONCE_ACTION );
+		$_POST['_wpnonce']         = $nonce;
+		$_REQUEST['_wpnonce']      = $nonce;
 		$_POST['values']           = array( 'subject.username' => 'jsmith' );
 
 		ob_start();
@@ -176,13 +178,15 @@ final class NotificationTesterPageTest extends WP_UnitTestCase {
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
 		$rules = $this->rules();
 
-		$_GET['mode']               = 'event';
-		$_GET['event_type']         = self::EVENT_TYPE;
-		$_SERVER['REQUEST_METHOD']  = 'POST';
-		$_POST['mode']              = 'event';
-		$_POST['event_type']        = self::EVENT_TYPE;
-		$_POST['_wpnonce']          = wp_create_nonce( NotificationTesterPage::NONCE_ACTION );
-		$_POST['values']            = array();
+		$_GET['mode']              = 'event';
+		$_GET['event_type']        = self::EVENT_TYPE;
+		$_SERVER['REQUEST_METHOD'] = 'POST';
+		$_POST['mode']             = 'event';
+		$_POST['event_type']       = self::EVENT_TYPE;
+		$nonce                     = wp_create_nonce( NotificationTesterPage::NONCE_ACTION );
+		$_POST['_wpnonce']         = $nonce;
+		$_REQUEST['_wpnonce']      = $nonce;
+		$_POST['values']           = array();
 
 		ob_start();
 		$this->page( $rules )->render_tab_content();

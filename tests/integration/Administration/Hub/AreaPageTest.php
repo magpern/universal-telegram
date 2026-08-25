@@ -28,17 +28,29 @@ final class AreaPageTest extends WP_UnitTestCase {
 			'demo-area',
 			'Demo area',
 			array(
-				new Tab( 'first', 'First', CapabilityRegistrar::MANAGE, static function (): void {
-					echo 'first-content';
-				} ),
-				new Tab( 'second', 'Second', $second_capability ?? CapabilityRegistrar::MANAGE, static function (): void {
-					echo 'second-content';
-				} ),
+				new Tab(
+					'first',
+					'First',
+					CapabilityRegistrar::MANAGE,
+					static function (): void {
+						echo 'first-content';
+					}
+				),
+				new Tab(
+					'second',
+					'Second',
+					$second_capability ?? CapabilityRegistrar::MANAGE,
+					static function (): void {
+						echo 'second-content';
+					}
+				),
 			)
 		);
 	}
 
 	public function test_a_requested_known_section_renders_its_own_content(): void {
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
 		$_GET['section'] = 'second';
 
 		ob_start();
@@ -50,6 +62,8 @@ final class AreaPageTest extends WP_UnitTestCase {
 	}
 
 	public function test_a_missing_section_falls_back_to_the_first_accessible_one(): void {
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
 		unset( $_GET['section'] );
 
 		ob_start();
@@ -60,6 +74,8 @@ final class AreaPageTest extends WP_UnitTestCase {
 	}
 
 	public function test_an_unknown_section_falls_back_to_the_first_accessible_one(): void {
+		( new CapabilityRegistrar() )->grant_to_administrator();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
 		$_GET['section'] = 'does-not-exist';
 
 		ob_start();
@@ -77,7 +93,12 @@ final class AreaPageTest extends WP_UnitTestCase {
 		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
 		wp_set_current_user( $admin );
 		// Deny only the 'second' section's own capability, keep 'first's.
-		get_userdata( $admin )->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		// A role-inherited cap can only be denied by removing it from the
+		// role itself (see TabTest for why per-user remove_cap() cannot); the
+		// already-instantiated current user must recompute its cached
+		// allcaps (wp_set_current_user() is a no-op for the same user id).
+		get_role( 'administrator' )->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_get_current_user()->get_role_caps();
 
 		ob_start();
 		$area->render_tab_content();
@@ -92,9 +113,14 @@ final class AreaPageTest extends WP_UnitTestCase {
 			'demo-area',
 			'Demo area',
 			array(
-				new Tab( 'first', 'First', CapabilityRegistrar::MANAGE_CONVERSATIONS, static function (): void {
-					echo 'first-content';
-				} ),
+				new Tab(
+					'first',
+					'First',
+					CapabilityRegistrar::MANAGE_CONVERSATIONS,
+					static function (): void {
+						echo 'first-content';
+					}
+				),
 			)
 		);
 
@@ -122,7 +148,12 @@ final class AreaPageTest extends WP_UnitTestCase {
 		( new CapabilityRegistrar() )->grant_to_administrator();
 		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
 		wp_set_current_user( $admin );
-		get_userdata( $admin )->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		// A role-inherited cap can only be denied by removing it from the
+		// role itself (see TabTest for why per-user remove_cap() cannot); the
+		// already-instantiated current user must recompute its cached
+		// allcaps (wp_set_current_user() is a no-op for the same user id).
+		get_role( 'administrator' )->remove_cap( CapabilityRegistrar::MANAGE_CONVERSATIONS );
+		wp_get_current_user()->get_role_caps();
 
 		$_GET['section'] = 'first';
 

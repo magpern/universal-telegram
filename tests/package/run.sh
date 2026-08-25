@@ -173,13 +173,13 @@ if [ -z "$(m06_column_exists "conversations" "owner_active_slot")" ]; then
 fi
 echo "OK: universal_telegram_conversations.owner_user_id and owner_active_slot columns exist."
 
-echo "== Verifying db_version reached 29 =="
+echo "== Verifying db_version reached 30 =="
 DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "29" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=29, got ${DB_VERSION}" >&2
+if [ "30" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=30, got ${DB_VERSION}" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 29."
+echo "OK: universal_telegram_db_version is 30."
 
 echo "== Verifying M07.1 topic lifecycle columns exist =="
 if [ -z "$(m06_column_exists conversations topic_lifecycle_state)" ]; then
@@ -499,7 +499,7 @@ wp eval '
 		fwrite( STDERR, "FAIL: hub tab set/order was " . implode( ",", $ids ) . ", expected " . implode( ",", $expected_tabs ) . "\n" );
 		exit( 1 );
 	}
-	echo "OK: the administration hub registers exactly the thirteen expected tabs, in order.\n";
+	echo "OK: the administration hub registers exactly the seven expected top-level areas, in order.\n";
 ' --path="$WP_DIR" --allow-root --user=admin
 
 echo "== Verifying the hub shell renders the requested tab content and the full tab nav =="

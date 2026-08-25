@@ -26,6 +26,8 @@ namespace UniversalTelegram\Administration\Hub;
 final class AreaPage {
 
 	/**
+	 * This area's own sections, keyed by section id.
+	 *
 	 * @var array<string, Tab>
 	 */
 	private array $sections = array();
@@ -33,8 +35,8 @@ final class AreaPage {
 	/**
 	 * Constructor.
 	 *
-	 * @param string        $area_id      This area's own `tab` URL query value.
-	 * @param string        $area_label   This area's own visible label, used only for the secondary nav's aria-label.
+	 * @param string          $area_id      This area's own `tab` URL query value.
+	 * @param string          $area_label   This area's own visible label, used only for the secondary nav's aria-label.
 	 * @param array<int, Tab> $sections   This area's own child sections, in display order.
 	 */
 	public function __construct(

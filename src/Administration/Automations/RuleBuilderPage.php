@@ -81,7 +81,7 @@ final class RuleBuilderPage {
 	 * @return array<string, array{label: string, requires_woocommerce: bool, event_types: array<int, string>}>
 	 */
 	private static function event_families(): array {
-		return EventFamilyCatalog::families();
+		return EventFamilyCatalog::families(); // phpcs:ignore PHPCompatibility.Extensions.RemovedExtensions.famRemoved -- false positive: the sniff misidentifies the `families(` call as the removed ext/fam extension.
 	}
 
 	/**

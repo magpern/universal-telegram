@@ -194,7 +194,7 @@ class RuleEvaluator {
 	 * regardless of mode — invalid configuration can never truly match.
 	 *
 	 * @param array<int, ConditionClauseResult> $clause_results Every clause's own result.
-	 * @param string                             $match_mode     'all' or 'any'.
+	 * @param string                            $match_mode     'all' or 'any'.
 	 *
 	 * @return bool
 	 */

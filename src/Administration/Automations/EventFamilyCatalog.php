@@ -22,6 +22,8 @@ namespace UniversalTelegram\Administration\Automations;
 final class EventFamilyCatalog {
 
 	/**
+	 * The event families themselves, keyed by family id.
+	 *
 	 * @var array<string, array{label: string, requires_woocommerce: bool, event_types: array<int, string>}>
 	 */
 	private const FAMILIES = array(

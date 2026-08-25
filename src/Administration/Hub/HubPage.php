@@ -50,16 +50,16 @@ final class HubPage {
 	 * @var array<string, array{0: string, 1: string}>
 	 */
 	private const LEGACY_TAB_ALIASES = array(
-		'simulator'                        => array( 'notifications-activity', NotificationTesterPage::TAB_ID ),
-		RuleBuilderPage::TAB_ID            => array( 'notifications-activity', RuleBuilderPage::TAB_ID ),
-		NotificationTesterPage::TAB_ID     => array( 'notifications-activity', NotificationTesterPage::TAB_ID ),
-		'events'                           => array( 'notifications-activity', 'events' ),
-		EventHistoryPage::TAB_ID           => array( 'notifications-activity', EventHistoryPage::TAB_ID ),
-		VisitorTrackingPage::TAB_ID        => array( 'notifications-activity', VisitorTrackingPage::TAB_ID ),
-		ConversationInboxPage::TAB_ID      => array( 'conversations', ConversationInboxPage::TAB_ID ),
-		OperatorIdentityPage::TAB_ID       => array( 'conversations', OperatorIdentityPage::TAB_ID ),
-		'ai'                               => array( 'ai-hub', 'ai' ),
-		ApprovedContentPage::TAB_ID        => array( 'ai-hub', ApprovedContentPage::TAB_ID ),
+		'simulator'                    => array( 'notifications-activity', NotificationTesterPage::TAB_ID ),
+		RuleBuilderPage::TAB_ID        => array( 'notifications-activity', RuleBuilderPage::TAB_ID ),
+		NotificationTesterPage::TAB_ID => array( 'notifications-activity', NotificationTesterPage::TAB_ID ),
+		'events'                       => array( 'notifications-activity', 'events' ),
+		EventHistoryPage::TAB_ID       => array( 'notifications-activity', EventHistoryPage::TAB_ID ),
+		VisitorTrackingPage::TAB_ID    => array( 'notifications-activity', VisitorTrackingPage::TAB_ID ),
+		ConversationInboxPage::TAB_ID  => array( 'conversations', ConversationInboxPage::TAB_ID ),
+		OperatorIdentityPage::TAB_ID   => array( 'conversations', OperatorIdentityPage::TAB_ID ),
+		'ai'                           => array( 'ai-hub', 'ai' ),
+		ApprovedContentPage::TAB_ID    => array( 'ai-hub', ApprovedContentPage::TAB_ID ),
 	);
 
 	/**

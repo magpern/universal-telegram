@@ -359,7 +359,7 @@ final class NotificationTesterPage {
 		echo '<select id="ut-tester-event" name="event_type">';
 		echo '<option value="">' . esc_html__( 'Choose an event…', 'universal-telegram' ) . '</option>';
 
-		foreach ( EventFamilyCatalog::families() as $family ) {
+		foreach ( EventFamilyCatalog::families() as $family ) { // phpcs:ignore PHPCompatibility.Extensions.RemovedExtensions.famRemoved -- false positive: the sniff misidentifies the `families(` call as the removed ext/fam extension.
 			$family_disabled = $family['requires_woocommerce'] && ! $woocommerce_active;
 
 			printf( '<optgroup label="%s"%s>', esc_attr( $family['label'] ), $family_disabled ? ' disabled="disabled"' : '' );
@@ -494,7 +494,8 @@ final class NotificationTesterPage {
 	 * @return bool
 	 */
 	private static function is_valid_test_post( string $expected_mode, string $expected_selector ): bool {
-		if ( 'POST' !== ( $_SERVER['REQUEST_METHOD'] ?? '' ) ) {
+		$request_method = isset( $_SERVER['REQUEST_METHOD'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) : '';
+		if ( 'POST' !== $request_method ) {
 			return false;
 		}
 
@@ -519,7 +520,8 @@ final class NotificationTesterPage {
 	 * @return array<string, mixed>
 	 */
 	private function collect_posted_sample_values( string $event_type ): array {
-		$raw_values = isset( $_POST['values'] ) && is_array( $_POST['values'] ) ? $_POST['values'] : array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce already verified by is_valid_test_post() before this method is ever called.
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- nonce already verified by is_valid_test_post() before this method is ever called; each individual value is sanitize_text_field()+wp_unslash()'d below before use, this only captures the raw array shape.
+		$raw_values = isset( $_POST['values'] ) && is_array( $_POST['values'] ) ? $_POST['values'] : array();
 
 		$sample = array();
 
@@ -546,7 +548,7 @@ final class NotificationTesterPage {
 		return match ( FieldTypeCatalog::type( $field ) ) {
 			FieldTypeCatalog::TYPE_NUMBER  => (string) absint( $raw ),
 			FieldTypeCatalog::TYPE_MONEY   => number_format( (float) $raw, 2, '.', '' ),
-			FieldTypeCatalog::TYPE_BOOLEAN => in_array( $raw, array( 'true', 'false' ), true ) ? $raw : 'false',
+			FieldTypeCatalog::TYPE_BOOLEAN => in_array( $raw, array( 'true', 'false' ), true ) ? $raw : 'false', // phpcs:ignore PHPCompatibility.Operators.RemovedTernaryAssociativity.Found -- false positive: this is one ternary inside a `match` arm, not chained ternaries.
 			FieldTypeCatalog::TYPE_CHOICE  => array_key_exists( $raw, FieldTypeCatalog::choice_options( $field ) ) ? $raw : (string) FieldTypeCatalog::preview_value( $field ),
 			default => $raw,
 		};

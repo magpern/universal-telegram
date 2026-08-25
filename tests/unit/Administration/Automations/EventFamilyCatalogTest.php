@@ -17,7 +17,7 @@ use UniversalTelegram\Administration\Automations\EventFamilyCatalog;
 final class EventFamilyCatalogTest extends TestCase {
 
 	public function test_every_family_has_at_least_one_event_type(): void {
-		foreach ( EventFamilyCatalog::families() as $family_id => $family ) {
+		foreach ( EventFamilyCatalog::families() as $family_id => $family ) { // phpcs:ignore PHPCompatibility.Extensions.RemovedExtensions.famRemoved -- false positive: the sniff misidentifies the `families(` call as the removed ext/fam extension.
 			$this->assertNotSame( array(), $family['event_types'], "Family '{$family_id}' has no event types." );
 		}
 	}
@@ -25,7 +25,7 @@ final class EventFamilyCatalogTest extends TestCase {
 	public function test_every_event_type_belongs_to_exactly_one_family(): void {
 		$seen = array();
 
-		foreach ( EventFamilyCatalog::families() as $family ) {
+		foreach ( EventFamilyCatalog::families() as $family ) { // phpcs:ignore PHPCompatibility.Extensions.RemovedExtensions.famRemoved -- false positive: the sniff misidentifies the `families(` call as the removed ext/fam extension.
 			foreach ( $family['event_types'] as $event_type ) {
 				$this->assertArrayNotHasKey( $event_type, $seen, "Event type '{$event_type}' appears in more than one family." );
 				$seen[ $event_type ] = true;
@@ -34,7 +34,7 @@ final class EventFamilyCatalogTest extends TestCase {
 	}
 
 	public function test_every_woocommerce_flagged_family_contains_only_woocommerce_event_types(): void {
-		foreach ( EventFamilyCatalog::families() as $family_id => $family ) {
+		foreach ( EventFamilyCatalog::families() as $family_id => $family ) { // phpcs:ignore PHPCompatibility.Extensions.RemovedExtensions.famRemoved -- false positive: the sniff misidentifies the `families(` call as the removed ext/fam extension.
 			foreach ( $family['event_types'] as $event_type ) {
 				$is_woocommerce_type = str_starts_with( $event_type, 'woocommerce.' );
 
@@ -48,7 +48,7 @@ final class EventFamilyCatalogTest extends TestCase {
 	}
 
 	public function test_visitor_click_is_excluded_from_every_family(): void {
-		foreach ( EventFamilyCatalog::families() as $family ) {
+		foreach ( EventFamilyCatalog::families() as $family ) { // phpcs:ignore PHPCompatibility.Extensions.RemovedExtensions.famRemoved -- false positive: the sniff misidentifies the `families(` call as the removed ext/fam extension.
 			$this->assertNotContains( 'visitor.click', $family['event_types'] );
 		}
 	}

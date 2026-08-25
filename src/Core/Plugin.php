@@ -1297,7 +1297,7 @@ final class Plugin {
 		);
 		add_action( 'admin_post_' . IntelligencePanel::ADMIN_POST_ACTION, array( $intelligence_panel, 'handle_request' ) );
 
-		$this->rule_builder_page = new RuleBuilderPage(
+		$this->rule_builder_page            = new RuleBuilderPage(
 			$this->notification_rule_repository,
 			$this->event_registry,
 			$this->bot_profile_repository,
