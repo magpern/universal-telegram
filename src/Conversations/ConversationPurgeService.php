@@ -41,11 +41,11 @@ final class ConversationPurgeService {
 	/**
 	 * Constructor.
 	 *
-	 * @param ConversationRepository       $conversations Conversation persistence.
-	 * @param MessageRepository            $messages      Conversation message persistence.
-	 * @param DestinationRepository        $destinations  Deletes a conversation's own destination row.
-	 * @param ConversationNoteRepository   $notes         Internal notes; deleted with the conversation.
-	 * @param ForumTopicRemoteDeleter|null $remote_topics Best-effort Telegram topic delete before local dest delete.
+	 * @param ConversationRepository           $conversations Conversation persistence.
+	 * @param MessageRepository                $messages      Conversation message persistence.
+	 * @param DestinationRepository            $destinations  Deletes a conversation's own destination row.
+	 * @param ConversationNoteRepository       $notes         Internal notes; deleted with the conversation.
+	 * @param ForumTopicRemoteDeleter|null     $remote_topics Best-effort Telegram topic delete before local dest delete.
 	 * @param UnresolvedOutboundAbandoner|null $unresolved_abandoner Drops pending outbound rows before dest delete.
 	 */
 	public function __construct(

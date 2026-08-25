@@ -151,8 +151,8 @@ class RuleEvaluator {
 			return new RuleMatchTrace( true, $rule->match_mode(), array() );
 		}
 
-		$allowed_fields  = $this->registry->allowed_variable_fields_for( $event->event_type() );
-		$clause_results  = array();
+		$allowed_fields = $this->registry->allowed_variable_fields_for( $event->event_type() );
+		$clause_results = array();
 
 		foreach ( $conditions as $clause ) {
 			$clause_results[] = $this->evaluate_clause( $clause, $event, $allowed_fields );
