@@ -12,6 +12,7 @@ namespace UniversalTelegram\SupportChatAdapter\Outbound;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\SupportChatAdapter\AdapterAvailability;
+use UniversalTelegram\SupportChatAdapter\Auth\PeerRepository;
 use UniversalTelegram\SupportChatAdapter\Auth\SignatureVerifier;
 use UniversalTelegram\SupportChatAdapter\ContractConstants;
 use UniversalTelegram\SupportChatAdapter\DiscoveryClient;
@@ -49,6 +50,7 @@ final class OutboundContractController {
 	 * @param BackfillService          $backfill      Backfill service.
 	 * @param DeliverMessageService    $deliver       Deliver service.
 	 * @param SignatureVerifier        $verifier      ADR-0007 signature verifier.
+	 * @param PeerRepository           $peers         Peer key store, for truthful status reporting.
 	 */
 	public function __construct(
 		private readonly DiscoveryClient $discovery,
@@ -58,7 +60,8 @@ final class OutboundContractController {
 		private readonly NotifyOperatorsService $notify,
 		private readonly BackfillService $backfill,
 		private readonly DeliverMessageService $deliver,
-		private readonly SignatureVerifier $verifier
+		private readonly SignatureVerifier $verifier,
+		private readonly PeerRepository $peers
 	) {}
 
 	/**
@@ -207,12 +210,25 @@ final class OutboundContractController {
 	}
 
 	/**
-	 * Adapter status (diagnostics / handshake).
+	 * Adapter status (diagnostics / handshake). Never claims operational
+	 * compatibility unless discovery is Compatible AND this plugin's own
+	 * record of the Support Chat peer is genuinely paired and usable
+	 * (ADR-0038 §5) — pairing_state alone is never sufficient, since a
+	 * peer can be paired yet Support Chat's own discovery still
+	 * incompatible (e.g. a stale allow-list), and vice versa.
 	 */
 	public function handle_status(): WP_REST_Response {
 		$values       = $this->settings->get();
 		$enabled      = ! empty( $values['support_chat_adapter_enabled'] );
 		$availability = $this->discovery->resolve( $enabled );
+		$peer         = $this->peers->find_by_peer_id( ContractConstants::PEER_ID );
+		$peer_usable  = null !== $peer && $peer->is_usable();
+		$operational  = AdapterAvailability::Compatible === $availability && $peer_usable;
+
+		$waiting_for = null;
+		if ( ! $operational ) {
+			$waiting_for = ! $peer_usable ? 'support_chat_pairing' : 'sc_discovery_compatibility';
+		}
 
 		return new WP_REST_Response(
 			array(
@@ -222,10 +238,9 @@ final class OutboundContractController {
 				'contract_version' => ContractConstants::CONTRACT_VERSION_ID,
 				'contract_pin_sha' => ContractConstants::CONTRACT_PIN_SHA,
 				'contract_pin_url' => ContractConstants::CONTRACT_PIN_URL,
-				'operational'      => AdapterAvailability::Compatible === $availability,
-				'waiting_for'      => AdapterAvailability::Compatible === $availability
-					? null
-					: 'sc_m03_authenticated_contract_server',
+				'pairing_state'    => null !== $peer ? $peer->pairing_state() : 'unpaired',
+				'operational'      => $operational,
+				'waiting_for'      => $waiting_for,
 			),
 			200
 		);

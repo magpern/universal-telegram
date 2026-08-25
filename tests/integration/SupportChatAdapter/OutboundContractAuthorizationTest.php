@@ -81,7 +81,8 @@ final class OutboundContractAuthorizationTest extends WP_UnitTestCase {
 			$notify,
 			$backfill,
 			$deliver,
-			$verifier
+			$verifier,
+			$this->peers
 		);
 		add_action( 'rest_api_init', array( $this->controller, 'register_routes' ) );
 		// A local fixture standing in for SC-M03's discovery route, so

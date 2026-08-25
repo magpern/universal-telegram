@@ -904,7 +904,8 @@ final class Plugin {
 			$adapter_notify,
 			$adapter_backfill,
 			$adapter_deliver,
-			$adapter_verifier
+			$adapter_verifier,
+			$adapter_peers
 		);
 		add_action( 'rest_api_init', array( $adapter_outbound, 'register_routes' ) );
 		( new BindingImportCommand( $adapter_bindings ) )->register();
