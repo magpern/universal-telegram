@@ -193,7 +193,8 @@ final class CircuitBreakerTest extends WP_UnitTestCase {
 			new \UniversalTelegram\Telegram\Reliability\RateLimiter( $schema_health ),
 			$breaker,
 			new \UniversalTelegram\Audit\AuditLogger( $schema_health, new \UniversalTelegram\Privacy\Redactor() ),
-			new RetryPolicy()
+			new RetryPolicy(),
+			new \UniversalTelegram\Telegram\Outbound\UnresolvedOutboundAbandoner( $messages )
 		);
 
 		$callback = static function () {
