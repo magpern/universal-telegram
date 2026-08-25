@@ -24,8 +24,12 @@ use UniversalTelegram\SupportChatAdapter\ContractConstants;
  * `ContractConstants::SUPPORT_CHAT_MANAGE_CAPABILITY` (ADR-0007 §2) — never
  * either capability alone. Never renders this plugin's own private key;
  * shows only the public key and key ID.
+ *
+ * Not declared final: tests override redirect_and_exit() to exercise
+ * handle_*() without terminating the PHP process, exactly as
+ * Administration\Automations\RuleBuilderRequestHandler does.
  */
-final class PairingController {
+class PairingController {
 
 	public const TAB_ID = 'support-chat-pairing';
 
@@ -324,7 +328,19 @@ final class PairingController {
 			),
 			admin_url( 'admin.php' )
 		);
-		wp_safe_redirect( $redirect );
+		$this->redirect_and_exit( $redirect );
+	}
+
+	/**
+	 * Issues the redirect and ends the request. A separate, overridable
+	 * method so tests can exercise handle_*() without terminating the PHP
+	 * process (mirrors Administration\Automations\RuleBuilderRequestHandler's
+	 * own redirect_and_exit() convention).
+	 *
+	 * @param string $url Destination URL.
+	 */
+	protected function redirect_and_exit( string $url ): void {
+		wp_safe_redirect( $url );
 		exit;
 	}
 }

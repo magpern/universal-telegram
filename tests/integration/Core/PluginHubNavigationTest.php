@@ -11,10 +11,10 @@ use WP_UnitTestCase;
 
 /**
  * M08.2 navigation addendum: the real, plugin-wired hub tab registry must
- * register the grouped top-level areas (plus the Support Chat adapter tab),
- * in Product Owner order, with none of the nine moved child screens left
- * registered a second time as their own top-level tab (which would both
- * duplicate the screen and break the legacy-alias fallback).
+ * register the grouped top-level areas (plus the Support Chat adapter and
+ * pairing tabs), in Product Owner order, with none of the nine moved child
+ * screens left registered a second time as their own top-level tab (which
+ * would both duplicate the screen and break the legacy-alias fallback).
  */
 final class PluginHubNavigationTest extends WP_UnitTestCase {
 	protected function setUp(): void {
@@ -40,6 +40,7 @@ final class PluginHubNavigationTest extends WP_UnitTestCase {
 				'settings',
 				'diagnostics',
 				'support-chat-adapter',
+				'support-chat-pairing',
 			),
 			$ids
 		);
