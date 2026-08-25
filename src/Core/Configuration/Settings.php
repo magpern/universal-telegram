@@ -91,6 +91,9 @@ final class Settings {
 			'alert_order_failure_spike_threshold'         => 10,
 			'alert_js_error_spike_enabled'                => false,
 			'alert_js_error_spike_threshold'              => 50,
+			'support_chat_adapter_enabled'                => false,
+			'support_chat_adapter_bot_id'                 => null,
+			'support_chat_adapter_destination_id'         => null,
 		);
 	}
 
@@ -133,6 +136,7 @@ final class Settings {
 			'alert_checkout_failure_count_enabled',
 			'alert_order_failure_spike_enabled',
 			'alert_js_error_spike_enabled',
+			'support_chat_adapter_enabled',
 		);
 
 		foreach ( $boolean_fields as $field ) {
@@ -198,7 +202,7 @@ final class Settings {
 		// references only, re-validated live on every read by the same
 		// Automations\Digest\DigestEligibility eligibility rule M11A already
 		// established (docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md §5).
-		foreach ( array( 'operational_summary_bot_id', 'operational_summary_destination_id', 'alert_bot_id', 'alert_destination_id' ) as $reference_field ) {
+		foreach ( array( 'operational_summary_bot_id', 'operational_summary_destination_id', 'alert_bot_id', 'alert_destination_id', 'support_chat_adapter_bot_id', 'support_chat_adapter_destination_id' ) as $reference_field ) {
 			if ( isset( $input[ $reference_field ] ) && is_numeric( $input[ $reference_field ] ) && (int) $input[ $reference_field ] > 0 ) {
 				$sanitized[ $reference_field ] = (int) $input[ $reference_field ];
 			} else {
