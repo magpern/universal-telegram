@@ -2,7 +2,12 @@
 
 ## Status
 
-Planned (documentation frozen; implementation not started)
+Superseded for UT implementation (ADR-0037). Documentation retained; **no M05.2 code was ever implemented**
+
+
+## Supersession note (ADR-0037)
+
+**Superseded for Universal Telegram implementation.** This charter remains as historical documentation from the PR #30 chat-experience freeze. Future product work for these requirements lives in Universal Support Chat (and UT Adapter M1 where channel-specific). See `docs/adr/0037-support-chat-extraction-supersession-and-optional-adapter-consumer.md`. Do not implement this milestone in Universal Telegram.
 
 ## Dependencies
 
