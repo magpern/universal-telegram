@@ -38,6 +38,10 @@ Support Chat extraction supersession (ADR-0037) adds the authorised adapter plan
 - ~~`docs/plans/ut-adapter-m1-universal-support-chat-adapter-plan-v2.md`~~ (ADR-0038; pins Support Chat ADR-0007 SHA `8ee396d8b8edcbf526797c0a1f5741f3842df57a` — the signed Contract client follow-up; work packages 1–7 implemented; superseded)
 - `docs/plans/ut-adapter-m1-universal-support-chat-adapter-plan-v3.md` (current; ADR-0039; pins Support Chat ADR-0008 SHA `7546d43be66f8e3b2f179f03a1c81c9aadef59db` — the legacy export boundary follow-up, work package 8)
 
+Support Chat SC-M03 Work Package 2 (legacy-chat quiescence, ADR-0040) adds:
+
+- `docs/plans/wp2-legacy-chat-quiescence-plan-v1.md` (current; ADR-0040; fulfils the forward commitment made by ADR-0039 §3; depends on Support Chat PR #9, `a61aa09`)
+
 - A plan is committed standalone, code-free, together with every new ADR it depends on, or after those ADRs already exist from an earlier documentation-only commit — see docs/governance.md, Freeze model.
 - Once committed, a plan is immutable. A required change is a new file that supersedes the prior plan; the prior plan file is never edited or deleted.
 - The implementation report produced at the end of the milestone must reference the plan-freeze commit SHA it implemented, and every superseding plan's SHA if the plan was revised during the milestone.
