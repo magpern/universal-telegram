@@ -130,7 +130,8 @@ path yet checks the gate.
 Files: `Conversations\Rest\ConversationsController`,
 `Telegram\Inbound\WebhookController` (`process_update()` extraction,
 buffer-vs-process locking, `DeferredReplayContext` threading into
-`BotCommandDispatcher::execute()`). Validation:
+`BotCommandDispatcher::handle()`, threaded into its private `execute()`).
+Validation:
 `ConversationsControllerQuiescenceTest`, `WebhookControllerQuiescenceTest`
 (including duplicate-delivery idempotency and AAD-context isolation cases),
 `DeferredReplayContextTest`, `BotCommandDispatcherQuiescenceTest` (forge/

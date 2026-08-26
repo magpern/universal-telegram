@@ -104,7 +104,7 @@ tried to stop it.
 | 2 | Visitor posts a message | `Conversations\Rest\ConversationsController::handle_post_message` | Same treatment; highest fan-out surface in the plugin. |
 | 3 | Telegram sends a webhook update | `Telegram\Inbound\WebhookController::handle_request` | Not a simple refuse — see §3, encrypted buffer-and-replay. |
 | 4 | Operator acts in the Hub/admin (assign, unassign, reopen, add_note, set_availability, archive, delete_permanently, bulk_archive_and_delete_permanently) | `Administration\Conversations\ConversationActionHandler::handle_request()` — sole dispatch entry point for every sub-action | Single early-return guard covers the whole category. |
-| 5 | Operator acts via Telegram command (`/claim`, `/release`, `/reopen`+`/confirm`, `/resolve`+`/confirm`, `/presence`) | `Telegram\Commands\BotCommandDispatcher::execute()` | Early-return guard at the top of `execute()`, including at confirm-time for the two-factor `/confirm` flow. |
+| 5 | Operator acts via Telegram command (`/claim`, `/release`, `/reopen`+`/confirm`, `/resolve`+`/confirm`, `/presence`) | `Telegram\Commands\BotCommandDispatcher::handle()` (the class's sole public entry point; it internally calls a private `execute()` that switches on the parsed command) | Early-return guard at the top of `handle()`, including at confirm-time for the two-factor `/confirm` flow. |
 | 6 | Operator requests/reviews an AI draft | `AI\Draft\DraftRequestHandler::request()`, `Administration\AI\ConversationDraftPanel::handle_request()` | Early-return guard, same shape as #4. |
 | 7 | A WordPress user account is deleted | `Core\Plugin.php` `add_action( 'deleted_user', ... )` | Early-return guard as first line of each closure. **Named trade-off, PO-confirmed (see Context of the accompanying plan document)**: during any non-`idle` state, deleting a WP user does not clean up that user's conversation data until state returns to `idle`. |
 | 8 | Operator requeues a dead-lettered outbound Telegram message | `Administration\Telegram\BotManagementController::requeue_message()` | **Discovered during this ADR's milestone-0 verification, not present in the original planning draft.** Blocked outright during any non-`idle` state, regardless of the requeued message's origin (legacy conversation or Support Chat adapter binding). Distinguishing origin at requeue time would require the same `destination_id`-join used for the drain query (§5) but delivers little practical value for a rare, already-manual, already-delayed administrative action — blocking unconditionally is the simpler and equally safe choice. An operator whose Support Chat dead-letter needs requeuing during a quiescence window waits until `idle`; this is a minor, bounded inconvenience, never data loss (the dead-lettered row itself is untouched, requeue is only deferred). |
@@ -221,28 +221,34 @@ ordering guarantee is made or needed across different bots.
 
 **Narrow replay authority for the command-dispatch gate.**
 `process_update()`'s command-routing step calls
-`BotCommandDispatcher::execute()`, which — per entry point #5 above — carries
-its own independent gate (defense-in-depth: a bot-command handler refuses
-action outside `idle` on its own, not relying solely on its caller having
-decided correctly). That gate would otherwise refuse the internal replayer's
-own deferred command replay, since state is `replaying`, not `idle`. This is
-resolved with a narrow, unforgeable authority object, never a global
-"ignore quiescence" flag: `DeferredReplayContext` (namespace
-`UniversalTelegram\Migration`), a `final` class with a **private
-constructor**, instantiable only via
+`BotCommandDispatcher::handle( BotProfile $bot, ?string $chat_id, ?int $message_thread_id, ParsedCommand $parsed, array $decoded )`
+— the class's sole public entry point, which internally dispatches to a
+private `execute()` — and `handle()` carries its own independent gate
+(defense-in-depth: a bot-command handler refuses action outside `idle` on
+its own, not relying solely on its caller having decided correctly). That
+gate would otherwise refuse the internal replayer's own deferred command
+replay, since state is `replaying`, not `idle`. This is resolved with a
+narrow, unforgeable authority object, never a global "ignore quiescence"
+flag: `DeferredReplayContext` (namespace `UniversalTelegram\Migration`), a
+`final` class with a **private constructor**, instantiable only via
 `QuiescenceGate::issue_replay_context(): ?DeferredReplayContext` — which
 itself returns non-null only when `state === 'replaying'`, stamped with
 Table 1's current `token` (§4), binding it to this specific replaying epoch.
-`process_update()` accepts and forwards this optional parameter into
-`BotCommandDispatcher::execute( array $update, ?DeferredReplayContext $replay_context = null )`.
-The dispatcher's gate: proceed if `state === 'idle'`; else proceed **only
-if** `$replay_context !== null` **and** its token matches Table 1's
-*current* token (defense against a stale context surviving into a later,
-different replaying episode); refuse in every other case. **The webhook's
-external HTTP entry point never constructs or receives a
-`DeferredReplayContext` — it always calls `process_update()` with
-`$replay_context = null`**, because live processing only happens when
-`state === 'idle'` (every other state causes `handle_request` to buffer
+`process_update()` accepts this optional parameter and forwards it into a
+new final parameter added to `BotCommandDispatcher::handle()`:
+`handle( BotProfile $bot, ?string $chat_id, ?int $message_thread_id, ParsedCommand $parsed, array $decoded, ?DeferredReplayContext $replay_context = null )`,
+which `handle()` itself threads down into its private `execute()` call
+(`execute()`'s own signature gains the identical trailing optional
+parameter, since it is `handle()`'s sole caller). The dispatcher's gate,
+checked in `handle()` before any `execute()` dispatch: proceed if
+`state === 'idle'`; else proceed **only if** `$replay_context !== null`
+**and** its token matches Table 1's *current* token (defense against a
+stale context surviving into a later, different replaying episode); refuse
+in every other case. **The webhook's external HTTP entry point never
+constructs or receives a `DeferredReplayContext` — it always calls
+`process_update()` with `$replay_context = null`**, because live processing
+only happens when `state === 'idle'` (every other state causes
+`handle_request` to buffer
 instead of calling `process_update()` at all). Only the internal replayer
 (invoked exclusively from the WP-CLI `replay-deferred-updates` command)
 calls `issue_replay_context()`. This is a capability object, not a flag:
