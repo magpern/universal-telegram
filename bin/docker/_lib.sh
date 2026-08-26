@@ -4,6 +4,7 @@ set -euo pipefail
 
 UT_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 UT_COMPOSE_FILE="${UT_REPO_ROOT}/docker/docker-compose.yml"
+UT_COMPOSE_INTEROP_FILE="${UT_REPO_ROOT}/docker/docker-compose.interop.yml"
 
 ut_parse_flag() {
     # ut_parse_flag --wp-version "$@"  -> echoes the value, or empty string
@@ -22,6 +23,12 @@ ut_compose_run() {
     local php_version="${1:-8.1}"
     shift
     PHP_VERSION="$php_version" docker compose -f "$UT_COMPOSE_FILE" run --rm php "$@"
+}
+
+ut_compose_run_interop() {
+    local php_version="${1:-8.1}"
+    shift
+    PHP_VERSION="$php_version" docker compose -f "$UT_COMPOSE_FILE" -f "$UT_COMPOSE_INTEROP_FILE" run --rm php "$@"
 }
 
 ut_compose_down() {

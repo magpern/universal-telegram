@@ -77,14 +77,29 @@
 		<exclude-pattern>*/tests/*</exclude-pattern>
 	</rule>
 
-	<!-- tests/integration/bootstrap.php defines the WordPress test framework's
-	     own documented $wp_tests_dir local convention and writes a startup
-	     diagnostic to STDERR before WordPress itself is loaded. -->
+	<!-- tests/integration/bootstrap.php and tests/integration/Interop/bootstrap.php
+	     each define the WordPress test framework's own documented
+	     $wp_tests_dir local convention and write a startup diagnostic to
+	     STDERR before WordPress itself is loaded. -->
 	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
 		<exclude-pattern>*/tests/integration/bootstrap.php</exclude-pattern>
+		<exclude-pattern>*/tests/integration/Interop/bootstrap.php</exclude-pattern>
 	</rule>
 	<rule ref="WordPress.WP.AlternativeFunctions.file_system_operations_fwrite">
 		<exclude-pattern>*/tests/integration/bootstrap.php</exclude-pattern>
+		<exclude-pattern>*/tests/integration/Interop/bootstrap.php</exclude-pattern>
+	</rule>
+
+	<!-- The cross-plugin interop suite (tests/integration/Interop) legitimately
+	     checks the OTHER plugin's real capability names via current_user_can()
+	     (item 2's "requires both management capabilities" pairing gate) and
+	     builds an unprepared SHOW COLUMNS-derived identifier list for a
+	     test-only, fixed-table privacy assertion (item 10) — not user input. -->
+	<rule ref="WordPress.WP.Capabilities.Unknown">
+		<exclude-pattern>*/tests/integration/Interop/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.DB.PreparedSQL.NotPrepared">
+		<exclude-pattern>*/tests/integration/Interop/PrivacyTest.php</exclude-pattern>
 	</rule>
 
 	<!-- This fail-closed codebase never renders a caught exception's message
