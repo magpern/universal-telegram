@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\AI\Draft;
 
+use UniversalTelegram\Migration\QuiescenceGate;
 use UniversalTelegram\Queue\WorkerRunner;
 
 /**
@@ -34,9 +35,13 @@ final class AiDraftLeaseSweep {
 	/**
 	 * Constructor.
 	 *
-	 * @param AiDraftRepository $drafts Draft persistence, claim, and lease.
+	 * @param AiDraftRepository   $drafts     Draft persistence, claim, and lease.
+	 * @param QuiescenceGate|null $quiescence Legacy-chat quiescence write-blocking gate (docs/adr/0040). Null only in a not-yet-migrated install.
 	 */
-	public function __construct( private readonly AiDraftRepository $drafts ) {}
+	public function __construct(
+		private readonly AiDraftRepository $drafts,
+		private readonly ?QuiescenceGate $quiescence = null
+	) {}
 
 	/**
 	 * Idempotently registers the recurring sweep action. Safe to call on
@@ -58,9 +63,14 @@ final class AiDraftLeaseSweep {
 	/**
 	 * The Action Scheduler hook callback. Cheap and a no-op whenever no
 	 * `generating` row has an expired lease, so it costs nothing to leave
-	 * scheduled while AI is disabled.
+	 * scheduled while AI is disabled. Skips the entire cycle outside `idle`
+	 * (docs/adr/0040 §5) — never marked failed.
 	 */
 	public function run(): void {
+		if ( null !== $this->quiescence && ! $this->quiescence->is_idle() ) {
+			return;
+		}
+
 		foreach ( $this->drafts->find_stale_generating() as $draft ) {
 			if ( $draft->attempt_count() < self::MAX_ATTEMPTS_BEFORE_EXHAUSTED ) {
 				if ( $this->drafts->try_reclaim_stale( $draft->id() ) ) {

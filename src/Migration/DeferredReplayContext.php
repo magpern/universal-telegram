@@ -47,11 +47,12 @@ final class DeferredReplayContext {
 	 *                          `QuiescenceGate::issue_replay_context()`.
 	 */
 	public static function issue( string $token ): self {
+		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_debug_backtrace -- deliberate runtime caller-identity check enforcing this class's single-issuer invariant, not leftover debug code.
 		$caller = debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 2 )[1] ?? null;
 
 		if ( null === $caller
-			|| ( $caller['class'] ?? null ) !== QuiescenceGate::class
-			|| $caller['function'] !== 'issue_replay_context'
+			|| QuiescenceGate::class !== ( $caller['class'] ?? null )
+			|| 'issue_replay_context' !== $caller['function']
 		) {
 			throw new LogicException( 'DeferredReplayContext may only be issued by QuiescenceGate::issue_replay_context().' );
 		}

@@ -16,6 +16,7 @@ use UniversalTelegram\Administration\Conversations\ConversationInboxPage;
 use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Conversations\Conversation;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
+use UniversalTelegram\Migration\QuiescenceGate;
 
 /**
  * The "Request AI draft" control and per-conversation draft history,
@@ -40,16 +41,23 @@ class ConversationDraftPanel {
 	 *
 	 * @param AiDraftRepository    $drafts          Draft persistence — read, and review-status writes only.
 	 * @param AIProviderRepository $provider_config Reads enablement, for the "Request draft" button's visibility.
+	 * @param QuiescenceGate|null  $quiescence      Legacy-chat quiescence write-blocking gate (docs/adr/0040). Null only in a not-yet-migrated install.
 	 */
 	public function __construct(
 		private readonly AiDraftRepository $drafts,
-		private readonly AIProviderRepository $provider_config
+		private readonly AIProviderRepository $provider_config,
+		private readonly ?QuiescenceGate $quiescence = null
 	) {}
 
 	/**
-	 * The admin-post handler for reviewed/approve/discard actions.
+	 * The admin-post handler for reviewed/approve/discard actions. Blocked
+	 * outside `idle` (docs/adr/0040 §2, entry point #6).
 	 */
 	public function handle_request(): void {
+		if ( null !== $this->quiescence && ! $this->quiescence->is_idle() ) {
+			wp_die( esc_html__( 'This action is temporarily unavailable during a legacy-chat migration window.', 'universal-telegram' ), '', 409 );
+		}
+
 		if ( ! current_user_can( CapabilityRegistrar::MANAGE_CONVERSATIONS ) ) {
 			wp_die( esc_html__( 'You do not have permission to do that.', 'universal-telegram' ), '', 403 );
 		}

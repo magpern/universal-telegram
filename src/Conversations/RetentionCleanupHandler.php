@@ -9,6 +9,8 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Conversations;
 
+use UniversalTelegram\Migration\QuiescenceGate;
+
 /**
  * A recurring Action Scheduler action, independent of the queue's own
  * job-handler contract, mirroring Telegram\Outbound\RetentionCleanupHandler's
@@ -49,6 +51,7 @@ final class RetentionCleanupHandler {
 	 * @param int                          $message_retention_days       Days since archival before message bodies are nulled.
 	 * @param int                          $conversation_retention_days  Days since archival before permanent delete.
 	 * @param int                          $inactivity_days              Days before open/waiting auto-resolves.
+	 * @param QuiescenceGate|null          $quiescence                  Legacy-chat quiescence write-blocking gate (docs/adr/0040). Null only in a not-yet-migrated install.
 	 */
 	public function __construct(
 		private readonly ConversationRepository $conversations,
@@ -58,13 +61,20 @@ final class RetentionCleanupHandler {
 		private readonly TopicDeletionDispatcher $topic_deletion,
 		private readonly int $message_retention_days = 30,
 		private readonly int $conversation_retention_days = 90,
-		private readonly int $inactivity_days = 30
+		private readonly int $inactivity_days = 30,
+		private readonly ?QuiescenceGate $quiescence = null
 	) {}
 
 	/**
-	 * Runs one cleanup pass.
+	 * Runs one cleanup pass. Skips the entire cycle outside `idle`
+	 * (docs/adr/0040 §5) — never marked failed, simply not run; the next
+	 * scheduled cycle re-checks.
 	 */
 	public function run(): void {
+		if ( null !== $this->quiescence && ! $this->quiescence->is_idle() ) {
+			return;
+		}
+
 		foreach ( $this->conversations->inactive_open_conversations( $this->inactivity_days ) as $conversation ) {
 			if ( ConversationStatus::NEW === $conversation->status() ) {
 				$this->conversations->transition( $conversation->id(), ConversationStatus::NEW, ConversationStatus::OPEN );

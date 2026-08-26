@@ -22,6 +22,7 @@ use UniversalTelegram\Conversations\OperatorIdentityRepository;
 use UniversalTelegram\Conversations\TopicDeletionDispatcher;
 use UniversalTelegram\Conversations\TopicLifecycleState;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
+use UniversalTelegram\Migration\QuiescenceGate;
 use UniversalTelegram\Privacy\Classification;
 
 /**
@@ -53,6 +54,7 @@ class ConversationActionHandler {
 	 * @param AuditLogger                    $audit          Records every successful state change.
 	 * @param ConversationTopicEligibility   $eligibility    Remote-delete structural gate.
 	 * @param TopicDeletionDispatcher        $topic_deletion Queues eligible remote deletes.
+	 * @param QuiescenceGate|null            $quiescence     Legacy-chat quiescence write-blocking gate (docs/adr/0040). Null only in a not-yet-migrated install.
 	 */
 	public function __construct(
 		private readonly OperatorAvailabilityRepository $availability,
@@ -62,13 +64,21 @@ class ConversationActionHandler {
 		private readonly ConversationPurgeService $purge_service,
 		private readonly AuditLogger $audit,
 		private readonly ConversationTopicEligibility $eligibility,
-		private readonly TopicDeletionDispatcher $topic_deletion
+		private readonly TopicDeletionDispatcher $topic_deletion,
+		private readonly ?QuiescenceGate $quiescence = null
 	) {}
 
 	/**
 	 * The single admin-post request handler, dispatching on the 'op' field.
+	 * Blocks every operator conversation-workflow action outside `idle`
+	 * (docs/adr/0040 §2, entry point #4) before checking capability or
+	 * nonce — this whole category is refused, not merely delayed.
 	 */
 	public function handle_request(): void {
+		if ( null !== $this->quiescence && ! $this->quiescence->is_idle() ) {
+			wp_die( esc_html__( 'This action is temporarily unavailable during a legacy-chat migration window.', 'universal-telegram' ), '', 409 );
+		}
+
 		if ( ! current_user_can( CapabilityRegistrar::MANAGE_CONVERSATIONS ) && ! current_user_can( CapabilityRegistrar::MANAGE ) ) {
 			wp_die( esc_html__( 'You do not have permission to do that.', 'universal-telegram' ), '', 403 );
 		}

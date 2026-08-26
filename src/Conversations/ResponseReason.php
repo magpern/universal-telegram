@@ -25,4 +25,5 @@ enum ResponseReason: string {
 	case TEMPORARY_DELIVERY_PENDING = 'temporary_delivery_pending';
 	case AUTH_REQUIRED              = 'auth_required';
 	case CONVERSATION_UNAVAILABLE   = 'conversation_unavailable';
+	case QUIESCENCE_ACTIVE          = 'quiescence_active';
 }
