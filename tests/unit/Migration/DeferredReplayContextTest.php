@@ -6,14 +6,14 @@
 namespace UniversalTelegram\Tests\Unit\Migration;
 
 use LogicException;
+use PHPUnit\Framework\TestCase;
 use UniversalTelegram\Migration\DeferredReplayContext;
-use WP_UnitTestCase;
 
 /**
  * ADR-0040 §3/§7: DeferredReplayContext cannot be constructed outside
  * QuiescenceGate::issue_replay_context().
  */
-final class DeferredReplayContextTest extends WP_UnitTestCase {
+final class DeferredReplayContextTest extends TestCase {
 
 	public function test_issue_called_directly_from_outside_quiescence_gate_throws(): void {
 		$this->expectException( LogicException::class );

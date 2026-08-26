@@ -62,6 +62,29 @@ final class QuiescenceGateTest extends WP_UnitTestCase {
 		);
 	}
 
+	/**
+	 * Some tests below trigger a real Table 1 CAS, which — like every
+	 * QuiescenceGate transition — commits its own short transaction. On
+	 * WP_UnitTestCase's shared connection this also commits whatever else
+	 * was pending in that same test's outer transaction, including any
+	 * Action Scheduler action this test itself enqueued moments earlier —
+	 * permanently, past this test's own rollback. Cleaned explicitly here
+	 * so such a row never leaks into an unrelated, later-run test file
+	 * that assumes an empty group (this is the same class of hazard
+	 * documented in WebhookControllerQuiescenceTest's own commit message).
+	 */
+	protected function tearDown(): void {
+		global $wpdb;
+		// A raw delete, not the Store API: the CAS commit above can leave
+		// this connection's view of Action Scheduler's own store in a
+		// state where query_actions()/delete_action() no longer reliably
+		// see a row already committed moments earlier on this same
+		// connection. A direct DELETE against its own table is unambiguous.
+		$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->prefix}actionscheduler_actions WHERE hook = %s", WorkerRunner::HOOK ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		parent::tearDown();
+	}
+
 	public function test_initial_state_is_idle(): void {
 		$this->assertSame( QuiescenceState::IDLE, $this->gate->state() );
 		$this->assertTrue( $this->gate->is_idle() );

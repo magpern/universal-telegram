@@ -54,6 +54,24 @@ final class QuiescenceSupportChatNonInterferenceTest extends WP_UnitTestCase {
 		);
 	}
 
+	/**
+	 * QuiescenceGate::confirm()'s own CAS commits mid-test, which also
+	 * commits the real DeliverMessageService-enqueued Action Scheduler
+	 * action past WP_UnitTestCase's own rollback — cleaned explicitly so
+	 * it never leaks into a later, unrelated test file.
+	 */
+	protected function tearDown(): void {
+		global $wpdb;
+		// A raw delete, not the Store API: the CAS commit above can leave
+		// this connection's view of Action Scheduler's own store in a
+		// state where query_actions()/delete_action() no longer reliably
+		// see a row already committed moments earlier on this same
+		// connection. A direct DELETE against its own table is unambiguous.
+		$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->prefix}actionscheduler_actions WHERE hook = %s", WorkerRunner::HOOK ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		parent::tearDown();
+	}
+
 	public function test_support_chat_adapter_delivery_is_never_counted_or_paused_while_quiescent(): void {
 		$schema_health = new SchemaHealth();
 		$vault         = new CredentialVault();

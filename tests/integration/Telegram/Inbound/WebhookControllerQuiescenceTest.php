@@ -109,6 +109,24 @@ final class WebhookControllerQuiescenceTest extends WP_UnitTestCase {
 		);
 	}
 
+	/**
+	 * QuiescenceGate's own transition CAS commits mid-test, which also
+	 * commits any real MessageDispatcher-enqueued Action Scheduler action
+	 * past WP_UnitTestCase's own rollback — cleaned explicitly so it never
+	 * leaks into a later, unrelated test file.
+	 */
+	protected function tearDown(): void {
+		global $wpdb;
+		// A raw delete, not the Store API: the CAS commit above can leave
+		// this connection's view of Action Scheduler's own store in a
+		// state where query_actions()/delete_action() no longer reliably
+		// see a row already committed moments earlier on this same
+		// connection. A direct DELETE against its own table is unambiguous.
+		$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->prefix}actionscheduler_actions WHERE hook = %s", \UniversalTelegram\Queue\WorkerRunner::HOOK ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		parent::tearDown();
+	}
+
 	private function request_for( string $bot_uuid, string $secret, string $body ): WP_REST_Request {
 		$request = new WP_REST_Request( 'POST', '/universal-telegram/v1/webhook/' . $bot_uuid );
 		$request->set_url_params( array( 'bot_uuid' => $bot_uuid ) );
