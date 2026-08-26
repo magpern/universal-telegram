@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.16.0
+Stable tag: 0.17.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,22 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.17.0 =
+* Legacy-chat quiescence (SC-M03 Work Package 2, ADR-0040): a WP-CLI-only,
+  four-state (idle/draining/quiescent/replaying) write-blocking and drain
+  mechanism for every legacy conversation mutation surface, so Support
+  Chat's migration engine can safely read a frozen snapshot. New
+  `wp universal-telegram quiescence {enter,status,confirm,exit,replay-deferred-updates}`
+  command. Telegram webhook updates arriving during a blocking state are
+  captured encrypted (never dropped) and replayed in order once the window
+  closes. New in-process `quiescence_status()` accessor exposes the signal
+  to Support Chat's `QuiescenceStateProvider`, with no REST route, Ajax
+  handler, or shared secret. No existing entry point behaves differently
+  while quiescence is not in use (default state is always `idle`).
+* Database change: db_version 32 -> 33 (three new tables: quiescence
+  current-state singleton, an append-only transition audit trail, and an
+  encrypted deferred-Telegram-update buffer).
 
 = 0.16.0 =
 * Friendly notification tester and grouped Hub navigation (M08.2): the developer-oriented Simulator
