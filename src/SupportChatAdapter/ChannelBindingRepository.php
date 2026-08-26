@@ -115,7 +115,7 @@ final class ChannelBindingRepository {
 	}
 
 	/**
-	 * Inserts a new active binding.
+	 * Inserts a new binding, `active` by default.
 	 *
 	 * @param string $binding_uuid              Opaque channel_case_ref.
 	 * @param string $support_conversation_uuid Support Chat conversation UUID.
@@ -123,6 +123,14 @@ final class ChannelBindingRepository {
 	 * @param int    $bot_id                    Bot primary key.
 	 * @param int    $destination_id            Topic destination primary key.
 	 * @param int    $telegram_topic_id         Forum topic id.
+	 * @param string $status                    Initial status (ADR-0041 §5).
+	 *                                            Defaults to `active`,
+	 *                                            preserving every existing
+	 *                                            caller's behavior
+	 *                                            byte-for-byte.
+	 *                                            LegacyBindingImportServiceV1
+	 *                                            is the only caller that
+	 *                                            passes STATUS_PREPARED.
 	 */
 	public function create(
 		string $binding_uuid,
@@ -130,7 +138,8 @@ final class ChannelBindingRepository {
 		string $ensure_idempotency_key,
 		int $bot_id,
 		int $destination_id,
-		int $telegram_topic_id
+		int $telegram_topic_id,
+		string $status = ChannelBinding::STATUS_ACTIVE
 	): ?ChannelBinding {
 		if ( ! $this->schema_health->is_available() ) {
 			return null;
@@ -150,7 +159,7 @@ final class ChannelBindingRepository {
 				'destination_id'            => $destination_id,
 				'telegram_topic_id'         => $telegram_topic_id,
 				'cas_version'               => 1,
-				'status'                    => ChannelBinding::STATUS_ACTIVE,
+				'status'                    => $status,
 				'created_at'                => $now,
 				'updated_at'                => $now,
 			),

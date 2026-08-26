@@ -140,6 +140,101 @@ class QuiescenceGate {
 		return $this->deferred_updates->backlog_count();
 	}
 
+	/** Returned by with_quiescence_lock() when $work committed successfully. */
+	public const LOCK_RESULT_COMMITTED = 'committed';
+
+	/** Returned by with_quiescence_lock() when $work itself asked to roll back. */
+	public const LOCK_RESULT_ROLLED_BACK = 'rolled_back';
+
+	/** Returned by with_quiescence_lock() when state was not `quiescent`. */
+	public const LOCK_RESULT_NOT_QUIESCENT = 'not_quiescent';
+
+	/** Returned by with_quiescence_lock() when state was `quiescent` but the deferred-update backlog was nonempty. */
+	public const LOCK_RESULT_BACKLOG_NONEMPTY = 'backlog_nonempty';
+
+	/**
+	 * The atomic, lock-scoped quiescence assertion Support Chat ADR-0009 §5
+	 * / this repository's ADR-0041 §2 require for SC-M03 work package 5's
+	 * `LegacyBindingImportServiceV1`: a second caller, besides
+	 * decide_webhook_disposition() and attempt_replaying_to_idle() above,
+	 * that needs to verify quiescence and perform a write atomically against
+	 * it — reusing the identical lock discipline those two methods already
+	 * establish against Table 1's singleton row, rather than a second,
+	 * subtly different implementation.
+	 *
+	 * Opens a transaction, locks the singleton quiescence row, and — only
+	 * if state is `quiescent` and the deferred-update backlog is empty,
+	 * still holding that lock — invokes `$work`. Commits only if `$work`
+	 * returns `true`; rolls back (writing nothing this method itself wrote,
+	 * and undoing whatever `$work` wrote) in every other case, including
+	 * `$work` returning `false` or throwing. `Core\Plugin::quiescence_status()`
+	 * is explicitly not a substitute for this method: it is read-only and
+	 * unlocked, exactly the TOCTOU gap this method exists to close.
+	 *
+	 * @param callable(): bool $work Invoked only while quiescent and the
+	 *                                lock is held. Return `true` to commit
+	 *                                everything performed inside `$work`
+	 *                                (and this method's own lock
+	 *                                acquisition) together; `false` to roll
+	 *                                back and write nothing. A thrown
+	 *                                exception rolls back and propagates.
+	 *
+	 * @return string One of the LOCK_RESULT_* constants above.
+	 *
+	 * @throws \Throwable Propagated from $work after rolling back.
+	 */
+	public function with_quiescence_lock( callable $work ): string {
+		if ( ! $this->schema_health->is_available() ) {
+			return self::LOCK_RESULT_NOT_QUIESCENT;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE;
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$wpdb->query( 'START TRANSACTION' );
+
+		$state = $wpdb->get_var(
+			$wpdb->prepare( "SELECT state FROM {$table} WHERE id = %d FOR UPDATE", self::SINGLETON_ID ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		);
+
+		if ( QuiescenceState::QUIESCENT->value !== $state ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$wpdb->query( 'ROLLBACK' );
+
+			return self::LOCK_RESULT_NOT_QUIESCENT;
+		}
+
+		if ( $this->deferred_updates->backlog_count() > 0 ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$wpdb->query( 'ROLLBACK' );
+
+			return self::LOCK_RESULT_BACKLOG_NONEMPTY;
+		}
+
+		try {
+			$should_commit = (bool) $work();
+		} catch ( \Throwable $exception ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$wpdb->query( 'ROLLBACK' );
+
+			throw $exception;
+		}
+
+		if ( ! $should_commit ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$wpdb->query( 'ROLLBACK' );
+
+			return self::LOCK_RESULT_ROLLED_BACK;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$wpdb->query( 'COMMIT' );
+
+		return self::LOCK_RESULT_COMMITTED;
+	}
+
 	/**
 	 * The age, in seconds, of the oldest unreplayed row, or null.
 	 *

@@ -21,6 +21,15 @@ final class ChannelBinding {
 	public const STATUS_CLOSED      = 'closed';
 
 	/**
+	 * Non-routing status written only by SC-M03 work package 5's
+	 * LegacyBindingImportServiceV1 (Support Chat ADR-0009, ADR-0041). Falls
+	 * into is_active()'s existing "not active" branch by construction, so
+	 * inbound/outbound routing never consults a prepared row without any
+	 * change to is_active(), try_handle(), or DeliverMessageService.
+	 */
+	public const STATUS_PREPARED = 'prepared';
+
+	/**
 	 * Constructor.
 	 *
 	 * @param int         $id                         Primary key.
