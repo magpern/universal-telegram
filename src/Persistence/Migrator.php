@@ -50,6 +50,9 @@ class Migrator {
 	public const SUPPORT_CHAT_DELIVERY_KEYS_TABLE    = 'universal_telegram_support_chat_delivery_keys';
 	public const SUPPORT_CHAT_PEERS_TABLE            = 'universal_telegram_support_chat_peers';
 	public const CONTRACT_NONCES_TABLE               = 'universal_telegram_support_chat_contract_nonces';
+	public const QUIESCENCE_STATE_TABLE              = 'universal_telegram_quiescence_state';
+	public const QUIESCENCE_TRANSITIONS_TABLE        = 'universal_telegram_quiescence_transitions';
+	public const QUIESCENCE_DEFERRED_UPDATES_TABLE   = 'universal_telegram_quiescence_deferred_updates';
 
 	private const DB_VERSION_OPTION = 'universal_telegram_db_version';
 
@@ -76,7 +79,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 32;
+		return 33;
 	}
 
 	/**
@@ -177,6 +180,7 @@ class Migrator {
 			30 => array( array( $this, 'step_30_add_notification_rule_match_mode_column' ), array( $this, 'verify_step_30' ) ),
 			31 => array( array( $this, 'step_31_create_support_chat_adapter_tables' ), array( $this, 'verify_step_31' ) ),
 			32 => array( array( $this, 'step_32_create_support_chat_contract_auth_tables' ), array( $this, 'verify_step_32' ) ),
+			33 => array( array( $this, 'step_33_create_quiescence_tables' ), array( $this, 'verify_step_33' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -2122,6 +2126,107 @@ class Migrator {
 		);
 
 		return $peers_ok && $nonces_ok;
+	}
+
+	/**
+	 * Creates the three ADR-0040 legacy-chat quiescence tables (WP2.1): the
+	 * canonical current-state singleton (Table 1, seeded with its one
+	 * `id = 1, state = 'idle'` row at migration time, following the same
+	 * "singleton row as mutex/checkpoint" seeding idiom
+	 * step_19_create_ai_config_table and step_24_create_visitor_digest_state_table
+	 * already established), the append-only transition audit trail (Table
+	 * 2), and the encrypted deferred-webhook-update buffer (Table 3).
+	 */
+	private function step_33_create_quiescence_tables(): void {
+		global $wpdb;
+
+		$state_table       = $wpdb->prefix . self::QUIESCENCE_STATE_TABLE;
+		$transitions_table = $wpdb->prefix . self::QUIESCENCE_TRANSITIONS_TABLE;
+		$deferred_table    = $wpdb->prefix . self::QUIESCENCE_DEFERRED_UPDATES_TABLE;
+		$charset_collate   = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$state_table} (
+				id BIGINT UNSIGNED NOT NULL,
+				state VARCHAR(16) NOT NULL,
+				token VARCHAR(36) NOT NULL,
+				entered_draining_at DATETIME NULL,
+				entered_quiescent_at DATETIME NULL,
+				entered_replaying_at DATETIME NULL,
+				exited_at DATETIME NULL,
+				updated_at DATETIME NOT NULL,
+				PRIMARY KEY (id)
+			) {$charset_collate}"
+		);
+
+		$wpdb->query(
+			$wpdb->prepare(
+				"INSERT IGNORE INTO {$state_table} (id, state, token, updated_at) VALUES (1, %s, %s, %s)",
+				'idle',
+				wp_generate_uuid4(),
+				current_time( 'mysql', true )
+			)
+		);
+
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$transitions_table} (
+				id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+				from_state VARCHAR(16) NOT NULL,
+				to_state VARCHAR(16) NOT NULL,
+				token VARCHAR(36) NOT NULL,
+				requested_by BIGINT UNSIGNED NULL,
+				requested_via VARCHAR(32) NOT NULL,
+				occurred_at DATETIME NOT NULL,
+				PRIMARY KEY (id)
+			) {$charset_collate}"
+		);
+
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$deferred_table} (
+				id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+				bot_id BIGINT UNSIGNED NOT NULL,
+				update_id BIGINT NOT NULL,
+				update_type VARCHAR(32) NOT NULL,
+				payload_ciphertext LONGTEXT NOT NULL,
+				received_at DATETIME NOT NULL,
+				replayed_at DATETIME NULL,
+				UNIQUE KEY bot_update (bot_id, update_id)
+			) {$charset_collate}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the step's postcondition: all three tables exist with the
+	 * expected columns, and Table 1's singleton row is present.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_33(): bool {
+		global $wpdb;
+
+		$state_table = $wpdb->prefix . self::QUIESCENCE_STATE_TABLE;
+
+		$state_ok = $this->table_has_columns(
+			$state_table,
+			array( 'id', 'state', 'token', 'entered_draining_at', 'entered_quiescent_at', 'entered_replaying_at', 'exited_at', 'updated_at' )
+		);
+
+		$transitions_ok = $this->table_has_columns(
+			$wpdb->prefix . self::QUIESCENCE_TRANSITIONS_TABLE,
+			array( 'id', 'from_state', 'to_state', 'token', 'requested_by', 'requested_via', 'occurred_at' )
+		);
+
+		$deferred_ok = $this->table_has_columns(
+			$wpdb->prefix . self::QUIESCENCE_DEFERRED_UPDATES_TABLE,
+			array( 'id', 'bot_id', 'update_id', 'update_type', 'payload_ciphertext', 'received_at', 'replayed_at' )
+		);
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$row_exists = $wpdb->get_var( "SELECT COUNT(*) FROM {$state_table} WHERE id = 1" );
+
+		return $state_ok && $transitions_ok && $deferred_ok && null !== $row_exists && 1 === (int) $row_exists;
 	}
 
 	/**
