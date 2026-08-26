@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented with fail-closed Contract boundary (closure: `docs/closure/ut-adapter-m1-universal-support-chat-adapter-closure.md`). **Signed Contract client follow-up (ADR-0038, §0 below):** work packages 1–5 of plan v2 implemented — real ADR-0007 mutual Ed25519 signing/verification, administrator pairing, and nonce-replay housekeeping (closure: `docs/closure/ut-adapter-m1-signed-contract-client-closure.md`). Work package 6 (joint interoperability tests against a live Support Chat authenticated Contract server) remains outstanding and gates Support Chat's own SC-M03 migration/cutover work.
+Implemented with fail-closed Contract boundary (closure: `docs/closure/ut-adapter-m1-universal-support-chat-adapter-closure.md`). **Signed Contract client follow-up (ADR-0038, §0 below):** work packages 1–5 of plan v2 implemented — real ADR-0007 mutual Ed25519 signing/verification, administrator pairing, and nonce-replay housekeeping (closure: `docs/closure/ut-adapter-m1-signed-contract-client-closure.md`). **Work package 6 (joint interoperability tests) is also implemented** — joint authenticated interoperability proven against a live Support Chat authenticated Contract server (closure: `docs/closure/ut-adapter-m1-wp6-interop-gate-closure.md`). **Legacy export boundary follow-up (ADR-0039, §0b below):** pinned, not yet implemented — authorises this plugin's `LegacyExportServiceV1`, which Support Chat's SC-M03 legacy migration engine (work packages 3–4) depends on.
 
 ## Dependencies
 
@@ -12,6 +12,7 @@ Implemented with fail-closed Contract boundary (closure: `docs/closure/ut-adapte
   - Canonical URL: `https://github.com/magpern/universal-support-chat/blob/dff2730e24b7d3f70f15f706305e12e14fdcc6c8/docs/adr/0005-canonical-support-channel-contract-v1.md`
 - Support Chat **SC-M01** and **SC-M02** surfaces available for Contract callbacks and Hub/conversation identity (implemented in `universal-support-chat`, not in this repository).
 - Signed-client follow-up additionally depends on Support Chat **ADR-0007** (pinned in §0 below).
+- Legacy export boundary follow-up additionally depends on Support Chat **ADR-0008** (pinned in §0b below).
 
 ## 0. Signed Contract client follow-up (ADR-0038)
 
@@ -25,6 +26,21 @@ Support Chat ADR-0007 fixes the authentication mechanism Contract v1 (ADR-0005) 
 `SupportChatContractClient`'s current unconditional fail-closed stubs are deliberate legacy of the missing mechanism, not a defect. The authorised follow-up — replacing those stubs, adding pairing, and verifying inbound Support Chat signatures at `OutboundContractController` — is scoped in full in ADR-0038 (`docs/adr/0038-support-chat-adr-0007-pin-and-signed-contract-client-follow-up.md`) and this milestone's frozen plan: [v2](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v2.md), superseding [v1](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v1.md).
 
 **No signed-client implementation code may begin until ADR-0038 is merged. No SC-M03 migration/cutover code may begin until both ADR-0038 and Support Chat's SC-M03 work package 0 (authenticated Contract server) are merged.**
+
+## 0b. Legacy export boundary follow-up (ADR-0039)
+
+Added by the `docs/support-chat-adr-0008-legacy-export-boundary-pin` documentation freeze, additive to this charter (`docs/governance.md` "Changing a frozen milestone charter"). Does not alter §Included scope, §Explicit exclusions, or the acceptance/entry/exit criteria below.
+
+The signed Contract client follow-up (§0 above) is complete, including its joint interoperability gate (work package 6). Support Chat's SC-M03 legacy migration engine (work packages 3–4: batch migrator/backfill and validators) now depends on one more mechanism this plugin must supply: a narrow, versioned, in-process, WP-CLI-only legacy-data export interface, `LegacyExportServiceV1`, pinned and scoped by [ADR-0039](../adr/0039-support-chat-adr-0008-pin-and-legacy-export-boundary-follow-up.md), which pins Support Chat's own ADR-0008:
+
+- Commit SHA: `7546d43be66f8e3b2f179f03a1c81c9aadef59db`
+- Canonical URL: `https://github.com/magpern/universal-support-chat/blob/7546d43be66f8e3b2f179f03a1c81c9aadef59db/docs/adr/0008-legacy-export-boundary-and-migration-authority-model.md`
+
+This plugin's obligation is limited to `LegacyExportServiceV1` and its own tests (ADR-0039 §2, §4) — legacy migration orchestration, Support Chat target writes, quiescence, binding creation, cutover, soak/rollback, AI migration, and this plugin's own legacy-UI decommission are all explicitly out of scope for this follow-up. This plugin also carries a forward commitment (ADR-0039 §3) to Support Chat's frozen `QuiescenceStateProvider` interface for whenever this plugin's own future quiescence work package is scoped — not implemented here.
+
+This milestone's frozen plan is extended by [plan v3](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v3.md), superseding [plan v2](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v2.md) (retained unedited) only to add the `LegacyExportServiceV1` work package.
+
+**No `LegacyExportServiceV1` implementation code may begin until ADR-0039 is merged. Support Chat's SC-M03 work packages 3–4 migration-engine code may not begin until both ADR-0039 and Support Chat's own ADR-0008 are merged to their respective `main` branches.**
 
 ## Objective
 
@@ -101,4 +117,4 @@ Adapter module; binding schema/migrations (at implementation); Contract client/s
 
 ## Frozen plan
 
-[ut-adapter-m1-universal-support-chat-adapter-plan-v2.md](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v2.md) (supersedes [v1](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v1.md); v1 retained unedited per `docs/plans/README.md`/`docs/governance.md`)
+[ut-adapter-m1-universal-support-chat-adapter-plan-v3.md](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v3.md) (supersedes [v2](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v2.md), which supersedes [v1](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v1.md); v1 and v2 retained unedited per `docs/plans/README.md`/`docs/governance.md`)
