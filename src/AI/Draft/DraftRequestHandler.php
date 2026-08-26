@@ -14,6 +14,7 @@ use UniversalTelegram\Administration\Conversations\ConversationInboxPage;
 use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
+use UniversalTelegram\Migration\QuiescenceGate;
 use UniversalTelegram\Privacy\Classification;
 use UniversalTelegram\Queue\Dispatcher;
 use UniversalTelegram\Queue\DispatchState;
@@ -45,12 +46,14 @@ class DraftRequestHandler {
 	 * @param AIProviderRepository   $provider_config Reads enablement/model/provider.
 	 * @param ConversationRepository $conversations  Reads the conversation's own acknowledgement state.
 	 * @param Dispatcher             $dispatcher      Enqueues the opaque generation job.
+	 * @param QuiescenceGate|null    $quiescence      Legacy-chat quiescence write-blocking gate (docs/adr/0040). Null only in a not-yet-migrated install.
 	 */
 	public function __construct(
 		private readonly AiDraftRepository $drafts,
 		private readonly AIProviderRepository $provider_config,
 		private readonly ConversationRepository $conversations,
-		private readonly Dispatcher $dispatcher
+		private readonly Dispatcher $dispatcher,
+		private readonly ?QuiescenceGate $quiescence = null
 	) {}
 
 	/**
@@ -84,9 +87,14 @@ class DraftRequestHandler {
 	 * @param int $requested_by_user_id The requesting operator.
 	 *
 	 * @return string One of: 'created', 'existing_active', 'rejected_retained',
-	 *                 'rejected_cooldown', 'not_found', 'ai_disabled', 'not_acknowledged', 'dispatch_failed'.
+	 *                 'rejected_cooldown', 'not_found', 'ai_disabled', 'not_acknowledged',
+	 *                 'dispatch_failed', 'quiescence_active'.
 	 */
 	public function request( int $conversation_id, int $requested_by_user_id ): string {
+		if ( null !== $this->quiescence && ! $this->quiescence->is_idle() ) {
+			return 'quiescence_active';
+		}
+
 		$config = $this->provider_config->get();
 
 		if ( null === $config || ! $config->is_ready() ) {

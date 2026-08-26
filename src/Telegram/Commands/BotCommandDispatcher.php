@@ -24,6 +24,8 @@ use UniversalTelegram\Events\EventHistoryRepository;
 use UniversalTelegram\Events\EventSource;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceCommandQueryService;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
+use UniversalTelegram\Migration\DeferredReplayContext;
+use UniversalTelegram\Migration\QuiescenceGate;
 use UniversalTelegram\Privacy\Classification;
 use UniversalTelegram\Queue\QueueHealth;
 use UniversalTelegram\Telegram\Configuration\BotProfile;
@@ -59,6 +61,7 @@ final class BotCommandDispatcher {
 	 * @param ConfirmationStore              $confirmations       Short-lived confirmation state (for `/resolve`, `/reopen`, `/confirm`).
 	 * @param MessageDispatcher              $message_dispatcher  The existing, sole outbound Telegram-send path.
 	 * @param AuditLogger                    $audit               Records rejection and success entries.
+	 * @param QuiescenceGate|null            $quiescence          Legacy-chat quiescence write-blocking gate (docs/adr/0040). Null only in a not-yet-migrated install.
 	 */
 	public function __construct(
 		private readonly OperatorIdentityRepository $operator_identities,
@@ -71,7 +74,8 @@ final class BotCommandDispatcher {
 		private readonly WooCommerceCommandQueryService $woocommerce_queries,
 		private readonly ConfirmationStore $confirmations,
 		private readonly MessageDispatcher $message_dispatcher,
-		private readonly AuditLogger $audit
+		private readonly AuditLogger $audit,
+		private readonly ?QuiescenceGate $quiescence = null
 	) {}
 
 	/**
@@ -80,13 +84,25 @@ final class BotCommandDispatcher {
 	 * place of, never in addition to, maybe_route_to_conversation()'s
 	 * existing reply-capture path.
 	 *
-	 * @param BotProfile           $bot               The receiving bot, already resolved.
-	 * @param string|null          $chat_id           The update's chat id, metadata already extracted.
-	 * @param int|null             $message_thread_id The update's forum topic id, metadata already extracted.
-	 * @param ParsedCommand        $parsed            The recognized command.
-	 * @param array<string, mixed> $decoded           The full decoded update body (used only for sender-id extraction).
+	 * @param BotProfile                 $bot               The receiving bot, already resolved.
+	 * @param string|null                $chat_id           The update's chat id, metadata already extracted.
+	 * @param int|null                   $message_thread_id The update's forum topic id, metadata already extracted.
+	 * @param ParsedCommand              $parsed            The recognized command.
+	 * @param array<string, mixed>       $decoded           The full decoded update body (used only for sender-id extraction).
+	 * @param DeferredReplayContext|null $replay_context Defense-in-depth quiescence gate (docs/adr/0040 §3): this dispatcher refuses to act outside `idle` on its own, not relying solely on its caller (WebhookController::process_update()) having decided correctly. Non-null only when the internal replayer supplies a context whose token matches the gate's current epoch.
 	 */
-	public function handle( BotProfile $bot, ?string $chat_id, ?int $message_thread_id, ParsedCommand $parsed, array $decoded ): void {
+	public function handle( BotProfile $bot, ?string $chat_id, ?int $message_thread_id, ParsedCommand $parsed, array $decoded, ?DeferredReplayContext $replay_context = null ): void {
+		if ( null !== $this->quiescence
+			&& ! $this->quiescence->is_idle()
+			&& ! $this->quiescence->is_valid_replay_context( $replay_context )
+		) {
+			// Silent refusal, matching every other gate this method already
+			// applies before dispatch — no reply, no state change. Not
+			// audited: this is a routine write-blocking refusal, not a
+			// security-relevant authorization rejection.
+			return;
+		}
+
 		$configured_chat_id = $this->chat_profiles->conversation_chat_id( $bot->id() );
 
 		if ( null === $configured_chat_id || $configured_chat_id !== $chat_id ) {
@@ -180,21 +196,22 @@ final class BotCommandDispatcher {
 			return;
 		}
 
-		$this->execute( $parsed, $bot, $conversation, $mapped_identity, $destination_id, $context );
+		$this->execute( $parsed, $bot, $conversation, $mapped_identity, $destination_id, $context, $replay_context );
 	}
 
 	/**
 	 * Dispatches an authorized, correct-context, well-formed command to its
 	 * own handler — one case per CommandCatalogue literal.
 	 *
-	 * @param ParsedCommand     $parsed          The recognized command.
-	 * @param BotProfile        $bot             The receiving bot.
-	 * @param Conversation|null $conversation    The resolved conversation, when in conversation-topic context.
-	 * @param OperatorIdentity  $mapped_identity The authorized caller's operator identity.
-	 * @param int|null          $destination_id  Where to send the acknowledgement.
-	 * @param string            $context         CONTEXT_GENERAL or CONTEXT_CONVERSATION.
+	 * @param ParsedCommand              $parsed          The recognized command.
+	 * @param BotProfile                 $bot             The receiving bot.
+	 * @param Conversation|null          $conversation    The resolved conversation, when in conversation-topic context.
+	 * @param OperatorIdentity           $mapped_identity The authorized caller's operator identity.
+	 * @param int|null                   $destination_id  Where to send the acknowledgement.
+	 * @param string                     $context         CONTEXT_GENERAL or CONTEXT_CONVERSATION.
+	 * @param DeferredReplayContext|null $replay_context Threaded through from handle(); unused by every case below today, carried only so a future command needing it does not require another signature change.
 	 */
-	private function execute( ParsedCommand $parsed, BotProfile $bot, ?Conversation $conversation, OperatorIdentity $mapped_identity, ?int $destination_id, string $context ): void {
+	private function execute( ParsedCommand $parsed, BotProfile $bot, ?Conversation $conversation, OperatorIdentity $mapped_identity, ?int $destination_id, string $context, ?DeferredReplayContext $replay_context = null ): void { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- threaded through per docs/adr/0040 §3 (handle() is execute()'s sole caller); no case below needs it yet, kept so a future command needing it does not require another signature change.
 		switch ( $parsed->command() ) {
 			case 'help':
 				$this->handle_help( $bot, $destination_id, $context );

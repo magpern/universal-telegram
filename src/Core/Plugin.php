@@ -134,6 +134,12 @@ use UniversalTelegram\Integrations\WooCommerce\WooCommerceCommandQueryService;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Persistence\MigrationFailedException;
 use UniversalTelegram\Persistence\MigrationLock;
+use UniversalTelegram\Migration\Cli\QuiescenceCommand;
+use UniversalTelegram\Migration\DeferredUpdateRepository;
+use UniversalTelegram\Migration\QuiescenceGate;
+use UniversalTelegram\Migration\QuiescenceState;
+use UniversalTelegram\Migration\QuiescenceStatus;
+use UniversalTelegram\Migration\QuiescenceTransitionRepository;
 use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Classification;
@@ -242,6 +248,14 @@ final class Plugin {
 	 * @var CredentialVault|null
 	 */
 	private ?CredentialVault $credential_vault = null;
+
+	/**
+	 * The legacy-chat quiescence write-blocking gate and drain-proof state
+	 * machine (docs/adr/0040), constructed by init().
+	 *
+	 * @var QuiescenceGate|null
+	 */
+	private ?QuiescenceGate $quiescence_gate = null;
 
 	/**
 	 * The capability registrar, constructed by init().
@@ -753,6 +767,17 @@ final class Plugin {
 
 		$this->credential_vault = new CredentialVault();
 
+		// Constructed early (docs/adr/0040): every one of the eight §2
+		// entry-point gates, the three §5 sweep gates, and the webhook
+		// buffer-and-replay mechanism below all depend on it.
+		$quiescence_deferred_updates = new DeferredUpdateRepository( $this->schema_health, $this->credential_vault );
+		$quiescence_gate             = new QuiescenceGate(
+			$this->schema_health,
+			$quiescence_deferred_updates,
+			new QuiescenceTransitionRepository()
+		);
+		$this->quiescence_gate       = $quiescence_gate;
+
 		// Constructed early (M09, docs/adr/0028): ConversationsController
 		// needs it at conversation-creation time to resolve the visitor
 		// acknowledgement gate, well before the Hub's own AI tab is
@@ -850,7 +875,8 @@ final class Plugin {
 			new WooCommerceCommandQueryService(),
 			new ConfirmationStore(),
 			$this->message_dispatcher,
-			$this->audit_logger
+			$this->audit_logger,
+			$quiescence_gate
 		);
 
 		$adapter_enabled   = ! empty( $settings_values['support_chat_adapter_enabled'] );
@@ -895,7 +921,8 @@ final class Plugin {
 			$this->audit_logger,
 			$this->bot_command_dispatcher,
 			(int) $settings_values['telegram_webhook_max_body_bytes'],
-			$adapter_inbound
+			$adapter_inbound,
+			$quiescence_gate
 		);
 		add_action( 'rest_api_init', array( $this->webhook_controller, 'register_routes' ) );
 
@@ -927,6 +954,13 @@ final class Plugin {
 		);
 		add_action( 'rest_api_init', array( $adapter_outbound, 'register_routes' ) );
 		( new BindingImportCommand( $adapter_bindings ) )->register();
+
+		( new QuiescenceCommand(
+			$quiescence_gate,
+			$quiescence_deferred_updates,
+			$this->bot_profile_repository,
+			$this->webhook_controller
+		) )->register();
 
 		// Stash for Hub tab registration after TabRegistry exists.
 		$this->support_chat_adapter_bindings   = $adapter_bindings;
@@ -1025,14 +1059,17 @@ final class Plugin {
 			$immediate_delivery_attempt,
 			$prompt_delivery_fallback,
 			$settings,
-			$this->ai_provider_repository
+			$this->ai_provider_repository,
+			$quiescence_gate
 		);
 		add_action( 'rest_api_init', array( $this->conversations_controller, 'register_routes' ) );
 
 		$this->retention_cleanup_handler = new RetentionCleanupHandler(
 			$this->outbound_message_repository,
 			(int) $settings_values['telegram_message_retention_days'],
-			(int) $settings_values['telegram_delivery_log_retention_days']
+			(int) $settings_values['telegram_delivery_log_retention_days'],
+			$quiescence_gate,
+			$quiescence_deferred_updates
 		);
 		add_action( RetentionCleanupHandler::HOOK, array( $this->retention_cleanup_handler, 'run' ) );
 
@@ -1053,7 +1090,11 @@ final class Plugin {
 			$this->message_repository,
 			$this->conversation_purge_service,
 			$this->conversation_topic_eligibility,
-			$this->topic_deletion_dispatcher
+			$this->topic_deletion_dispatcher,
+			30,
+			90,
+			30,
+			$quiescence_gate
 		);
 		add_action( ConversationRetentionCleanupHandler::HOOK, array( $this->conversation_retention_cleanup_handler, 'run' ) );
 
@@ -1076,7 +1117,15 @@ final class Plugin {
 		// request.
 		add_action(
 			'deleted_user',
-			function ( int $user_id ): void {
+			function ( int $user_id ) use ( $quiescence_gate ): void {
+				// docs/adr/0040 §2 entry point #7, PO-confirmed trade-off:
+				// during any non-idle quiescence state, deleting a WP user
+				// does not clean up that user's conversation data until
+				// state returns to idle.
+				if ( ! $quiescence_gate->is_idle() ) {
+					return;
+				}
+
 				$this->conversation_repository->release_owner_conversations( $user_id );
 			}
 		);
@@ -1089,7 +1138,13 @@ final class Plugin {
 		// lookup key for clearing message attribution.
 		add_action(
 			'deleted_user',
-			function ( int $user_id ): void {
+			function ( int $user_id ) use ( $quiescence_gate ): void {
+				// docs/adr/0040 §2 entry point #7, PO-confirmed trade-off:
+				// identical deferral to the visitor-owner cleanup above.
+				if ( ! $quiescence_gate->is_idle() ) {
+					return;
+				}
+
 				$identity = $this->operator_identity_repository->find_by_wp_user_id( $user_id );
 
 				if ( null === $identity ) {
@@ -1145,7 +1200,8 @@ final class Plugin {
 			$this->audit_logger,
 			$forum_topic_remote_deleter,
 			$unresolved_outbound_abandoner,
-			$dead_letter_dismisser
+			$dead_letter_dismisser,
+			$quiescence_gate
 		);
 		add_action( 'admin_post_' . BotManagementController::ADMIN_POST_ACTION, array( $this->bot_management_controller, 'handle_request' ) );
 
@@ -1535,7 +1591,8 @@ final class Plugin {
 			$this->conversation_purge_service,
 			$this->audit_logger,
 			$this->conversation_topic_eligibility,
-			$this->topic_deletion_dispatcher
+			$this->topic_deletion_dispatcher,
+			$quiescence_gate
 		);
 		add_action( 'admin_post_' . ConversationActionHandler::ADMIN_POST_ACTION, array( $this->conversation_action_handler, 'handle_request' ) );
 
@@ -1544,7 +1601,7 @@ final class Plugin {
 		// write reviewed/approved/discarded. Constructed here, before
 		// ConversationDetailPage, since it is composed directly into that
 		// page's render.
-		$ai_conversation_draft_panel = new ConversationDraftPanel( $this->ai_draft_repository, $this->ai_provider_repository );
+		$ai_conversation_draft_panel = new ConversationDraftPanel( $this->ai_draft_repository, $this->ai_provider_repository, $quiescence_gate );
 		add_action( 'admin_post_' . ConversationDraftPanel::ADMIN_POST_ACTION, array( $ai_conversation_draft_panel, 'handle_request' ) );
 
 		// Operator inbox + detail view (M07, docs/adr/0026): unread badge,
@@ -1649,7 +1706,7 @@ final class Plugin {
 		);
 		$this->handler_registry->register( AIDraftGenerationHandler::JOB_TYPE, array( $ai_draft_handler, 'handle_job' ) );
 
-		$ai_lease_sweep = new AiDraftLeaseSweep( $this->ai_draft_repository );
+		$ai_lease_sweep = new AiDraftLeaseSweep( $this->ai_draft_repository, $quiescence_gate );
 		add_action( AiDraftLeaseSweep::JOB_TYPE, array( $ai_lease_sweep, 'run' ) );
 		add_action( 'init', array( $ai_lease_sweep, 'register' ) );
 
@@ -1723,7 +1780,8 @@ final class Plugin {
 			$this->ai_draft_repository,
 			$this->ai_provider_repository,
 			$this->conversation_repository,
-			$this->dispatcher
+			$this->dispatcher,
+			$quiescence_gate
 		);
 		add_action( 'admin_post_' . DraftRequestHandler::ADMIN_POST_ACTION, array( $ai_draft_request_handler, 'handle_request' ) );
 
@@ -2001,6 +2059,29 @@ final class Plugin {
 	 */
 	public function legacy_export_service(): ?LegacyExportServiceV1 {
 		return $this->legacy_export_service;
+	}
+
+	/**
+	 * In-process, no-REST cross-plugin quiescence signal (docs/adr/0040 §8),
+	 * following the identical pattern legacy_export_service() already
+	 * establishes. Frozen shape: Support Chat's `QuiescenceStateProvider`
+	 * implementation depends on this exact accessor. `is_quiescent` can
+	 * become false again without any explicit state transition, purely
+	 * because a new webhook update arrived and was buffered while
+	 * `quiescent` — intentional.
+	 */
+	public function quiescence_status(): ?QuiescenceStatus {
+		if ( null === $this->quiescence_gate ) {
+			return null;
+		}
+
+		$is_state_quiescent = QuiescenceState::QUIESCENT === $this->quiescence_gate->state();
+		$backlog_empty      = 0 === $this->quiescence_gate->deferred_update_backlog_count();
+
+		return new QuiescenceStatus(
+			$is_state_quiescent && $backlog_empty,
+			$this->quiescence_gate->since()
+		);
 	}
 
 	/**

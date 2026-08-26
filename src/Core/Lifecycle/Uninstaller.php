@@ -97,6 +97,12 @@ final class Uninstaller {
 		Migrator::CONTRACT_NONCES_TABLE,
 	);
 
+	private const QUIESCENCE_TABLES = array(
+		Migrator::QUIESCENCE_STATE_TABLE,
+		Migrator::QUIESCENCE_TRANSITIONS_TABLE,
+		Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE,
+	);
+
 	/**
 	 * Runs the uninstall routine.
 	 */
@@ -129,6 +135,7 @@ final class Uninstaller {
 		$this->drop_m11b_tables();
 		$this->drop_adapter_m1_tables();
 		$this->drop_adapter_m1_auth_tables();
+		$this->drop_quiescence_tables();
 		delete_option( Settings::OPTION_NAME );
 		delete_option( 'universal_telegram_db_version' );
 		delete_option( OwnKeyManager::OPTION_PUBLIC );
@@ -301,6 +308,21 @@ final class Uninstaller {
 		global $wpdb;
 
 		foreach ( self::ADAPTER_M1_AUTH_TABLES as $table_name ) {
+			$table = $wpdb->prefix . $table_name;
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
+			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
+		}
+	}
+
+	/**
+	 * Drops the SC-M03 WP2 quiescence tables (ADR-0040): the singleton
+	 * current-state row, the append-only transition audit trail, and the
+	 * encrypted deferred-Telegram-update buffer.
+	 */
+	private function drop_quiescence_tables(): void {
+		global $wpdb;
+
+		foreach ( self::QUIESCENCE_TABLES as $table_name ) {
 			$table = $wpdb->prefix . $table_name;
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
 			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );

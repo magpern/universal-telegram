@@ -25,6 +25,7 @@ use UniversalTelegram\Conversations\TopicCreationDispatcher;
 use UniversalTelegram\Conversations\TopicLifecycleState;
 use UniversalTelegram\Conversations\VisitorTokenGenerator;
 use UniversalTelegram\Core\Configuration\Settings;
+use UniversalTelegram\Migration\QuiescenceGate;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Telegram\Reliability\RateLimiter;
 use WP_REST_Request;
@@ -130,6 +131,7 @@ final class ConversationsController {
 	 * @param PromptDeliveryFallback         $prompt_fallback     The host-independent bounded second-layer fallback (§3.3); owns its own ExpeditedDispatchTrigger reference for the final, demoted best-effort nudge (§3.4).
 	 * @param Settings                       $settings            Reads chat_widget_allow_anonymous (M06.3.1 addendum).
 	 * @param AIProviderRepository           $ai_provider_repository Resolves the visitor acknowledgement gate (M09, docs/adr/0028 decision 1).
+	 * @param QuiescenceGate|null            $quiescence          Legacy-chat quiescence write-blocking gate (docs/adr/0040). Null only in a not-yet-migrated install.
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
@@ -143,7 +145,8 @@ final class ConversationsController {
 		private readonly ImmediateDeliveryAttempt $immediate_attempt,
 		private readonly PromptDeliveryFallback $prompt_fallback,
 		private readonly Settings $settings,
-		private readonly AIProviderRepository $ai_provider_repository
+		private readonly AIProviderRepository $ai_provider_repository,
+		private readonly ?QuiescenceGate $quiescence = null
 	) {}
 
 	/**
@@ -213,6 +216,16 @@ final class ConversationsController {
 	 * @return WP_REST_Response
 	 */
 	public function handle_start( WP_REST_Request $request ): WP_REST_Response {
+		if ( null !== $this->quiescence && ! $this->quiescence->is_idle() ) {
+			return $this->respond(
+				array(
+					'ok'     => false,
+					'reason' => ResponseReason::QUIESCENCE_ACTIVE->value,
+				),
+				409
+			);
+		}
+
 		if ( ! $this->schema_health->is_available() ) {
 			return $this->respond(
 				array(
@@ -531,6 +544,16 @@ final class ConversationsController {
 	 * @return WP_REST_Response
 	 */
 	public function handle_post_message( WP_REST_Request $request ): WP_REST_Response {
+		if ( null !== $this->quiescence && ! $this->quiescence->is_idle() ) {
+			return $this->respond(
+				array(
+					'ok'     => false,
+					'reason' => ResponseReason::QUIESCENCE_ACTIVE->value,
+				),
+				409
+			);
+		}
+
 		if ( ! $this->schema_health->is_available() ) {
 			return $this->respond(
 				array(

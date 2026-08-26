@@ -80,6 +80,20 @@ final class SchemaDegradedExecutionTest extends WP_UnitTestCase {
 			as_unschedule_all_actions( \UniversalTelegram\Automations\Digest\VisitorDigestSweep::JOB_TYPE );
 			as_unschedule_all_actions( \UniversalTelegram\Automations\Intelligence\OperationalSummarySweep::JOB_TYPE );
 		}
+
+		// Same root cause once more: a small number of Migration-namespace
+		// tests exercise QuiescenceGate's own real CAS transitions, whose
+		// commit (on WP_UnitTestCase's shared connection) can leave an
+		// Action-Scheduler action those tests enqueued moments earlier
+		// permanently pending on this exact hook, past that test's own
+		// rollback. ActionScheduler_QueueRunner::run() below claims and
+		// runs a real batch, not just this test's own action_id — a stray
+		// due action here is claimed alongside (or instead of) this test's
+		// own, making this test's specific assertions order-dependent on
+		// unrelated state rather than on the schema-degraded behaviour
+		// under test. Test-hygiene only.
+		global $wpdb;
+		$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->prefix}actionscheduler_actions WHERE hook = %s", WorkerRunner::HOOK ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	}
 
 	public function test_full_degraded_and_recovery_lifecycle(): void {

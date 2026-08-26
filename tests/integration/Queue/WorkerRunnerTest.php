@@ -23,6 +23,19 @@ final class WorkerRunnerTest extends WP_UnitTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		FailingJobFixture::reset();
+
+		// A small number of Migration-namespace tests exercise
+		// QuiescenceGate's own real CAS transitions, whose commit (on
+		// WP_UnitTestCase's shared connection) can leave an Action-
+		// Scheduler action those tests enqueued moments earlier
+		// permanently pending on this exact hook, past that test's own
+		// rollback — this test's own as_next_scheduled_action() assertions
+		// check for ANY pending action on this hook/group, so a stray one
+		// left behind elsewhere would otherwise fail them regardless of
+		// this test's own, correct behaviour. Test-hygiene only, matching
+		// SchemaDegradedExecutionTest's own identical precedent.
+		global $wpdb;
+		$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->prefix}actionscheduler_actions WHERE hook = %s", WorkerRunner::HOOK ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	}
 
 	/**

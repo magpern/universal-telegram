@@ -16,11 +16,14 @@ use UniversalTelegram\Conversations\ConversationStatus;
 use UniversalTelegram\Conversations\MessageRepository;
 use UniversalTelegram\Conversations\OperatorIdentityRepository;
 use UniversalTelegram\Conversations\TopicLifecycleState;
+use UniversalTelegram\Migration\DeferredReplayContext;
+use UniversalTelegram\Migration\QuiescenceGate;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Classification;
 use UniversalTelegram\SupportChatAdapter\Inbound\InboundAdapterBridge;
 use UniversalTelegram\Telegram\Commands\BotCommandDispatcher;
 use UniversalTelegram\Telegram\Commands\CommandParser;
+use UniversalTelegram\Telegram\Configuration\BotProfile;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -67,6 +70,7 @@ final class WebhookController {
 	 * @param BotCommandDispatcher       $bot_commands  Handles a recognized administrative bot command (M08, docs/adr/0027) in place of reply capture.
 	 * @param int                        $max_body_bytes Request body size cap, enforced before JSON decoding.
 	 * @param InboundAdapterBridge|null  $adapter_bridge Optional Support Chat adapter inbound bridge (UT Adapter M1).
+	 * @param QuiescenceGate|null        $quiescence     Legacy-chat quiescence write-blocking gate (docs/adr/0040). Null only in a not-yet-migrated install.
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
@@ -80,7 +84,8 @@ final class WebhookController {
 		private readonly AuditLogger $audit,
 		private readonly BotCommandDispatcher $bot_commands,
 		private readonly int $max_body_bytes = 1048576,
-		private readonly ?InboundAdapterBridge $adapter_bridge = null
+		private readonly ?InboundAdapterBridge $adapter_bridge = null,
+		private readonly ?QuiescenceGate $quiescence = null
 	) {}
 
 	/**
@@ -147,18 +152,70 @@ final class WebhookController {
 			return new WP_REST_Response( array( 'ok' => false ), 400 );
 		}
 
+		list( $update_type ) = $this->extract_metadata( $decoded );
+
+		// Legacy-chat quiescence write-blocking (docs/adr/0040 §3): checked
+		// immediately after Telegram-secret authentication and before the
+		// existing inbound_updates dedup insert or any command/reply
+		// routing — both now folded into process_update(). Every state
+		// except 'idle' buffers this arrival, encrypted, instead of
+		// processing it live; a duplicate delivery of an already-buffered
+		// (bot_id, update_id) is idempotent, never an error.
+		if ( null !== $this->quiescence ) {
+			$disposition = $this->quiescence->decide_webhook_disposition(
+				$bot->id(),
+				$decoded['update_id'],
+				$update_type->value,
+				$decoded
+			);
+
+			if ( 'buffered' === $disposition ) {
+				return new WP_REST_Response( array( 'ok' => true ), 200 );
+			}
+		}
+
+		$this->process_update( $bot, $decoded );
+
+		return new WP_REST_Response( array( 'ok' => true ), 200 );
+	}
+
+	/**
+	 * The full normal inbound-update processing pipeline: the existing
+	 * inbound_updates dedup insert, topic-lifecycle detection, the
+	 * InboundAdapterBridge refusal-first check, bot-command dispatch, and
+	 * plain-text reply capture (docs/adr/0040 §3). Shared, byte-for-byte
+	 * identical, by both the live webhook path (called with
+	 * `$replay_context = null`, reached only when quiescence state is
+	 * `idle`) and the internal replayer (`Migration\Cli\QuiescenceCommand`,
+	 * called with a real `DeferredReplayContext` obtained from
+	 * `QuiescenceGate::issue_replay_context()`), so there is only one
+	 * implementation of this pipeline to keep in sync.
+	 *
+	 * Takes an explicit `BotProfile` rather than the two-parameter shape
+	 * ADR-0040 §3 first described: the live path already resolves the bot
+	 * from `bot_uuid` before dedup/routing can run at all, and the replayer
+	 * resolves it from a deferred row's own stored `bot_id` — neither call
+	 * site has a `bot_uuid` to re-resolve from inside this method, and nothing
+	 * in the decoded Telegram update payload itself identifies which of this
+	 * plugin's bots received it.
+	 *
+	 * @param BotProfile                 $bot            The receiving bot, already resolved.
+	 * @param array<string, mixed>       $decoded        The full decoded update body.
+	 * @param DeferredReplayContext|null $replay_context Non-null only when called by the internal replayer.
+	 */
+	public function process_update( BotProfile $bot, array $decoded, ?DeferredReplayContext $replay_context = null ): void {
 		list( $update_type, $chat_id, $message_thread_id ) = $this->extract_metadata( $decoded );
 
 		$is_new_update = $this->updates->record( $bot->id(), $decoded['update_id'], $update_type, $chat_id, $message_thread_id );
 
 		if ( $is_new_update && UpdateType::MESSAGE === $update_type ) {
 			if ( $this->maybe_mark_topic_unavailable( $bot->id(), $chat_id, $message_thread_id, $decoded ) ) {
-				return new WP_REST_Response( array( 'ok' => true ), 200 );
+				return;
 			}
 
 			if ( null !== $this->adapter_bridge
 				&& $this->adapter_bridge->try_handle( $bot, $chat_id, $message_thread_id, $decoded, $decoded['update_id'] ) ) {
-				return new WP_REST_Response( array( 'ok' => true ), 200 );
+				return;
 			}
 
 			$parsed_command = isset( $decoded['message'] ) && is_array( $decoded['message'] )
@@ -166,13 +223,11 @@ final class WebhookController {
 				: null;
 
 			if ( null !== $parsed_command ) {
-				$this->bot_commands->handle( $bot, $chat_id, $message_thread_id, $parsed_command, $decoded );
+				$this->bot_commands->handle( $bot, $chat_id, $message_thread_id, $parsed_command, $decoded, $replay_context );
 			} else {
 				$this->maybe_route_to_conversation( $bot->id(), $chat_id, $message_thread_id, $decoded );
 			}
 		}
-
-		return new WP_REST_Response( array( 'ok' => true ), 200 );
 	}
 
 	/**
