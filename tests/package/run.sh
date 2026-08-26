@@ -173,13 +173,22 @@ if [ -z "$(m06_column_exists "conversations" "owner_active_slot")" ]; then
 fi
 echo "OK: universal_telegram_conversations.owner_user_id and owner_active_slot columns exist."
 
-echo "== Verifying db_version reached 32 =="
+echo "== Verifying db_version reached 33 =="
 DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "32" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=32, got ${DB_VERSION}" >&2
+if [ "33" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=33, got ${DB_VERSION}" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 32."
+echo "OK: universal_telegram_db_version is 33."
+
+echo "== Verifying SC-M03 WP2 quiescence tables exist (ADR-0040) =="
+for TABLE in quiescence_state quiescence_transitions quiescence_deferred_updates; do
+	if [ -z "$(m02_table_exists "$TABLE")" ]; then
+		echo "FAIL: expected table universal_telegram_${TABLE} to exist" >&2
+		exit 1
+	fi
+done
+echo "OK: quiescence_state, quiescence_transitions, and quiescence_deferred_updates tables exist."
 
 echo "== Verifying UT Adapter M1 Support Chat binding tables exist =="
 for TABLE in support_chat_bindings support_chat_delivery_keys; do
@@ -689,6 +698,12 @@ for adapter_table in support_chat_bindings support_chat_delivery_keys; do
 		exit 1
 	fi
 done
-echo "OK: opt-in uninstall removed the plugin's own data, including all six M01 tables, all four M02 tables, both M05 tables, all three M07 tables, both M09 tables, and Adapter M1 tables."
+for quiescence_table in quiescence_state quiescence_transitions quiescence_deferred_updates; do
+	if [ -n "$(m02_table_exists "$quiescence_table")" ]; then
+		echo "FAIL: opt-in uninstall did not remove universal_telegram_${quiescence_table}" >&2
+		exit 1
+	fi
+done
+echo "OK: opt-in uninstall removed the plugin's own data, including all six M01 tables, all four M02 tables, both M05 tables, all three M07 tables, both M09 tables, Adapter M1 tables, and SC-M03 WP2 quiescence tables."
 
 echo "== PACKAGE TEST PASSED for WordPress ${WP_VERSION}${WC_VERSION:+, WooCommerce ${WC_VERSION}} =="
