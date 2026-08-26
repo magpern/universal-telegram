@@ -72,11 +72,11 @@ final class BotCommandDispatcherQuiescenceTest extends WP_UnitTestCase {
 		$wpdb->query( 'DELETE FROM ' . $wpdb->prefix . 'universal_telegram_destinations' );
 		$wpdb->query( 'DELETE FROM ' . $wpdb->prefix . 'universal_telegram_bots' );
 		$wpdb->query( 'DELETE FROM ' . $wpdb->prefix . 'universal_telegram_outbound_messages' );
-		$wpdb->query( 'DELETE FROM ' . $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE );
+		$wpdb->query( 'DELETE FROM ' . $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		$this->schema_health = new SchemaHealth();
-		$vault                = new CredentialVault();
-		$audit                = new AuditLogger( $this->schema_health, new Redactor() );
+		$vault               = new CredentialVault();
+		$audit               = new AuditLogger( $this->schema_health, new Redactor() );
 
 		$this->bots                = new BotProfileRepository( $this->schema_health, $vault );
 		$this->conversations       = new ConversationRepository( $this->schema_health, new CredentialVault(), new VisitorTokenGenerator() );
@@ -140,7 +140,13 @@ final class BotCommandDispatcherQuiescenceTest extends WP_UnitTestCase {
 		$parsed = CommandParser::parse(
 			array(
 				'text'     => '/whoami',
-				'entities' => array( array( 'type' => 'bot_command', 'offset' => 0, 'length' => 7 ) ),
+				'entities' => array(
+					array(
+						'type'   => 'bot_command',
+						'offset' => 0,
+						'length' => 7,
+					),
+				),
 			),
 			$bot->telegram_username()
 		);

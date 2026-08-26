@@ -55,7 +55,7 @@ final class ConversationsControllerQuiescenceTest extends WP_UnitTestCase {
 		parent::setUp();
 
 		global $wpdb;
-		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" );
+		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		update_option( Settings::OPTION_NAME, array_merge( ( new Settings() )->defaults(), array( 'chat_widget_allow_anonymous' => false ) ) );
 
@@ -63,12 +63,12 @@ final class ConversationsControllerQuiescenceTest extends WP_UnitTestCase {
 		$vault         = new CredentialVault();
 
 		$this->conversations = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );
-		$messages             = new MessageRepository( $schema_health, $vault );
-		$this->bots           = new BotProfileRepository( $schema_health, $vault );
-		$destinations         = new DestinationRepository( $schema_health );
-		$ai_provider          = new AIProviderRepository( $schema_health, $vault );
-		$rate_limiter         = new RateLimiter( $schema_health );
-		$audit_logger         = new AuditLogger( $schema_health, new Redactor() );
+		$messages            = new MessageRepository( $schema_health, $vault );
+		$this->bots          = new BotProfileRepository( $schema_health, $vault );
+		$destinations        = new DestinationRepository( $schema_health );
+		$ai_provider         = new AIProviderRepository( $schema_health, $vault );
+		$rate_limiter        = new RateLimiter( $schema_health );
+		$audit_logger        = new AuditLogger( $schema_health, new Redactor() );
 
 		$this->gate = new QuiescenceGate(
 			$schema_health,
@@ -121,7 +121,7 @@ final class ConversationsControllerQuiescenceTest extends WP_UnitTestCase {
 
 	public function test_start_returns_409_quiescence_active_while_draining(): void {
 		global $wpdb;
-		$table       = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$table        = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
 		$count_before = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$this->gate->enter();
@@ -159,7 +159,7 @@ final class ConversationsControllerQuiescenceTest extends WP_UnitTestCase {
 
 	public function test_post_message_returns_409_quiescence_active_while_quiescent(): void {
 		global $wpdb;
-		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'quiescent' WHERE id = 1" );
+		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'quiescent' WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		$request = new WP_REST_Request( 'POST', '/universal-telegram/v1/conversations/11111111-1111-1111-1111-111111111111/messages' );
 		$request->set_url_params( array( 'conversation_uuid' => '11111111-1111-1111-1111-111111111111' ) );

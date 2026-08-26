@@ -26,7 +26,7 @@ final class DeferredUpdateRepositoryTest extends WP_UnitTestCase {
 		parent::setUp();
 
 		global $wpdb;
-		$wpdb->query( 'DELETE FROM ' . $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE );
+		$wpdb->query( 'DELETE FROM ' . $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		$schema_health    = new SchemaHealth();
 		$this->repository = new DeferredUpdateRepository( $schema_health, new CredentialVault() );
@@ -60,7 +60,15 @@ final class DeferredUpdateRepositoryTest extends WP_UnitTestCase {
 	}
 
 	public function test_decrypt_payload_recovers_the_original_buffered_payload(): void {
-		$this->repository->buffer( 5, 900, 'message', array( 'update_id' => 900, 'message' => array( 'text' => 'hello' ) ) );
+		$this->repository->buffer(
+			5,
+			900,
+			'message',
+			array(
+				'update_id' => 900,
+				'message'   => array( 'text' => 'hello' ),
+			)
+		);
 
 		$grouped = $this->repository->unreplayed_grouped_by_bot();
 		$record  = $grouped[5][0];
@@ -77,7 +85,14 @@ final class DeferredUpdateRepositoryTest extends WP_UnitTestCase {
 
 		global $wpdb;
 		$table = $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE;
-		$wpdb->update( $table, array( 'received_at' => gmdate( 'Y-m-d H:i:s', time() - ( 40 * DAY_IN_SECONDS ) ) ), array( 'bot_id' => 1, 'update_id' => 1 ) );
+		$wpdb->update(
+			$table,
+			array( 'received_at' => gmdate( 'Y-m-d H:i:s', time() - ( 40 * DAY_IN_SECONDS ) ) ),
+			array(
+				'bot_id'    => 1,
+				'update_id' => 1,
+			)
+		);
 
 		$deleted = $this->repository->delete_replayed_older_than( 30 );
 

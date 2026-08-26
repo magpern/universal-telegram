@@ -39,7 +39,7 @@ final class QuiescenceSupportChatNonInterferenceTest extends WP_UnitTestCase {
 		parent::setUp();
 
 		global $wpdb;
-		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" );
+		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		$ids = ActionScheduler::store()->query_actions( array( 'group' => WorkerRunner::GROUP ) );
 		foreach ( (array) $ids as $id ) {
@@ -78,7 +78,7 @@ final class QuiescenceSupportChatNonInterferenceTest extends WP_UnitTestCase {
 		$this->assertNotNull( $binding );
 
 		global $wpdb;
-		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'quiescent', entered_quiescent_at = NOW() WHERE id = 1" );
+		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'quiescent', entered_quiescent_at = NOW() WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		$service = new DeliverMessageService( $bindings, $keys, $messages, new Dispatcher( $schema_health ) );
 		$result  = $service->deliver( $binding->binding_uuid(), 'non-interference-key-1', 'Hello from a visitor', 'Visitor' );
@@ -90,7 +90,7 @@ final class QuiescenceSupportChatNonInterferenceTest extends WP_UnitTestCase {
 
 		$confirm_result = ( function () use ( $schema_health, $vault ) {
 			global $wpdb;
-			$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'draining', updated_at = NOW() WHERE id = 1" );
+			$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'draining', updated_at = NOW() WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 			$gate = new QuiescenceGate( $schema_health, new DeferredUpdateRepository( $schema_health, $vault ), new QuiescenceTransitionRepository() );
 			return $gate->confirm();
 		} )();

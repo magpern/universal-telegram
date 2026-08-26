@@ -28,14 +28,14 @@ final class QuiescenceStatusTest extends WP_UnitTestCase {
 
 		global $wpdb;
 		$wpdb->db_connect( true );
-		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" );
-		$wpdb->query( 'DELETE FROM ' . $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE );
+		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$wpdb->query( 'DELETE FROM ' . $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 	}
 
 	protected function tearDown(): void {
 		global $wpdb;
-		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" );
-		$wpdb->query( 'DELETE FROM ' . $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE );
+		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$wpdb->query( 'DELETE FROM ' . $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		parent::tearDown();
 	}
 
@@ -55,7 +55,7 @@ final class QuiescenceStatusTest extends WP_UnitTestCase {
 
 	public function test_is_quiescent_is_true_while_quiescent_with_an_empty_backlog(): void {
 		global $wpdb;
-		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'quiescent', entered_quiescent_at = NOW() WHERE id = 1" );
+		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'quiescent', entered_quiescent_at = NOW() WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		$status = Plugin::instance()->quiescence_status();
 
@@ -65,7 +65,7 @@ final class QuiescenceStatusTest extends WP_UnitTestCase {
 
 	public function test_is_quiescent_flips_false_the_instant_a_row_is_buffered_without_any_explicit_state_transition(): void {
 		global $wpdb;
-		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'quiescent', entered_quiescent_at = NOW() WHERE id = 1" );
+		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'quiescent', entered_quiescent_at = NOW() WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		$this->assertTrue( Plugin::instance()->quiescence_status()->is_quiescent );
 
@@ -85,7 +85,14 @@ final class QuiescenceStatusTest extends WP_UnitTestCase {
 		$this->assertFalse( $status->is_quiescent, 'state is still quiescent, but a genuinely new update is now buffered and unresolved.' );
 
 		// True again once that row is marked replayed.
-		$wpdb->update( $deferred_table, array( 'replayed_at' => current_time( 'mysql', true ) ), array( 'bot_id' => 1, 'update_id' => 1 ) );
+		$wpdb->update(
+			$deferred_table,
+			array( 'replayed_at' => current_time( 'mysql', true ) ),
+			array(
+				'bot_id'    => 1,
+				'update_id' => 1,
+			)
+		);
 		$this->assertTrue( Plugin::instance()->quiescence_status()->is_quiescent );
 	}
 }

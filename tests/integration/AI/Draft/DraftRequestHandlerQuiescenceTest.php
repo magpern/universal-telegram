@@ -35,7 +35,7 @@ final class DraftRequestHandlerQuiescenceTest extends WP_UnitTestCase {
 		global $wpdb;
 		$wpdb->query( "DELETE FROM {$wpdb->prefix}universal_telegram_ai_drafts" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$wpdb->query( "UPDATE {$wpdb->prefix}universal_telegram_ai_config SET enabled = 1, model = 'gpt', api_key_ciphertext = NULL WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" );
+		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		$ids = ActionScheduler::store()->query_actions( array( 'group' => WorkerRunner::GROUP ) );
 		foreach ( (array) $ids as $id ) {

@@ -22,7 +22,7 @@ final class DeletedUserQuiescenceTest extends WP_UnitTestCase {
 
 	protected function tearDown(): void {
 		global $wpdb;
-		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" );
+		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		parent::tearDown();
 	}
 
@@ -32,7 +32,7 @@ final class DeletedUserQuiescenceTest extends WP_UnitTestCase {
 		( new Migrator( new MigrationLock() ) )->maybe_migrate();
 		$wpdb->db_connect( true );
 
-		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'draining', updated_at = NOW() WHERE id = 1" );
+		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'draining', updated_at = NOW() WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		$conversations = Plugin::instance()->conversation_repository();
 		$this->assertNotNull( $conversations );

@@ -66,14 +66,14 @@ final class WebhookControllerQuiescenceTest extends WP_UnitTestCase {
 		$this->vault   = new CredentialVault();
 		$audit_logger  = new AuditLogger( $schema_health, new Redactor() );
 
-		$this->bots      = new BotProfileRepository( $schema_health, $this->vault );
-		$updates         = new UpdateRepository( $schema_health );
-		$conversations   = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );
-		$destinations    = new DestinationRepository( $schema_health );
-		$messages        = new MessageRepository( $schema_health, $this->vault );
-		$verifier        = new WebhookSecretVerifier( $this->bots, $audit_logger );
-		$this->deferred  = new DeferredUpdateRepository( $schema_health, $this->vault );
-		$this->gate      = new QuiescenceGate( $schema_health, $this->deferred, new QuiescenceTransitionRepository() );
+		$this->bots     = new BotProfileRepository( $schema_health, $this->vault );
+		$updates        = new UpdateRepository( $schema_health );
+		$conversations  = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );
+		$destinations   = new DestinationRepository( $schema_health );
+		$messages       = new MessageRepository( $schema_health, $this->vault );
+		$verifier       = new WebhookSecretVerifier( $this->bots, $audit_logger );
+		$this->deferred = new DeferredUpdateRepository( $schema_health, $this->vault );
+		$this->gate     = new QuiescenceGate( $schema_health, $this->deferred, new QuiescenceTransitionRepository() );
 
 		$outbound_messages  = new OutboundMessageRepository( $schema_health, $this->vault );
 		$message_dispatcher = new MessageDispatcher( $outbound_messages, new Dispatcher( $schema_health ) );
@@ -127,7 +127,12 @@ final class WebhookControllerQuiescenceTest extends WP_UnitTestCase {
 
 		$bot    = $this->bots->create( 'Bot', 'token' );
 		$secret = $this->active_secret_for( $bot );
-		$body   = wp_json_encode( array( 'update_id' => 300, 'message' => array( 'chat' => array( 'id' => 555 ) ) ) );
+		$body   = wp_json_encode(
+			array(
+				'update_id' => 300,
+				'message'   => array( 'chat' => array( 'id' => 555 ) ),
+			)
+		);
 
 		$response = $this->controller->handle_request( $this->request_for( $bot->bot_uuid(), $secret, $body ) );
 
@@ -137,7 +142,7 @@ final class WebhookControllerQuiescenceTest extends WP_UnitTestCase {
 		global $wpdb;
 		$updates_table = $wpdb->prefix . 'universal_telegram_inbound_updates';
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$updates_table} WHERE bot_id = {$bot->id()} AND update_id = 300" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$updates_table} WHERE bot_id = {$bot->id()} AND update_id = 300" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$this->assertSame( 0, $count, 'A buffered update must never reach the live dedup/processing pipeline.' );
 	}
@@ -152,7 +157,12 @@ final class WebhookControllerQuiescenceTest extends WP_UnitTestCase {
 			$wpdb->update( $state_table, array( 'state' => $state ), array( 'id' => 1 ) );
 
 			$update_id = 400 + $index;
-			$body      = wp_json_encode( array( 'update_id' => $update_id, 'message' => array( 'chat' => array( 'id' => 555 ) ) ) );
+			$body      = wp_json_encode(
+				array(
+					'update_id' => $update_id,
+					'message'   => array( 'chat' => array( 'id' => 555 ) ),
+				)
+			);
 			$response  = $this->controller->handle_request( $this->request_for( $bot->bot_uuid(), $secret, $body ) );
 
 			$this->assertSame( 200, $response->get_status(), "state={$state}" );
@@ -165,7 +175,12 @@ final class WebhookControllerQuiescenceTest extends WP_UnitTestCase {
 
 		$bot    = $this->bots->create( 'Bot', 'token' );
 		$secret = $this->active_secret_for( $bot );
-		$body   = wp_json_encode( array( 'update_id' => 500, 'message' => array( 'chat' => array( 'id' => 555 ) ) ) );
+		$body   = wp_json_encode(
+			array(
+				'update_id' => 500,
+				'message'   => array( 'chat' => array( 'id' => 555 ) ),
+			)
+		);
 
 		$first  = $this->controller->handle_request( $this->request_for( $bot->bot_uuid(), $secret, $body ) );
 		$second = $this->controller->handle_request( $this->request_for( $bot->bot_uuid(), $secret, $body ) );
@@ -180,7 +195,15 @@ final class WebhookControllerQuiescenceTest extends WP_UnitTestCase {
 
 		$bot    = $this->bots->create( 'Bot', 'token' );
 		$secret = $this->active_secret_for( $bot );
-		$body   = wp_json_encode( array( 'update_id' => 600, 'message' => array( 'text' => 'top secret visitor message', 'chat' => array( 'id' => 555 ) ) ) );
+		$body   = wp_json_encode(
+			array(
+				'update_id' => 600,
+				'message'   => array(
+					'text' => 'top secret visitor message',
+					'chat' => array( 'id' => 555 ),
+				),
+			)
+		);
 
 		$response = $this->controller->handle_request( $this->request_for( $bot->bot_uuid(), $secret, $body ) );
 
@@ -189,7 +212,7 @@ final class WebhookControllerQuiescenceTest extends WP_UnitTestCase {
 		global $wpdb;
 		$table = $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE;
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$ciphertext = $wpdb->get_var( "SELECT payload_ciphertext FROM {$table} WHERE bot_id = {$bot->id()} AND update_id = 600" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$ciphertext = $wpdb->get_var( "SELECT payload_ciphertext FROM {$table} WHERE bot_id = {$bot->id()} AND update_id = 600" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$this->assertStringNotContainsString( 'top secret visitor message', (string) $ciphertext );
 	}
@@ -199,14 +222,22 @@ final class WebhookControllerQuiescenceTest extends WP_UnitTestCase {
 
 		$bot    = $this->bots->create( 'Bot', 'token' );
 		$secret = $this->active_secret_for( $bot );
-		$body   = wp_json_encode( array( 'update_id' => 700, 'message' => array( 'text' => 'body', 'chat' => array( 'id' => 555 ) ) ) );
+		$body   = wp_json_encode(
+			array(
+				'update_id' => 700,
+				'message'   => array(
+					'text' => 'body',
+					'chat' => array( 'id' => 555 ),
+				),
+			)
+		);
 
 		$this->controller->handle_request( $this->request_for( $bot->bot_uuid(), $secret, $body ) );
 
 		global $wpdb;
 		$table = $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE;
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$ciphertext = $wpdb->get_var( "SELECT payload_ciphertext FROM {$table} WHERE bot_id = {$bot->id()} AND update_id = 700" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$ciphertext = $wpdb->get_var( "SELECT payload_ciphertext FROM {$table} WHERE bot_id = {$bot->id()} AND update_id = 700" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		// The correct context decrypts.
 		$correct = $this->vault->decrypt( $ciphertext, "quiescence-deferred-update:{$bot->id()}:700" );
@@ -220,7 +251,12 @@ final class WebhookControllerQuiescenceTest extends WP_UnitTestCase {
 	public function test_a_live_update_processes_normally_while_idle(): void {
 		$bot    = $this->bots->create( 'Bot', 'token' );
 		$secret = $this->active_secret_for( $bot );
-		$body   = wp_json_encode( array( 'update_id' => 800, 'message' => array( 'chat' => array( 'id' => 555 ) ) ) );
+		$body   = wp_json_encode(
+			array(
+				'update_id' => 800,
+				'message'   => array( 'chat' => array( 'id' => 555 ) ),
+			)
+		);
 
 		$response = $this->controller->handle_request( $this->request_for( $bot->bot_uuid(), $secret, $body ) );
 
@@ -230,7 +266,7 @@ final class WebhookControllerQuiescenceTest extends WP_UnitTestCase {
 		global $wpdb;
 		$updates_table = $wpdb->prefix . 'universal_telegram_inbound_updates';
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$updates_table} WHERE bot_id = {$bot->id()} AND update_id = 800" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$updates_table} WHERE bot_id = {$bot->id()} AND update_id = 800" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$this->assertSame( 1, $count );
 	}
@@ -240,7 +276,12 @@ final class WebhookControllerQuiescenceTest extends WP_UnitTestCase {
 		$secret = $this->active_secret_for( $bot );
 
 		$this->gate->enter();
-		$body = wp_json_encode( array( 'update_id' => 900, 'message' => array( 'chat' => array( 'id' => 555 ) ) ) );
+		$body = wp_json_encode(
+			array(
+				'update_id' => 900,
+				'message'   => array( 'chat' => array( 'id' => 555 ) ),
+			)
+		);
 		$this->controller->handle_request( $this->request_for( $bot->bot_uuid(), $secret, $body ) );
 
 		$this->gate->confirm();
@@ -261,7 +302,7 @@ final class WebhookControllerQuiescenceTest extends WP_UnitTestCase {
 		global $wpdb;
 		$updates_table = $wpdb->prefix . 'universal_telegram_inbound_updates';
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$updates_table} WHERE bot_id = {$bot->id()} AND update_id = 900" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$updates_table} WHERE bot_id = {$bot->id()} AND update_id = 900" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$this->assertSame( 1, $count );
 		$this->assertSame( 0, $this->gate->deferred_update_backlog_count() );

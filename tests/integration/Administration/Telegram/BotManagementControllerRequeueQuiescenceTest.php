@@ -48,11 +48,11 @@ final class BotManagementControllerRequeueQuiescenceTest extends WP_UnitTestCase
 		wp_set_current_user( $admin_id );
 
 		global $wpdb;
-		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" );
+		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		$this->schema_health = new SchemaHealth();
 		$this->bots          = new BotProfileRepository( $this->schema_health, new CredentialVault() );
-		$this->gate           = new QuiescenceGate(
+		$this->gate          = new QuiescenceGate(
 			$this->schema_health,
 			new DeferredUpdateRepository( $this->schema_health, new CredentialVault() ),
 			new QuiescenceTransitionRepository()
@@ -100,7 +100,7 @@ final class BotManagementControllerRequeueQuiescenceTest extends WP_UnitTestCase
 	public function test_requeue_is_blocked_unconditionally_outside_idle(): void {
 		$this->gate->enter();
 
-		$bot         = $this->bots->create( 'Bot', 'token' );
+		$bot          = $this->bots->create( 'Bot', 'token' );
 		$destinations = new DestinationRepository( $this->schema_health );
 		$destination  = $destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-100123', null, 'Test' );
 

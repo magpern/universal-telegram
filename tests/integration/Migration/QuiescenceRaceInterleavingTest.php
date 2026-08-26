@@ -60,7 +60,10 @@ final class QuiescenceRaceInterleavingTest extends WP_UnitTestCase {
 		$wpdb->query( 'COMMIT' );
 		$wpdb->query( 'START TRANSACTION' );
 
-		$this->second_connection = new \mysqli( DB_HOST, DB_USER, DB_PASSWORD, DB_NAME );
+		// A genuinely second, independent database connection is the whole
+		// point of this test — $wpdb is a single shared connection and
+		// cannot exercise two real concurrent transactions against itself.
+		$this->second_connection = new \mysqli( DB_HOST, DB_USER, DB_PASSWORD, DB_NAME ); // phpcs:ignore WordPress.DB.RestrictedClasses.mysql__mysqli
 	}
 
 	protected function tearDown(): void {
@@ -101,7 +104,7 @@ final class QuiescenceRaceInterleavingTest extends WP_UnitTestCase {
 		$suppressed = $wpdb->suppress_errors( true );
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$blocked_attempt = $wpdb->query( "SELECT state FROM {$this->state_table} WHERE id = 1 FOR UPDATE" );
-		$lock_error       = (string) $wpdb->last_error;
+		$lock_error      = (string) $wpdb->last_error;
 		$wpdb->suppress_errors( $suppressed );
 
 		$this->assertFalse( $blocked_attempt, 'The main connection must genuinely block behind, and then time out waiting for, the second connection\'s held lock.' );
@@ -155,7 +158,7 @@ final class QuiescenceRaceInterleavingTest extends WP_UnitTestCase {
 		$suppressed = $wpdb->suppress_errors( true );
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$blocked_attempt = $wpdb->query( "SELECT state FROM {$this->state_table} WHERE id = 1 FOR UPDATE" );
-		$lock_error       = (string) $wpdb->last_error;
+		$lock_error      = (string) $wpdb->last_error;
 		$wpdb->suppress_errors( $suppressed );
 
 		$this->assertFalse( $blocked_attempt );

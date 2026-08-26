@@ -36,15 +36,15 @@ final class RetentionCleanupHandlerQuiescenceTest extends WP_UnitTestCase {
 		parent::setUp();
 
 		global $wpdb;
-		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" );
+		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
-		$schema_health = new SchemaHealth();
+		$schema_health       = new SchemaHealth();
 		$this->conversations = new ConversationRepository( $schema_health, new CredentialVault(), new VisitorTokenGenerator() );
-		$messages             = new MessageRepository( $schema_health, new CredentialVault() );
-		$destinations         = new \UniversalTelegram\Telegram\Configuration\DestinationRepository( $schema_health );
-		$purge_service        = new ConversationPurgeService( $this->conversations, $messages, $destinations );
-		$eligibility          = new ConversationTopicEligibility( $this->conversations, $destinations );
-		$topic_deletion       = new TopicDeletionDispatcher( $this->conversations, new Dispatcher( $schema_health ) );
+		$messages            = new MessageRepository( $schema_health, new CredentialVault() );
+		$destinations        = new \UniversalTelegram\Telegram\Configuration\DestinationRepository( $schema_health );
+		$purge_service       = new ConversationPurgeService( $this->conversations, $messages, $destinations );
+		$eligibility         = new ConversationTopicEligibility( $this->conversations, $destinations );
+		$topic_deletion      = new TopicDeletionDispatcher( $this->conversations, new Dispatcher( $schema_health ) );
 
 		$this->gate = new QuiescenceGate(
 			$schema_health,

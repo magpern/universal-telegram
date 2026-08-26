@@ -27,7 +27,7 @@ final class ConversationDraftPanelQuiescenceTest extends WP_UnitTestCase {
 		parent::setUp();
 
 		global $wpdb;
-		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" );
+		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'idle', updated_at = NOW() WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		$schema_health = new SchemaHealth();
 		$this->gate    = new QuiescenceGate(
@@ -48,9 +48,9 @@ final class ConversationDraftPanelQuiescenceTest extends WP_UnitTestCase {
 		$operator = self::factory()->user->create( array( 'role' => 'administrator' ) );
 		wp_set_current_user( $operator );
 
-		$_POST['_wpnonce']       = wp_create_nonce( ConversationDraftPanel::NONCE_ACTION );
-		$_POST['op']             = 'approve';
-		$_POST['draft_id']       = '1';
+		$_POST['_wpnonce']        = wp_create_nonce( ConversationDraftPanel::NONCE_ACTION );
+		$_POST['op']              = 'approve';
+		$_POST['draft_id']        = '1';
 		$_POST['conversation_id'] = '1';
 
 		$schema_health = new SchemaHealth();
