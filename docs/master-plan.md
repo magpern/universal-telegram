@@ -1120,8 +1120,11 @@ Website chat SoR, widget, Hub replies, availability, and future chat AI are owne
   (mutual Ed25519 request signing, auth profile `support-channel-contract-auth/v1`; implemented, tested, and proven via a joint interoperability gate — see ADR-0038)
 * **Legacy export boundary pin (ADR-0039):** Support Chat ADR-0008 commit `7546d43be66f8e3b2f179f03a1c81c9aadef59db` —
   `https://github.com/magpern/universal-support-chat/blob/7546d43be66f8e3b2f179f03a1c81c9aadef59db/docs/adr/0008-legacy-export-boundary-and-migration-authority-model.md`
-  (narrow, versioned, in-process, WP-CLI-only `LegacyExportServiceV1`; not implemented as of this documentation freeze — see ADR-0039 for the authorised follow-up scope)
-* Sequence: `SC-M00–M02` → UT Adapter M1 → **ADR-0038 signed-client follow-up (implemented)** → **ADR-0039 legacy export boundary follow-up (pinned)** → `SC-M03` work packages 3–4 → `SC-M04`
+  (narrow, versioned, in-process, WP-CLI-only `LegacyExportServiceV1`; implemented, Product Owner acceptance pending — see ADR-0039 for the authorised follow-up scope)
+* **Legacy binding preparation boundary pin (ADR-0041):** Support Chat ADR-0009 commit `590b53ba898aa4054ec65c65965c152a3612149b` —
+  `https://github.com/magpern/universal-support-chat/blob/590b53ba898aa4054ec65c65965c152a3612149b/docs/adr/0009-legacy-binding-preparation-boundary-and-non-routing-prepared-status.md`
+  (narrow, versioned, in-process, WP-CLI-only `LegacyBindingImportServiceV1`; a new non-routing `prepared` binding status; a lock-scoped quiescence assertion; not implemented as of this documentation freeze — see ADR-0041 for the authorised follow-up scope)
+* Sequence: `SC-M00–M02` → UT Adapter M1 → **ADR-0038 signed-client follow-up (implemented)** → **ADR-0039 legacy export boundary follow-up (implemented, PO acceptance pending)** → `SC-M03` work packages 3–4 (implemented, PO accepted) → `SC-M03` work package 2 (implemented, PO accepted, ADR-0040) → **ADR-0041 legacy binding preparation follow-up (pinned)** → `SC-M03` work package 5 → `SC-M04`
 * Legacy UT chat runtime remains until SC-M03; this documentation does not extract or disable it
 
 ## M11 — Digests and operational intelligence

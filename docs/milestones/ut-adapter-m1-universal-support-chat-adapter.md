@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented with fail-closed Contract boundary (closure: `docs/closure/ut-adapter-m1-universal-support-chat-adapter-closure.md`). **Signed Contract client follow-up (ADR-0038, §0 below):** work packages 1–5 of plan v2 implemented — real ADR-0007 mutual Ed25519 signing/verification, administrator pairing, and nonce-replay housekeeping (closure: `docs/closure/ut-adapter-m1-signed-contract-client-closure.md`). **Work package 6 (joint interoperability tests) is also implemented** — joint authenticated interoperability proven against a live Support Chat authenticated Contract server (closure: `docs/closure/ut-adapter-m1-wp6-interop-gate-closure.md`). **Legacy export boundary follow-up (ADR-0039, §0b below):** work package 8 (`LegacyExportServiceV1`) implemented (closure: `docs/closure/ut-adapter-m1-legacy-export-service-closure.md`; Product Owner acceptance pending) — which Support Chat's SC-M03 legacy migration engine (work packages 3–4) depends on.
+Implemented with fail-closed Contract boundary (closure: `docs/closure/ut-adapter-m1-universal-support-chat-adapter-closure.md`). **Signed Contract client follow-up (ADR-0038, §0 below):** work packages 1–5 of plan v2 implemented — real ADR-0007 mutual Ed25519 signing/verification, administrator pairing, and nonce-replay housekeeping (closure: `docs/closure/ut-adapter-m1-signed-contract-client-closure.md`). **Work package 6 (joint interoperability tests) is also implemented** — joint authenticated interoperability proven against a live Support Chat authenticated Contract server (closure: `docs/closure/ut-adapter-m1-wp6-interop-gate-closure.md`). **Legacy export boundary follow-up (ADR-0039, §0b below):** work package 8 (`LegacyExportServiceV1`) implemented (closure: `docs/closure/ut-adapter-m1-legacy-export-service-closure.md`; Product Owner acceptance pending) — which Support Chat's SC-M03 legacy migration engine (work packages 3–4) depends on. **Legacy binding preparation follow-up (ADR-0041, §0c below):** work package 9 (`LegacyBindingImportServiceV1`, the `prepared` status, and the lock-scoped quiescence assertion) authorized; not yet implemented — which Support Chat's SC-M03 work package 5 depends on.
 
 ## Dependencies
 
@@ -43,6 +43,21 @@ This plugin's obligation is limited to `LegacyExportServiceV1` and its own tests
 This milestone's frozen plan is extended by [plan v3](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v3.md), superseding [plan v2](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v2.md) (retained unedited) only to add the `LegacyExportServiceV1` work package.
 
 **No `LegacyExportServiceV1` implementation code may begin until ADR-0039 is merged. Support Chat's SC-M03 work packages 3–4 migration-engine code may not begin until both ADR-0039 and Support Chat's own ADR-0008 are merged to their respective `main` branches.**
+
+## 0c. Legacy binding preparation follow-up (ADR-0041)
+
+Added by the `docs/support-chat-adr-0009-legacy-binding-preparation-pin` documentation freeze, additive to this charter (`docs/governance.md` "Changing a frozen milestone charter"). Does not alter §Included scope, §Explicit exclusions, or the acceptance/entry/exit criteria below.
+
+Support Chat's SC-M03 work packages 2–4 (§0b) are complete and Product Owner accepted. Support Chat's SC-M03 work package 5 (binding preparation for existing Telegram topics) now depends on three new capabilities this plugin must supply: a new, non-routing `prepared` binding status; a narrow, versioned, in-process, WP-CLI-only binding-write interface, `LegacyBindingImportServiceV1`; and a lock-scoped quiescence assertion usable from a second caller besides the existing webhook buffer-vs-process and replay-to-idle paths — pinned and scoped by [ADR-0041](../adr/0041-support-chat-adr-0009-pin-and-legacy-binding-preparation-follow-up.md), which pins Support Chat's own ADR-0009:
+
+- Commit SHA: `590b53ba898aa4054ec65c65965c152a3612149b`
+- Canonical URL: `https://github.com/magpern/universal-support-chat/blob/590b53ba898aa4054ec65c65965c152a3612149b/docs/adr/0009-legacy-binding-preparation-boundary-and-non-routing-prepared-status.md`
+
+This plugin's obligation is limited to `LegacyBindingImportServiceV1`, the `prepared` status, the lock-scoped quiescence assertion, and their tests (ADR-0041 §2, §3, §6) — activation (`prepared → active`), any modification to `BindingImportCommand`, Support Chat-side candidate identification/schema/CLI, and cutover/soak/rollback are all explicitly out of scope for this follow-up. ADR-0041 §4 also records that this follow-up supersedes, as a factual matter, ADR-0039 §4's earlier speculation that work package 5 would reuse the existing `ensure_channel_case`/pairing infrastructure — direct source verification found that path shares `BindingImportCommand`'s unconditional `status = 'active'` write, which ADR-0009/ADR-0041 exist to avoid.
+
+This milestone's frozen plan is extended by [plan v4](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v4.md), superseding [plan v3](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v3.md) (retained unedited) only to add the `LegacyBindingImportServiceV1` work package (WP9).
+
+**No `LegacyBindingImportServiceV1` implementation code may begin until ADR-0041 is merged. Support Chat's SC-M03 work package 5 code may not begin until both ADR-0041 and Support Chat's own ADR-0009 are merged to their respective `main` branches.**
 
 ## Objective
 
@@ -119,4 +134,4 @@ Adapter module; binding schema/migrations (at implementation); Contract client/s
 
 ## Frozen plan
 
-[ut-adapter-m1-universal-support-chat-adapter-plan-v3.md](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v3.md) (supersedes [v2](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v2.md), which supersedes [v1](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v1.md); v1 and v2 retained unedited per `docs/plans/README.md`/`docs/governance.md`)
+[ut-adapter-m1-universal-support-chat-adapter-plan-v4.md](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v4.md) (supersedes [v3](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v3.md), which supersedes [v2](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v2.md), which supersedes [v1](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v1.md); v1, v2, and v3 retained unedited per `docs/plans/README.md`/`docs/governance.md`)

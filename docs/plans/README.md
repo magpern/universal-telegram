@@ -36,7 +36,8 @@ Support Chat extraction supersession (ADR-0037) adds the authorised adapter plan
 
 - ~~`docs/plans/ut-adapter-m1-universal-support-chat-adapter-plan-v1.md`~~ (ADR-0037; pins Support Chat Contract v1 SHA `dff2730e24b7d3f70f15f706305e12e14fdcc6c8`; superseded)
 - ~~`docs/plans/ut-adapter-m1-universal-support-chat-adapter-plan-v2.md`~~ (ADR-0038; pins Support Chat ADR-0007 SHA `8ee396d8b8edcbf526797c0a1f5741f3842df57a` — the signed Contract client follow-up; work packages 1–7 implemented; superseded)
-- `docs/plans/ut-adapter-m1-universal-support-chat-adapter-plan-v3.md` (current; ADR-0039; pins Support Chat ADR-0008 SHA `7546d43be66f8e3b2f179f03a1c81c9aadef59db` — the legacy export boundary follow-up, work package 8)
+- ~~`docs/plans/ut-adapter-m1-universal-support-chat-adapter-plan-v3.md`~~ (ADR-0039; pins Support Chat ADR-0008 SHA `7546d43be66f8e3b2f179f03a1c81c9aadef59db` — the legacy export boundary follow-up, work package 8; superseded)
+- `docs/plans/ut-adapter-m1-universal-support-chat-adapter-plan-v4.md` (current; ADR-0041; pins Support Chat ADR-0009 SHA `590b53ba898aa4054ec65c65965c152a3612149b` — the legacy binding preparation follow-up, work package 9)
 
 Support Chat SC-M03 Work Package 2 (legacy-chat quiescence, ADR-0040) adds:
 
