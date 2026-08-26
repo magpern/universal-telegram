@@ -177,6 +177,7 @@ use UniversalTelegram\SupportChatAdapter\Diagnostics\AdapterStatusPage;
 use UniversalTelegram\SupportChatAdapter\DiscoveryClient;
 use UniversalTelegram\SupportChatAdapter\Inbound\InboundAdapterBridge;
 use UniversalTelegram\SupportChatAdapter\Inbound\SupportChatContractClient;
+use UniversalTelegram\SupportChatAdapter\Migration\LegacyExportServiceV1;
 use UniversalTelegram\SupportChatAdapter\Outbound\BackfillService;
 use UniversalTelegram\SupportChatAdapter\Outbound\DeliverMessageService;
 use UniversalTelegram\SupportChatAdapter\Outbound\EnsureChannelCaseService;
@@ -482,6 +483,16 @@ final class Plugin {
 	 * @var ConversationNoteRepository|null
 	 */
 	private ?ConversationNoteRepository $conversation_note_repository = null;
+
+	/**
+	 * The legacy conversation export boundary, constructed by init()
+	 * (Support Chat ADR-0008, ADR-0039). Called in-process, only from a
+	 * WP-CLI process, by Support Chat's own future SC-M03 migration command
+	 * via `Plugin::instance()->legacy_export_service()`.
+	 *
+	 * @var LegacyExportServiceV1|null
+	 */
+	private ?LegacyExportServiceV1 $legacy_export_service = null;
 
 	/**
 	 * The operator identity mapping admin page, constructed by init() (M07, docs/adr/0026).
@@ -809,6 +820,13 @@ final class Plugin {
 		$this->operator_identity_repository     = new OperatorIdentityRepository( $this->schema_health );
 		$this->operator_availability_repository = new OperatorAvailabilityRepository( $this->schema_health );
 		$this->conversation_note_repository     = new ConversationNoteRepository( $this->schema_health, $this->credential_vault );
+
+		$this->legacy_export_service = new LegacyExportServiceV1(
+			$this->conversation_repository,
+			$this->message_repository,
+			$this->conversation_note_repository,
+			$this->schema_health
+		);
 
 		$this->update_repository       = new UpdateRepository( $this->schema_health );
 		$this->webhook_secret_verifier = new WebhookSecretVerifier( $this->bot_profile_repository, $this->audit_logger );
@@ -1974,6 +1992,15 @@ final class Plugin {
 	 */
 	public function conversation_note_repository(): ?ConversationNoteRepository {
 		return $this->conversation_note_repository;
+	}
+
+	/**
+	 * The legacy conversation export boundary (Support Chat ADR-0008,
+	 * ADR-0039). Available only after init() has run. Its own
+	 * export_batch() call rejects any invocation outside a WP-CLI process.
+	 */
+	public function legacy_export_service(): ?LegacyExportServiceV1 {
+		return $this->legacy_export_service;
 	}
 
 	/**
