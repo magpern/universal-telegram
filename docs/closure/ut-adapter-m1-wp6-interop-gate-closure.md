@@ -34,18 +34,21 @@ ships, not a parallel test-only wiring.
 | UT repository | `magpern/universal-telegram` |
 | UT starting SHA (`origin/main`) | `5c6f19e76718524e7b0bc5b147ac46dffe3fbccf` (merge of PR #34, WP1–5) |
 | UT branch | `feature/ut-adapter-m1-interop-wp6` |
-| UT final branch SHA | `467d99650464cfea1ef0639f9a5cbcecac4b46d2` |
+| UT original interoperability-tested implementation SHA (the exact SHA the 35-test, 413-assertion matrix below was run and proven against) | `467d99650464cfea1ef0639f9a5cbcecac4b46d2` |
+| UT final branch SHA (current PR head; two follow-up commits since the tested SHA above — a docs-only closure-record commit and a docs/test-only commit scoping two benign `phpcs:ignore` suppressions the CI matrix flagged as blocking warnings, neither changing any test's logic or the interoperability matrix itself) | `f7c1c3cda76807bfb01fdb5ff3c5883e65eaf613` |
 | SC repository | `magpern/universal-support-chat` |
 | SC starting SHA (`origin/main`) | `2f748168f591bec551a740a5060d394bc6e29ba3` (merge of PR #6, SC-M03 WP0) |
 | SC branch used by the harness | `feature/sc-m03-ut-interop-wp6` |
-| SC branch SHA the harness ran against | `0ec44cf8f901c641d4a000abdf70a8764a607eae` |
+| SC interoperability-tested implementation SHA the harness ran against | `0ec44cf8f901c641d4a000abdf70a8764a607eae` |
+| SC final branch SHA (current PR head; one follow-up docs-only closure-record commit since the tested SHA above) | `cbe01c044ce7e9f345f5e20c4c72d64f94ae8793` |
 
 The harness mounts the SC checkout by host path
 (`docker/docker-compose.interop.yml`, `SUPPORT_CHAT_HOST_PATH`, default
 `/opt/biopentra/dev/universal-support-chat`) and links whatever is checked
 out there into the disposable WordPress install
-(`tests/bin/install-support-chat.sh`) — the SHA above is what was actually
-loaded for every run this closure reports.
+(`tests/bin/install-support-chat.sh`) — the interoperability-tested SHA
+above (not necessarily the final branch SHA) is what was actually loaded
+for every run this closure reports.
 
 ## What was implemented in this work package
 
@@ -136,7 +139,7 @@ directly to `resolved`).
 | Interop suite | `bin/docker/test-integration-interop.sh --php-version 8.3 --wp-version 6.9` | 35 tests, 413 assertions — OK |
 | Unit | `bin/docker/test-unit.sh` | 377 tests, 1164 assertions — OK, 1 pre-existing skip |
 | Integration (WP 6.9 / PHP 8.3, `tests/integration` excluding `Interop`) | `bin/docker/test-integration-wp-only.sh --wp-version=6.9 --php-version=8.3` | 1031 tests, 3365 assertions — OK, 58 pre-existing skips |
-| PHPCS | `bin/docker/phpcs.sh` | 0 errors, 2 benign pre-existing-pattern warnings (`base64_decode`/`file_get_contents` used for legitimate, non-obfuscation, local-file reasons — matching existing codebase conventions) |
+| PHPCS | `bin/docker/phpcs.sh` | **0 errors, 0 warnings** as of the final branch SHA above. Two initially-benign warnings (`base64_decode()`/`file_get_contents()`, both legitimate non-obfuscation, local-file/test-assertion uses) were caught by remote CI, which treats phpcs warnings as blocking — not by the local run this closure originally reported against. Both were resolved with line-scoped `// phpcs:ignore <sniff> -- <reason>` comments, matching this repository's existing convention exactly (`src/Core/Security/CredentialVault.php`, `tests/integration/SupportChatAdapter/{PairingTest.php,ChannelBindingRepositoryTest.php,SupportChatContractClientDispatchTest.php}`). Remote CI is confirmed green on the final branch SHA (`gh pr checks 35`), all checks passing across both matrix runs. |
 | PHPStan (level 5) | `bin/docker/phpstan.sh` | 0 errors (`tests/` is out of PHPStan's configured scope, unchanged by this work package) |
 | Doc links | `composer check-doc-links` (via `bin/docker/composer.sh`) | 19 unresolved links, all in `docs/plans/m07-1-conversation-topic-lifecycle-and-repair-plan-v1.md` — confirmed identical count on `origin/main` before this branch's changes; **pre-existing, not introduced by this work package** |
 
