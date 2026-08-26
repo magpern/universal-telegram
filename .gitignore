@@ -2,3 +2,4 @@
 /dist/
 .phpunit.result.cache
 .phpunit.cache/
+/.claude/

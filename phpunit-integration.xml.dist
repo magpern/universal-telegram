@@ -7,6 +7,11 @@
     <testsuites>
         <testsuite name="integration">
             <directory suffix="Test.php">tests/integration</directory>
+            <!-- The cross-plugin interop suite requires the dual-plugin
+                 bootstrap in tests/integration/Interop/bootstrap.php and
+                 the sibling universal-support-chat checkout; it runs only
+                 via phpunit-interop.xml.dist (bin/docker/test-integration-interop.sh). -->
+            <exclude>tests/integration/Interop</exclude>
         </testsuite>
     </testsuites>
 </phpunit>

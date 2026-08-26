@@ -1,0 +1,14 @@
+# Overlay for the SC<->UT cross-plugin interoperability harness
+# (tests/integration/Interop). Mounts the sibling universal-support-chat
+# checkout (real source, real branch, not a fixture) into the same
+# container that already runs the universal-telegram integration suite, so
+# both plugins' real code can be loaded into one disposable WordPress test
+# install. Merge with the base compose file:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.interop.yml run --rm php ...
+#
+# SUPPORT_CHAT_HOST_PATH overrides the sibling checkout path if it ever
+# needs to move; defaults to this VPS's fixed dev layout.
+services:
+  php:
+    volumes:
+      - ${SUPPORT_CHAT_HOST_PATH:-/opt/biopentra/dev/universal-support-chat}:/support-chat
