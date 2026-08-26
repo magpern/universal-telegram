@@ -35,7 +35,8 @@ M10 had no implementation plan in that freeze; its UT path is also superseded (r
 Support Chat extraction supersession (ADR-0037) adds the authorised adapter plan:
 
 - ~~`docs/plans/ut-adapter-m1-universal-support-chat-adapter-plan-v1.md`~~ (ADR-0037; pins Support Chat Contract v1 SHA `dff2730e24b7d3f70f15f706305e12e14fdcc6c8`; superseded)
-- `docs/plans/ut-adapter-m1-universal-support-chat-adapter-plan-v2.md` (current; ADR-0038; pins Support Chat ADR-0007 SHA `8ee396d8b8edcbf526797c0a1f5741f3842df57a` — the signed Contract client follow-up)
+- ~~`docs/plans/ut-adapter-m1-universal-support-chat-adapter-plan-v2.md`~~ (ADR-0038; pins Support Chat ADR-0007 SHA `8ee396d8b8edcbf526797c0a1f5741f3842df57a` — the signed Contract client follow-up; work packages 1–7 implemented; superseded)
+- `docs/plans/ut-adapter-m1-universal-support-chat-adapter-plan-v3.md` (current; ADR-0039; pins Support Chat ADR-0008 SHA `7546d43be66f8e3b2f179f03a1c81c9aadef59db` — the legacy export boundary follow-up, work package 8)
 
 - A plan is committed standalone, code-free, together with every new ADR it depends on, or after those ADRs already exist from an earlier documentation-only commit — see docs/governance.md, Freeze model.
 - Once committed, a plan is immutable. A required change is a new file that supersedes the prior plan; the prior plan file is never edited or deleted.

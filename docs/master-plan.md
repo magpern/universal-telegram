@@ -1117,8 +1117,11 @@ Website chat SoR, widget, Hub replies, availability, and future chat AI are owne
   `https://github.com/magpern/universal-support-chat/blob/dff2730e24b7d3f70f15f706305e12e14fdcc6c8/docs/adr/0005-canonical-support-channel-contract-v1.md`
 * **Contract v1 authentication pin (ADR-0038):** Support Chat ADR-0007 commit `8ee396d8b8edcbf526797c0a1f5741f3842df57a` —
   `https://github.com/magpern/universal-support-chat/blob/8ee396d8b8edcbf526797c0a1f5741f3842df57a/docs/adr/0007-contract-v1-mutual-signed-adapter-authentication-profile.md`
-  (mutual Ed25519 request signing, auth profile `support-channel-contract-auth/v1`; replaces UT Adapter M1's current fail-closed `SupportChatContractClient` stubs when implemented — see ADR-0038 for the authorised follow-up scope)
-* Sequence: `SC-M00–M02` → UT Adapter M1 → **ADR-0038 signed-client follow-up** → `SC-M03` → `SC-M04`
+  (mutual Ed25519 request signing, auth profile `support-channel-contract-auth/v1`; implemented, tested, and proven via a joint interoperability gate — see ADR-0038)
+* **Legacy export boundary pin (ADR-0039):** Support Chat ADR-0008 commit `7546d43be66f8e3b2f179f03a1c81c9aadef59db` —
+  `https://github.com/magpern/universal-support-chat/blob/7546d43be66f8e3b2f179f03a1c81c9aadef59db/docs/adr/0008-legacy-export-boundary-and-migration-authority-model.md`
+  (narrow, versioned, in-process, WP-CLI-only `LegacyExportServiceV1`; not implemented as of this documentation freeze — see ADR-0039 for the authorised follow-up scope)
+* Sequence: `SC-M00–M02` → UT Adapter M1 → **ADR-0038 signed-client follow-up (implemented)** → **ADR-0039 legacy export boundary follow-up (pinned)** → `SC-M03` work packages 3–4 → `SC-M04`
 * Legacy UT chat runtime remains until SC-M03; this documentation does not extract or disable it
 
 ## M11 — Digests and operational intelligence
