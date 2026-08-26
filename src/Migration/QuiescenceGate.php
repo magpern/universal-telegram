@@ -510,8 +510,7 @@ class QuiescenceGate {
 				'hook'   => WorkerRunner::HOOK,
 				'group'  => WorkerRunner::GROUP,
 				'status' => ActionScheduler_Store::STATUS_PENDING,
-			),
-			'ids'
+			)
 		);
 
 		if ( empty( $ids ) ) {
@@ -528,10 +527,19 @@ class QuiescenceGate {
 		$job_type_path       = '$[0].job_type';
 		$destination_id_path = '$[0].payload.destination_id';
 
+		// Action Scheduler's own `args` column holds the actual JSON only
+		// when it is short enough to fit its indexed VARCHAR column
+		// (ActionScheduler_DBStore::save_action_to_db()); once a payload
+		// exceeds that length — as every job type here does, carrying a
+		// job_id UUID plus a payload sub-object — `args` instead holds an
+		// md5 hash and the real JSON moves to `extended_args`. Both must be
+		// considered.
+		$effective_args = "IF(extended_args IS NOT NULL AND extended_args != '', extended_args, args)";
+
 		$rows = $wpdb->get_results(
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-				"SELECT JSON_UNQUOTE(JSON_EXTRACT(args, %s)) AS job_type, JSON_UNQUOTE(JSON_EXTRACT(args, %s)) AS destination_id FROM {$actions_table} WHERE action_id IN ({$placeholders})",
+				"SELECT JSON_UNQUOTE(JSON_EXTRACT({$effective_args}, %s)) AS job_type, JSON_UNQUOTE(JSON_EXTRACT({$effective_args}, %s)) AS destination_id FROM {$actions_table} WHERE action_id IN ({$placeholders})",
 				array_merge( array( $job_type_path, $destination_id_path ), $ids )
 			),
 			ARRAY_A
