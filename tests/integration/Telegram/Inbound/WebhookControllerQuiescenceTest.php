@@ -188,8 +188,17 @@ final class WebhookControllerQuiescenceTest extends WP_UnitTestCase {
 		}
 	}
 
-	public function test_duplicate_delivery_while_buffering_is_idempotent(): void {
-		$this->gate->enter();
+	/**
+	 * ADR-0040 §7: duplicate-delivery idempotency at each of draining,
+	 * quiescent, and replaying — both requests return 200, exactly one row
+	 * exists, no plaintext anywhere.
+	 *
+	 * @dataProvider non_idle_states
+	 */
+	public function test_duplicate_delivery_while_buffering_is_idempotent( string $state ): void {
+		global $wpdb;
+		$state_table = $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE;
+		$wpdb->update( $state_table, array( 'state' => $state ), array( 'id' => 1 ) );
 
 		$bot    = $this->bots->create( 'Bot', 'token' );
 		$secret = $this->active_secret_for( $bot );
@@ -203,9 +212,25 @@ final class WebhookControllerQuiescenceTest extends WP_UnitTestCase {
 		$first  = $this->controller->handle_request( $this->request_for( $bot->bot_uuid(), $secret, $body ) );
 		$second = $this->controller->handle_request( $this->request_for( $bot->bot_uuid(), $secret, $body ) );
 
-		$this->assertSame( 200, $first->get_status() );
-		$this->assertSame( 200, $second->get_status() );
-		$this->assertSame( 1, $this->gate->deferred_update_backlog_count(), 'Exactly one row must exist after a duplicate delivery.' );
+		$this->assertSame( 200, $first->get_status(), "state={$state}" );
+		$this->assertSame( 200, $second->get_status(), "state={$state}" );
+		$this->assertSame( 1, $this->gate->deferred_update_backlog_count(), "state={$state}: exactly one row must exist after a duplicate delivery." );
+
+		global $wpdb;
+		$table      = $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE;
+		$ciphertext = $wpdb->get_var( $wpdb->prepare( "SELECT payload_ciphertext FROM {$table} WHERE bot_id = %d AND update_id = 500", $bot->id() ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$this->assertStringNotContainsString( '"chat"', (string) $ciphertext, "state={$state}: no plaintext anywhere." );
+	}
+
+	/**
+	 * @return array<string, array{0: string}>
+	 */
+	public function non_idle_states(): array {
+		return array(
+			'draining'  => array( 'draining' ),
+			'quiescent' => array( 'quiescent' ),
+			'replaying' => array( 'replaying' ),
+		);
 	}
 
 	public function test_buffered_payload_is_never_recoverable_in_plaintext_via_the_response(): void {
