@@ -2171,7 +2171,7 @@ class Migrator {
 
 		$wpdb->query(
 			"CREATE TABLE IF NOT EXISTS {$transitions_table} (
-				id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 				from_state VARCHAR(16) NOT NULL,
 				to_state VARCHAR(16) NOT NULL,
 				token VARCHAR(36) NOT NULL,
@@ -2184,13 +2184,14 @@ class Migrator {
 
 		$wpdb->query(
 			"CREATE TABLE IF NOT EXISTS {$deferred_table} (
-				id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 				bot_id BIGINT UNSIGNED NOT NULL,
 				update_id BIGINT NOT NULL,
 				update_type VARCHAR(32) NOT NULL,
 				payload_ciphertext LONGTEXT NOT NULL,
 				received_at DATETIME NOT NULL,
 				replayed_at DATETIME NULL,
+				PRIMARY KEY (id),
 				UNIQUE KEY bot_update (bot_id, update_id)
 			) {$charset_collate}"
 		);
