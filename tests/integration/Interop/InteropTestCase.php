@@ -171,7 +171,7 @@ abstract class InteropTestCase extends WP_UnitTestCase {
 		self::assertIsArray( $sc_key );
 		self::assertIsArray( $ut_key );
 
-		self::assertSame( UtKeyId::compute( ContractConstants::PEER_ID, base64_decode( $sc_key['public_key'], true ) ), $sc_key['key_id'] );
+		self::assertSame( UtKeyId::compute( ContractConstants::PEER_ID, base64_decode( $sc_key['public_key'], true ) ), $sc_key['key_id'] ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- decoding real key material for a test assertion, not obfuscation.
 
 		$sc_pair_result = $sc_pairing->pair(
 			'universal-telegram',

@@ -101,7 +101,7 @@ final class ActivationAndPairingTest extends InteropTestCase {
 			if ( ! $file->isFile() || 'php' !== $file->getExtension() ) {
 				continue;
 			}
-			$contents = (string) file_get_contents( $file->getPathname() );
+			$contents = (string) file_get_contents( $file->getPathname() ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local repository source file, never a remote URL.
 			foreach ( $needles as $needle ) {
 				if ( false !== strpos( $contents, $needle ) ) {
 					++$count;
