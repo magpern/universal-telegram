@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented with fail-closed Contract boundary (closure: `docs/closure/ut-adapter-m1-universal-support-chat-adapter-closure.md`). **Signed Contract client follow-up (ADR-0038, §0 below):** work packages 1–5 of plan v2 implemented — real ADR-0007 mutual Ed25519 signing/verification, administrator pairing, and nonce-replay housekeeping (closure: `docs/closure/ut-adapter-m1-signed-contract-client-closure.md`). **Work package 6 (joint interoperability tests) is also implemented** — joint authenticated interoperability proven against a live Support Chat authenticated Contract server (closure: `docs/closure/ut-adapter-m1-wp6-interop-gate-closure.md`). **Legacy export boundary follow-up (ADR-0039, §0b below):** pinned, not yet implemented — authorises this plugin's `LegacyExportServiceV1`, which Support Chat's SC-M03 legacy migration engine (work packages 3–4) depends on.
+Implemented with fail-closed Contract boundary (closure: `docs/closure/ut-adapter-m1-universal-support-chat-adapter-closure.md`). **Signed Contract client follow-up (ADR-0038, §0 below):** work packages 1–5 of plan v2 implemented — real ADR-0007 mutual Ed25519 signing/verification, administrator pairing, and nonce-replay housekeeping (closure: `docs/closure/ut-adapter-m1-signed-contract-client-closure.md`). **Work package 6 (joint interoperability tests) is also implemented** — joint authenticated interoperability proven against a live Support Chat authenticated Contract server (closure: `docs/closure/ut-adapter-m1-wp6-interop-gate-closure.md`). **Legacy export boundary follow-up (ADR-0039, §0b below):** work package 8 (`LegacyExportServiceV1`) implemented (closure: `docs/closure/ut-adapter-m1-legacy-export-service-closure.md`; Product Owner acceptance pending) — which Support Chat's SC-M03 legacy migration engine (work packages 3–4) depends on.
 
 ## Dependencies
 
@@ -37,6 +37,8 @@ The signed Contract client follow-up (§0 above) is complete, including its join
 - Canonical URL: `https://github.com/magpern/universal-support-chat/blob/7546d43be66f8e3b2f179f03a1c81c9aadef59db/docs/adr/0008-legacy-export-boundary-and-migration-authority-model.md`
 
 This plugin's obligation is limited to `LegacyExportServiceV1` and its own tests (ADR-0039 §2, §4) — legacy migration orchestration, Support Chat target writes, quiescence, binding creation, cutover, soak/rollback, AI migration, and this plugin's own legacy-UI decommission are all explicitly out of scope for this follow-up. This plugin also carries a forward commitment (ADR-0039 §3) to Support Chat's frozen `QuiescenceStateProvider` interface for whenever this plugin's own future quiescence work package is scoped — not implemented here.
+
+**Implemented**: `src/SupportChatAdapter/Migration/LegacyExportServiceV1.php`, per this plan's work package 8 — see `docs/closure/ut-adapter-m1-legacy-export-service-closure.md` for the full accounting. Product Owner acceptance and merge are the only remaining steps before Support Chat's SC-M03 work packages 3–4 may begin.
 
 This milestone's frozen plan is extended by [plan v3](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v3.md), superseding [plan v2](../plans/ut-adapter-m1-universal-support-chat-adapter-plan-v2.md) (retained unedited) only to add the `LegacyExportServiceV1` work package.
 

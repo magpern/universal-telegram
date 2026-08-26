@@ -315,6 +315,37 @@ class ConversationRepository {
 	}
 
 	/**
+	 * The keyset-cursor page of conversations for legacy export: every
+	 * conversation with id > after_id, ascending by id, capped by $limit
+	 * (Support Chat ADR-0008 §5, `LegacyExportServiceV1`) — mirrors
+	 * MessageRepository::messages_since()'s own cursor idiom.
+	 *
+	 * @param int $after_id The highest legacy conversation id already exported; 0 for the first batch.
+	 * @param int $limit    Maximum rows to return.
+	 *
+	 * @return array<int, Conversation>
+	 */
+	public function after_id( int $after_id, int $limit ): array {
+		if ( ! $this->schema_health->is_available() ) {
+			return array();
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::CONVERSATIONS_TABLE;
+		$rows  = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM {$table} WHERE id > %d ORDER BY id ASC LIMIT %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$after_id,
+				$limit
+			),
+			ARRAY_A
+		);
+
+		return array_map( array( $this, 'hydrate' ), null === $rows ? array() : $rows );
+	}
+
+	/**
 	 * Finds a conversation by its public conversation_uuid — the only
 	 * lookup key this boundary ever uses (M05 plan §3).
 	 *
