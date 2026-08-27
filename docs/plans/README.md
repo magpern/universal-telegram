@@ -44,6 +44,10 @@ Support Chat SC-M03 Work Package 2 (legacy-chat quiescence, ADR-0040) adds:
 
 - `docs/plans/wp2-legacy-chat-quiescence-plan-v1.md` (current; ADR-0040; fulfils the forward commitment made by ADR-0039 §3; depends on Support Chat PR #9, `a61aa09`)
 
+SC-M03 final-cutover disposable DEV rehearsal (planning-only; WP10 implemented and Product Owner accepted) adds:
+
+- `docs/plans/sc-m03-final-cutover-dev-rehearsal-plan-v1.md` (current; primary operator runbook for the disposable DEV rehearsal named as the next possible activity by the final-cutover Product Owner acceptance; pins UT `31519ee` / SC `ce46912`; **no rehearsal has run** — Tier 1 is a required container/PHPUnit prerequisite pending Approval A, Tier 2 is the actual DEV rehearsal, blocked on isolated-instance (B1) and dedicated non-production Telegram (B2) infrastructure and pending Approval B; authorizes no operational action)
+
 - A plan is committed standalone, code-free, together with every new ADR it depends on, or after those ADRs already exist from an earlier documentation-only commit — see docs/governance.md, Freeze model.
 - Once committed, a plan is immutable. A required change is a new file that supersedes the prior plan; the prior plan file is never edited or deleted.
 - The implementation report produced at the end of the milestone must reference the plan-freeze commit SHA it implemented, and every superseding plan's SHA if the plan was revised during the milestone.
