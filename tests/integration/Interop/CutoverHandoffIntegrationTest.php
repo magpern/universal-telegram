@@ -130,28 +130,27 @@ final class CutoverHandoffIntegrationTest extends InteropTestCase {
 	 * Creates a real, active UT binding for a fresh topic pointing at a
 	 * real SC conversation, and returns both.
 	 *
-	 * `CutoverReplayDispatcher`/`SupportChatContractClient` always send
-	 * `$binding->binding_uuid()` as `channel_case_ref` (real production
-	 * code, `CutoverReplayDispatcher.php:134` etc.), and Support Chat's own
-	 * `ContractOperationDispatcher::resolve_conversation()` resolves
-	 * `channel_case_ref` by looking it up directly as its own real
-	 * `conversation_uuid` (`find_by_uuid()`) — the identical convention
-	 * `InteropTestCase::create_sc_conversation()`'s own established callers
-	 * (`UtToScOperationsTest`) already rely on, passing the SC conversation
-	 * UUID straight through as `channel_case_ref`. This binding's own
-	 * `binding_uuid` is therefore deliberately seeded equal to the real SC
-	 * conversation UUID, not a separate opaque value — the exact value this
-	 * suite's own real dispatch calls must carry for Support Chat to
-	 * resolve them to the real conversation this test seeded.
+	 * Per ADR-0043 / Support Chat ADR-0011, `CutoverReplayDispatcher` and
+	 * `SupportChatContractClient` send `$binding->support_conversation_uuid()`
+	 * (the SC conversation/case UUID) as `channel_case_ref`, which Support
+	 * Chat's `ContractOperationDispatcher::resolve_conversation()` resolves
+	 * through its own `ConversationRepository::find_by_uuid()`. This binding
+	 * therefore mints an **independent** `binding_uuid` (as every real
+	 * creation path — `LegacyBindingImportServiceV1`, `EnsureChannelCaseService`
+	 * — does): the two UUIDs are deliberately distinct, and every test here
+	 * asserts the wire carries the conversation UUID, never `binding_uuid`.
 	 *
 	 * @return array{topic_id: int, conversation_uuid: string, binding_uuid: string}
 	 */
 	private function seed_active_binding_and_conversation(): array {
 		$conversation_uuid = $this->create_sc_conversation();
 		$topic_id          = self::next_topic_id();
+		$binding_uuid      = wp_generate_uuid4();
+
+		self::assertNotSame( $conversation_uuid, $binding_uuid, 'The fixture must use an independent binding_uuid — never seed equality (ADR-0043).' );
 
 		$binding = $this->ut_bindings->create(
-			$conversation_uuid,
+			$binding_uuid,
 			$conversation_uuid,
 			'interop-cutover-ensure-' . $topic_id,
 			$this->bot_id,
@@ -160,6 +159,8 @@ final class CutoverHandoffIntegrationTest extends InteropTestCase {
 			ChannelBinding::STATUS_ACTIVE
 		);
 		self::assertNotNull( $binding, 'Failed to seed a real active UT binding.' );
+		self::assertSame( $conversation_uuid, $binding->support_conversation_uuid() );
+		self::assertNotSame( $conversation_uuid, $binding->binding_uuid() );
 
 		return array(
 			'topic_id'          => $topic_id,
@@ -274,7 +275,7 @@ final class CutoverHandoffIntegrationTest extends InteropTestCase {
 		// row), standing in for "SC committed but the process died before
 		// UT's own mark_handed_off() ran".
 		$first = $this->ut_outbound_client->ingest_operator_reply(
-			$seed['binding_uuid'],
+			$seed['conversation_uuid'],
 			$key,
 			'Reply that must not be duplicated on retry.',
 			1,
@@ -292,7 +293,7 @@ final class CutoverHandoffIntegrationTest extends InteropTestCase {
 		// Retry: identical provenance, identical kind/channel_case_ref,
 		// identical idempotency key — a genuine retry, not a conflict.
 		$retry = $this->ut_outbound_client->ingest_operator_reply(
-			$seed['binding_uuid'],
+			$seed['conversation_uuid'],
 			$key,
 			'Reply that must not be duplicated on retry.',
 			1,
@@ -417,7 +418,7 @@ final class CutoverHandoffIntegrationTest extends InteropTestCase {
 		// A second real replay of the identical row (matching provenance,
 		// matching kind/channel_case_ref) must converge, not duplicate.
 		$second = $this->ut_outbound_client->report_channel_unavailable(
-			$binding->binding_uuid(),
+			$binding->support_conversation_uuid(),
 			'telegram_topic_closed',
 			$this->bot_id,
 			$update_id
@@ -605,6 +606,165 @@ final class CutoverHandoffIntegrationTest extends InteropTestCase {
 				continue;
 			}
 			self::assertStringNotContainsString( $reply_text, (string) $value, "Column {$column} of the real handoff-map row must never contain reply content." );
+		}
+	}
+
+	/**
+	 * 8. Fail-closed (ADR-0043 §3): an active binding whose
+	 * `support_conversation_uuid` resolves to no real Support Chat
+	 * conversation yields a real `404 not_found`, which becomes the durable
+	 * UT-only `unresolved_case_reference` incident — never an unbounded
+	 * retry-transient. No handoff-map row, `handed_off_at` unset, backlog
+	 * still blocked.
+	 */
+	public function test_unresolvable_conversation_uuid_becomes_unresolved_case_reference_incident(): void {
+		$topic_id     = self::next_topic_id();
+		$missing_uuid = wp_generate_uuid4();
+		$binding      = $this->ut_bindings->create(
+			wp_generate_uuid4(),
+			$missing_uuid,
+			'interop-cutover-missing-' . $topic_id,
+			$this->bot_id,
+			$this->parent_destination->id(),
+			$topic_id,
+			ChannelBinding::STATUS_ACTIVE
+		);
+		self::assertNotNull( $binding );
+		self::assertNull( $this->sc_conversations->find_by_uuid( $missing_uuid ), 'Precondition: no SC conversation exists for this UUID.' );
+
+		$sender_id = 919191;
+		$this->ut_operator_identities->create( 1, $sender_id, null, 1 );
+
+		$update_id = self::next_update_id();
+		$decoded   = array(
+			'message' => array(
+				'text' => 'a reply for a binding whose SC conversation is gone',
+				'from' => array( 'id' => $sender_id ),
+			),
+		);
+		$record    = $this->buffer_and_fetch( $update_id, 'message', $decoded );
+		$bot       = $this->ut_bots->find( $this->bot_id );
+		self::assertNotNull( $bot );
+
+		$outcome = $this->dispatcher->dispatch( $bot, $record, $binding, $decoded );
+
+		self::assertSame( CutoverReplayDispatcher::OUTCOME_INCIDENT, $outcome );
+
+		$row = $this->ut_deferred->find_by_id( $record->id() );
+		self::assertNotNull( $row );
+		self::assertSame( CutoverIncidentReason::UNRESOLVED_CASE_REFERENCE, $row['incident_reason'] );
+		self::assertNull( $row['handed_off_at'] );
+		self::assertNull( $row['replayed_at'] );
+		self::assertNull( $row['incident_resolved_at'], 'The incident blocks replaying → idle / confirm-complete until genuinely resolved.' );
+
+		self::assertSame( 0, $this->map_row_count_for( $update_id ), 'No SC handoff-map row for an unresolved case reference.' );
+	}
+
+	/**
+	 * 8b. Fail-closed (ADR-0043 §3): a deterministic Support Chat refusal
+	 * after active-binding selection — here a `400 invalid_body` for a
+	 * reply that exceeds Support Chat's own length limit — becomes the
+	 * durable UT-only `handoff_rejected` incident, never retry-transient
+	 * and never a silent unbounded retry.
+	 */
+	public function test_deterministic_sc_refusal_becomes_handoff_rejected_incident(): void {
+		$seed      = $this->seed_active_binding_and_conversation();
+		$sender_id = 929292;
+		$this->ut_operator_identities->create( 1, $sender_id, null, 1 );
+
+		$update_id = self::next_update_id();
+		$oversized = str_repeat( 'x', 5000 ); // Support Chat's MAX_TEXT_CHARS is 4096.
+		$decoded   = array(
+			'message' => array(
+				'text' => $oversized,
+				'from' => array( 'id' => $sender_id ),
+			),
+		);
+		$record    = $this->buffer_and_fetch( $update_id, 'message', $decoded );
+		$bot       = $this->ut_bots->find( $this->bot_id );
+		self::assertNotNull( $bot );
+		$binding = $this->ut_bindings->find_by_bot_topic( $this->bot_id, $seed['topic_id'] );
+		self::assertNotNull( $binding );
+
+		$outcome = $this->dispatcher->dispatch( $bot, $record, $binding, $decoded );
+
+		self::assertSame( CutoverReplayDispatcher::OUTCOME_INCIDENT, $outcome );
+
+		$row = $this->ut_deferred->find_by_id( $record->id() );
+		self::assertNotNull( $row );
+		self::assertSame( CutoverIncidentReason::HANDOFF_REJECTED, $row['incident_reason'] );
+		self::assertNull( $row['handed_off_at'] );
+		self::assertNull( $row['incident_resolved_at'] );
+
+		self::assertSame( 0, $this->map_row_count_for( $update_id ), 'No SC handoff-map row for a rejected handoff.' );
+		$conversation = $this->sc_conversations->find_by_uuid( $seed['conversation_uuid'] );
+		self::assertNotNull( $conversation );
+		self::assertCount( 0, $this->sc_messages->list_for_conversation( $conversation->id() ), 'The rejected reply must not create an SC message.' );
+	}
+
+	/**
+	 * 9. The wire request for every provenance-capable operation carries the
+	 * Support Chat conversation UUID as `channel_case_ref`, never the
+	 * independent `binding_uuid` (ADR-0043).
+	 */
+	public function test_wire_channel_case_ref_is_the_conversation_uuid_never_the_binding_uuid(): void {
+		$seed      = $this->seed_active_binding_and_conversation();
+		$sender_id = 939393;
+		$this->ut_operator_identities->create( 3, $sender_id, null, 1 );
+
+		$captured = array();
+		$observer = static function ( $result, $server, $request ) use ( &$captured ) {
+			$route = $request->get_route();
+			if ( false !== strpos( $route, '/universal-support-chat/v1/contract/' ) ) {
+				$body                           = json_decode( (string) $request->get_body(), true );
+				$captured[ basename( $route ) ] = is_array( $body ) && isset( $body['channel_case_ref'] ) ? $body['channel_case_ref'] : null;
+			}
+
+			return $result;
+		};
+		add_filter( 'rest_pre_dispatch', $observer, 10, 3 );
+
+		foreach ( array(
+			'reply' => 'a real reply',
+			'claim' => '/claim',
+		) as $kind => $text ) {
+			$update_id = self::next_update_id();
+			$decoded   = 'claim' === $kind
+				? array(
+					'message' => array(
+						'text'     => '/claim',
+						'entities' => array(
+							array(
+								'type'   => 'bot_command',
+								'offset' => 0,
+								'length' => 6,
+							),
+						),
+						'from'     => array( 'id' => $sender_id ),
+					),
+				)
+				: array(
+					'message' => array(
+						'text' => $text,
+						'from' => array( 'id' => $sender_id ),
+					),
+				);
+			$record    = $this->buffer_and_fetch( $update_id, 'message', $decoded );
+			$bot       = $this->ut_bots->find( $this->bot_id );
+			$binding   = $this->ut_bindings->find_by_bot_topic( $this->bot_id, $seed['topic_id'] );
+			self::assertNotNull( $bot );
+			self::assertNotNull( $binding );
+
+			$outcome = $this->dispatcher->dispatch( $bot, $record, $binding, $decoded );
+			self::assertSame( CutoverReplayDispatcher::OUTCOME_HANDED_OFF, $outcome, "kind={$kind}" );
+		}
+
+		remove_filter( 'rest_pre_dispatch', $observer, 10 );
+
+		self::assertNotEmpty( $captured );
+		foreach ( $captured as $operation => $ref ) {
+			self::assertSame( $seed['conversation_uuid'], $ref, "channel_case_ref for {$operation} must be the conversation UUID." );
+			self::assertNotSame( $seed['binding_uuid'], $ref, "channel_case_ref for {$operation} must never be the binding UUID." );
 		}
 	}
 }

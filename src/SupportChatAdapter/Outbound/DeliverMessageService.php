@@ -42,7 +42,7 @@ final class DeliverMessageService {
 	/**
 	 * Accepts a message for delivery.
 	 *
-	 * @param string $channel_case_ref Opaque binding UUID.
+	 * @param string $channel_case_ref Support Chat conversation UUID (docs/adr/0043) — resolved to the local binding here; never the UT-local binding UUID.
 	 * @param string $idempotency_key  Contract idempotency key.
 	 * @param string $plaintext_body   Message body (in memory only).
 	 * @param string $attribution      Channel-facing attribution label.
@@ -64,7 +64,7 @@ final class DeliverMessageService {
 			);
 		}
 
-		$binding = $this->bindings->find_by_uuid( $channel_case_ref );
+		$binding = $this->bindings->find_by_conversation_uuid( $channel_case_ref );
 		if ( null === $binding || ! $binding->is_active() ) {
 			return array(
 				'ok'     => false,

@@ -115,7 +115,7 @@ final class InboundAdapterBridge {
 				return false;
 			}
 
-			$this->handle_command( $binding->binding_uuid(), $parsed, $identity->wp_user_id(), $update_id );
+			$this->handle_command( $binding->support_conversation_uuid(), $parsed, $identity->wp_user_id(), $update_id );
 			$this->bindings->record_ingest_update_id( $binding->binding_uuid(), $update_id, $binding->cas_version() );
 			return true;
 		}
@@ -131,7 +131,7 @@ final class InboundAdapterBridge {
 		// this inbound update is never redelivered, matching this bridge's
 		// existing at-most-once ingest semantics.
 		$ingest = $this->sc_client->ingest_operator_reply(
-			$binding->binding_uuid(),
+			$binding->support_conversation_uuid(),
 			'tg-update-' . $bot->id() . '-' . $update_id,
 			$text,
 			$identity->wp_user_id(),
@@ -149,20 +149,20 @@ final class InboundAdapterBridge {
 	/**
 	 * Dispatches a lifecycle command to Support Chat.
 	 *
-	 * @param string        $binding_uuid Binding UUID.
-	 * @param ParsedCommand $parsed       Parsed command.
-	 * @param int           $user_id      Operator WP user id.
-	 * @param int           $update_id    Telegram update id.
+	 * @param string        $channel_case_ref Support Chat conversation UUID (docs/adr/0043) — never the UT-local binding UUID.
+	 * @param ParsedCommand $parsed           Parsed command.
+	 * @param int           $user_id          Operator WP user id.
+	 * @param int           $update_id        Telegram update id.
 	 */
-	private function handle_command( string $binding_uuid, ParsedCommand $parsed, int $user_id, int $update_id ): void {
+	private function handle_command( string $channel_case_ref, ParsedCommand $parsed, int $user_id, int $update_id ): void {
 		$key     = 'tg-cmd-' . $update_id;
 		$command = $parsed->command();
 
 		$result = match ( $command ) {
-			'claim'   => $this->sc_client->claim( $binding_uuid, $user_id, $key ),
-			'release' => $this->sc_client->release( $binding_uuid, $user_id, $key ),
-			'resolve' => $this->sc_client->resolve( $binding_uuid, $user_id, $key ),
-			'reopen'  => $this->sc_client->reopen( $binding_uuid, $user_id, $key ),
+			'claim'   => $this->sc_client->claim( $channel_case_ref, $user_id, $key ),
+			'release' => $this->sc_client->release( $channel_case_ref, $user_id, $key ),
+			'resolve' => $this->sc_client->resolve( $channel_case_ref, $user_id, $key ),
+			'reopen'  => $this->sc_client->reopen( $channel_case_ref, $user_id, $key ),
 			default   => null,
 		};
 		unset( $result );

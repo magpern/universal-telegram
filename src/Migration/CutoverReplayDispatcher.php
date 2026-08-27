@@ -132,7 +132,7 @@ final class CutoverReplayDispatcher {
 
 		$key    = 'tg-update-' . $bot->id() . '-' . $record->update_id();
 		$result = $this->sc_client->ingest_operator_reply(
-			$binding->binding_uuid(),
+			$binding->support_conversation_uuid(),
 			$key,
 			$text,
 			$identity->wp_user_id(),
@@ -181,15 +181,16 @@ final class CutoverReplayDispatcher {
 		}
 
 		$key    = 'tg-cmd-' . $record->update_id();
+		$ref    = $binding->support_conversation_uuid();
 		$result = match ( $command ) {
 			// The `in_array( $command, self::LIFECYCLE_COMMANDS, true )`
 			// guard above already narrows $command to exactly these four
 			// literals — no default arm is reachable, and PHPStan proves
 			// exhaustiveness over that narrowed type.
-			'claim'   => $this->sc_client->claim( $binding->binding_uuid(), $identity->wp_user_id(), $key, $record->bot_id(), $record->update_id() ),
-			'release' => $this->sc_client->release( $binding->binding_uuid(), $identity->wp_user_id(), $key, $record->bot_id(), $record->update_id() ),
-			'resolve' => $this->sc_client->resolve( $binding->binding_uuid(), $identity->wp_user_id(), $key, $record->bot_id(), $record->update_id() ),
-			'reopen'  => $this->sc_client->reopen( $binding->binding_uuid(), $identity->wp_user_id(), $key, $record->bot_id(), $record->update_id() ),
+			'claim'   => $this->sc_client->claim( $ref, $identity->wp_user_id(), $key, $record->bot_id(), $record->update_id() ),
+			'release' => $this->sc_client->release( $ref, $identity->wp_user_id(), $key, $record->bot_id(), $record->update_id() ),
+			'resolve' => $this->sc_client->resolve( $ref, $identity->wp_user_id(), $key, $record->bot_id(), $record->update_id() ),
+			'reopen'  => $this->sc_client->reopen( $ref, $identity->wp_user_id(), $key, $record->bot_id(), $record->update_id() ),
 		};
 
 		return $this->finish( $record, $result );
@@ -211,7 +212,7 @@ final class CutoverReplayDispatcher {
 		$reason  = $deleted ? 'telegram_topic_deleted' : 'telegram_topic_closed';
 
 		$result = $this->sc_client->report_channel_unavailable(
-			$binding->binding_uuid(),
+			$binding->support_conversation_uuid(),
 			$reason,
 			$record->bot_id(),
 			$record->update_id()
@@ -221,10 +222,28 @@ final class CutoverReplayDispatcher {
 	}
 
 	/**
-	 * Interprets one Contract call's result: durable success stamps
-	 * `handed_off_at`; the frozen `409 handoff_provenance_conflict` is a
-	 * durable UT-only incident; every other failure is retryable, never an
-	 * incident (docs/adr/0042 §4/§5).
+	 * Exhaustively classifies one Contract call's result after an active
+	 * binding has already been selected (docs/adr/0043 §3). Every outcome
+	 * maps to a named retryable outcome or a named incident — there is no
+	 * generic "everything else is transient" fallback: an unrecognised
+	 * `ok:false` reason fails closed to `handoff_rejected`.
+	 *
+	 * - `{ok: true}` (incl. an already-in-target-state Support Chat
+	 *   short-circuit) → stamp `handed_off_at`, `OUTCOME_HANDED_OFF`.
+	 * - `409 handoff_provenance_conflict` → durable `handoff_provenance_conflict` incident.
+	 * - `404 not_found` (Support Chat could not resolve the conversation
+	 *   UUID) → durable `unresolved_case_reference` incident.
+	 * - Any explicitly transient condition (`503 request_failed`,
+	 *   `401 contract_auth_failed`, and this plugin's own client-side
+	 *   not-paired / unavailable / discovery-incompatible / signing-
+	 *   unavailable / transport-failed gates) → `OUTCOME_RETRY_TRANSIENT`,
+	 *   never an incident.
+	 * - Every other deterministic refusal, and every unrecognised
+	 *   `ok:false` reason → durable `handoff_rejected` incident (fail closed).
+	 *
+	 * A caught collaborator exception is mapped to `OUTCOME_RETRY_TRANSIENT`
+	 * in `dispatch()` itself, and surfaced in every replay pass's retryable
+	 * count by the caller — never a silent unbounded loop.
 	 *
 	 * @param DeferredUpdateRecord                              $record The buffered row.
 	 * @param array{ok: bool, status: int, reason: string|null} $result The Contract call's result.
@@ -236,11 +255,13 @@ final class CutoverReplayDispatcher {
 			return self::OUTCOME_HANDED_OFF;
 		}
 
-		if ( 'handoff_provenance_conflict' === $result['reason'] ) {
-			return $this->incident( $record, CutoverIncidentReason::HANDOFF_PROVENANCE_CONFLICT );
+		$classification = CutoverReplayFailureClassifier::classify( $result['status'], $result['reason'] );
+
+		if ( CutoverReplayFailureClassifier::RETRYABLE === $classification ) {
+			return self::OUTCOME_RETRY_TRANSIENT;
 		}
 
-		return self::OUTCOME_RETRY_TRANSIENT;
+		return $this->incident( $record, $classification );
 	}
 
 	/**

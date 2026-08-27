@@ -158,7 +158,7 @@ final class SupportChatContractClientDispatchTest extends WP_UnitTestCase {
 			null
 		);
 
-		$result = $this->client->claim( 'binding-uuid-1', 42, 'idem-1' );
+		$result = $this->client->claim( 'conversation-uuid-1', 42, 'idem-1' );
 
 		$this->assertTrue( $result['ok'] );
 		$this->assertSame( 200, $result['status'] );
@@ -179,7 +179,7 @@ final class SupportChatContractClientDispatchTest extends WP_UnitTestCase {
 
 		$decoded = json_decode( (string) self::$captured_body, true );
 		$this->assertIsArray( $decoded );
-		$this->assertSame( 'binding-uuid-1', $decoded['channel_case_ref'] );
+		$this->assertSame( 'conversation-uuid-1', $decoded['channel_case_ref'] );
 		$this->assertSame( 42, $decoded['operator_user_id'] );
 		$this->assertSame( 'idem-1', $decoded['idempotency_key'] );
 

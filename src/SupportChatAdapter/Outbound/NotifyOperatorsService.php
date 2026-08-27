@@ -25,7 +25,7 @@ final class NotifyOperatorsService {
 	/**
 	 * Sends a notification summary to the bound topic.
 	 *
-	 * @param string $channel_case_ref Opaque binding UUID.
+	 * @param string $channel_case_ref Support Chat conversation UUID (docs/adr/0043).
 	 * @param string $idempotency_key  Contract idempotency key.
 	 * @param string $kind             Notification kind.
 	 * @param string $summary          Bounded non-secret summary.

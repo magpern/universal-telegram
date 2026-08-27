@@ -59,7 +59,7 @@ final class EnsureChannelCaseService {
 		$by_key = $this->bindings->find_by_ensure_key( $idempotency_key );
 		if ( null !== $by_key ) {
 			return array(
-				'channel_case_ref' => $by_key->binding_uuid(),
+				'channel_case_ref' => $by_key->support_conversation_uuid(),
 				'status'           => 'reused',
 			);
 		}
@@ -67,7 +67,7 @@ final class EnsureChannelCaseService {
 		$by_conversation = $this->bindings->find_by_conversation_uuid( $conversation_uuid );
 		if ( null !== $by_conversation ) {
 			return array(
-				'channel_case_ref' => $by_conversation->binding_uuid(),
+				'channel_case_ref' => $by_conversation->support_conversation_uuid(),
 				'status'           => 'reused',
 			);
 		}
@@ -116,7 +116,7 @@ final class EnsureChannelCaseService {
 		$existing_topic = $this->bindings->find_by_bot_topic( $bot_id, $telegram_topic_id );
 		if ( null !== $existing_topic ) {
 			return array(
-				'channel_case_ref' => $existing_topic->binding_uuid(),
+				'channel_case_ref' => $existing_topic->support_conversation_uuid(),
 				'status'           => 'reused',
 			);
 		}
@@ -153,7 +153,7 @@ final class EnsureChannelCaseService {
 
 			if ( null !== $race ) {
 				return array(
-					'channel_case_ref' => $race->binding_uuid(),
+					'channel_case_ref' => $race->support_conversation_uuid(),
 					'status'           => 'reused',
 				);
 			}
@@ -165,7 +165,7 @@ final class EnsureChannelCaseService {
 		}
 
 		return array(
-			'channel_case_ref' => $binding->binding_uuid(),
+			'channel_case_ref' => $binding->support_conversation_uuid(),
 			'status'           => 'created',
 		);
 	}

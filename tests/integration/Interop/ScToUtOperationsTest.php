@@ -22,7 +22,10 @@ final class ScToUtOperationsTest extends InteropTestCase {
 
 		$binding = $this->ut_bindings->find_by_conversation_uuid( $conversation_uuid );
 		self::assertNotNull( $binding );
-		self::assertSame( $result['channel_case_ref'], $binding->binding_uuid() );
+		// ADR-0043: the Contract `channel_case_ref` is the SC conversation UUID, never the UT-local binding UUID.
+		self::assertSame( $result['channel_case_ref'], $binding->support_conversation_uuid() );
+		self::assertSame( $conversation_uuid, $result['channel_case_ref'] );
+		self::assertNotSame( $binding->binding_uuid(), $result['channel_case_ref'] );
 	}
 
 	public function test_notify_operators_creates_real_ut_outbound_message(): void {
@@ -32,7 +35,7 @@ final class ScToUtOperationsTest extends InteropTestCase {
 		$result = $this->sc_outbound_client->notify_operators( 'universal-telegram', $ref, 'attention', 'A visitor needs help.' );
 		self::assertTrue( $result['ok'], (string) $result['reason'] );
 
-		$binding = $this->ut_bindings->find_by_uuid( $ref );
+		$binding = $this->ut_bindings->find_by_conversation_uuid( $ref );
 		self::assertNotNull( $binding );
 	}
 

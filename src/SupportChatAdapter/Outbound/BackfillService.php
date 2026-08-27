@@ -25,7 +25,7 @@ final class BackfillService {
 	/**
 	 * Accepts one backfill page.
 	 *
-	 * @param string                           $channel_case_ref Opaque binding UUID.
+	 * @param string                           $channel_case_ref Support Chat conversation UUID (docs/adr/0043).
 	 * @param array<int, array<string, mixed>> $messages         Ordered eligible messages.
 	 *
 	 * @return array{ok: bool, accepted: int, failed: int, reason: string|null}
