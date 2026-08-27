@@ -410,8 +410,17 @@ class QuiescenceGate {
 			ARRAY_A
 		);
 
+		// Widened predicate (docs/adr/0042 §3): a row resolved by ordinary
+		// legacy replay (`replayed_at`), a successful Support Chat handoff
+		// (`handed_off_at`), or an explicitly resolved UT-only incident
+		// (`incident_resolved_at`) no longer counts against this CAS. An
+		// unresolved incident correctly, structurally blocks this
+		// transition — taken inside the identical lock
+		// decide_webhook_disposition() already uses, so this remains the
+		// same single authoritative barrier ADR-0040 §3 already proves
+		// cannot strand a row.
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$remaining = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$deferred_table} WHERE replayed_at IS NULL" );
+		$remaining = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$deferred_table} WHERE replayed_at IS NULL AND handed_off_at IS NULL AND incident_resolved_at IS NULL" );
 
 		if ( null === $row || 'replaying' !== $row['state'] || $remaining > 0 ) {
 			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared

@@ -20,7 +20,9 @@ use UniversalTelegram\Migration\DeferredReplayContext;
 use UniversalTelegram\Migration\QuiescenceGate;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Classification;
+use UniversalTelegram\SupportChatAdapter\ChannelBindingRepository;
 use UniversalTelegram\SupportChatAdapter\Inbound\InboundAdapterBridge;
+use UniversalTelegram\SupportChatAdapter\Inbound\SupportChatContractClient;
 use UniversalTelegram\Telegram\Commands\BotCommandDispatcher;
 use UniversalTelegram\Telegram\Commands\CommandParser;
 use UniversalTelegram\Telegram\Configuration\BotProfile;
@@ -58,19 +60,21 @@ final class WebhookController {
 	/**
 	 * Constructor.
 	 *
-	 * @param SchemaHealth               $schema_health Checked before any bot lookup or insert.
-	 * @param BotProfileRepository       $bots          Resolves bot_uuid to a bot profile.
-	 * @param WebhookSecretVerifier      $verifier      Proves the request is authentic.
-	 * @param UpdateRepository           $updates       Metadata-only, deduplicated receipt.
-	 * @param ConversationRepository     $conversations Resolves the known-topic-mapping gate (docs/adr/0021).
-	 * @param MessageRepository          $messages      Encrypts and persists a captured operator reply.
-	 * @param ChatProfileResolver        $chat_profiles Resolves a bot's conversation-support chat id.
-	 * @param OperatorIdentityRepository $operator_identities Resolves the inbound sender's mapped WordPress operator (M07, docs/adr/0026) — the inbound Telegram operator-authorization gate.
-	 * @param AuditLogger                $audit         Records a rejected-unmapped-sender attempt.
-	 * @param BotCommandDispatcher       $bot_commands  Handles a recognized administrative bot command (M08, docs/adr/0027) in place of reply capture.
-	 * @param int                        $max_body_bytes Request body size cap, enforced before JSON decoding.
-	 * @param InboundAdapterBridge|null  $adapter_bridge Optional Support Chat adapter inbound bridge (UT Adapter M1).
-	 * @param QuiescenceGate|null        $quiescence     Legacy-chat quiescence write-blocking gate (docs/adr/0040). Null only in a not-yet-migrated install.
+	 * @param SchemaHealth                   $schema_health Checked before any bot lookup or insert.
+	 * @param BotProfileRepository           $bots          Resolves bot_uuid to a bot profile.
+	 * @param WebhookSecretVerifier          $verifier      Proves the request is authentic.
+	 * @param UpdateRepository               $updates       Metadata-only, deduplicated receipt.
+	 * @param ConversationRepository         $conversations Resolves the known-topic-mapping gate (docs/adr/0021).
+	 * @param MessageRepository              $messages      Encrypts and persists a captured operator reply.
+	 * @param ChatProfileResolver            $chat_profiles Resolves a bot's conversation-support chat id.
+	 * @param OperatorIdentityRepository     $operator_identities Resolves the inbound sender's mapped WordPress operator (M07, docs/adr/0026) — the inbound Telegram operator-authorization gate.
+	 * @param AuditLogger                    $audit         Records a rejected-unmapped-sender attempt.
+	 * @param BotCommandDispatcher           $bot_commands  Handles a recognized administrative bot command (M08, docs/adr/0027) in place of reply capture.
+	 * @param int                            $max_body_bytes Request body size cap, enforced before JSON decoding.
+	 * @param InboundAdapterBridge|null      $adapter_bridge Optional Support Chat adapter inbound bridge (UT Adapter M1).
+	 * @param QuiescenceGate|null            $quiescence     Legacy-chat quiescence write-blocking gate (docs/adr/0040). Null only in a not-yet-migrated install.
+	 * @param ChannelBindingRepository|null  $bindings       Resolves an active binding for the cross-talk fix below (docs/adr/0042 §5). Null only in a not-yet-migrated install.
+	 * @param SupportChatContractClient|null $sc_client      Dispatches `report_channel_unavailable` for the cross-talk fix below. Null only in a not-yet-migrated install.
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
@@ -85,7 +89,9 @@ final class WebhookController {
 		private readonly BotCommandDispatcher $bot_commands,
 		private readonly int $max_body_bytes = 1048576,
 		private readonly ?InboundAdapterBridge $adapter_bridge = null,
-		private readonly ?QuiescenceGate $quiescence = null
+		private readonly ?QuiescenceGate $quiescence = null,
+		private readonly ?ChannelBindingRepository $bindings = null,
+		private readonly ?SupportChatContractClient $sc_client = null
 	) {}
 
 	/**
@@ -209,6 +215,10 @@ final class WebhookController {
 		$is_new_update = $this->updates->record( $bot->id(), $decoded['update_id'], $update_type, $chat_id, $message_thread_id );
 
 		if ( $is_new_update && UpdateType::MESSAGE === $update_type ) {
+			if ( $this->maybe_report_active_binding_unavailable( $bot->id(), $message_thread_id, $decoded ) ) {
+				return;
+			}
+
 			if ( $this->maybe_mark_topic_unavailable( $bot->id(), $chat_id, $message_thread_id, $decoded ) ) {
 				return;
 			}
@@ -315,6 +325,73 @@ final class WebhookController {
 	}
 
 	/**
+	 * The `maybe_mark_topic_unavailable()` live-webhook cross-talk fix
+	 * (docs/adr/0042 §5): checked before that legacy lookup runs, for
+	 * topic-lifecycle service messages only. If an **active** Support Chat
+	 * binding exists for this update's `(bot_id, message_thread_id)`, the
+	 * event is dispatched via the existing, already-idempotent
+	 * `report_channel_unavailable` Contract call (the same fixed
+	 * `reason_code` vocabulary legacy already emits) and is considered
+	 * handled — it never reaches `maybe_mark_topic_unavailable()`'s legacy
+	 * mutation. If no active binding exists, this method does nothing and
+	 * existing legacy behavior is retained unchanged.
+	 *
+	 * Fail-closed, mirroring `InboundAdapterBridge::try_handle()`'s own
+	 * "claimed but fail-closed for channel only" pattern exactly: even if
+	 * the Contract call itself fails (adapter unpaired, discovery
+	 * incompatible, transport failure), the event is still considered
+	 * claimed and does not fall through to legacy mutation, since a topic
+	 * with an active binding is no longer legacy-owned.
+	 *
+	 * This is a live-webhook-path fix only — distinct from, and never
+	 * touching, the deferred-replay incident record
+	 * (`Migration\CutoverReplayDispatcher`), which applies only to buffered
+	 * rows processed during quiescence/replay.
+	 *
+	 * @param int                  $bot_id            Receiving bot primary key.
+	 * @param int|null             $message_thread_id Forum topic id.
+	 * @param array<string, mixed> $decoded           Full update body.
+	 *
+	 * @return bool True when this update was a topic-lifecycle service
+	 *              message for an active-binding topic (handled here,
+	 *              regardless of whether the Contract call itself
+	 *              succeeded) — callers must skip every other branch.
+	 */
+	private function maybe_report_active_binding_unavailable( int $bot_id, ?int $message_thread_id, array $decoded ): bool {
+		if ( null === $this->bindings || null === $this->sc_client || null === $message_thread_id ) {
+			return false;
+		}
+
+		$message = $decoded['message'] ?? null;
+
+		if ( ! is_array( $message ) ) {
+			return false;
+		}
+
+		$closed  = isset( $message['forum_topic_closed'] );
+		$deleted = isset( $message['forum_topic_deleted'] );
+
+		if ( ! $closed && ! $deleted ) {
+			return false;
+		}
+
+		$binding = $this->bindings->find_by_bot_topic( $bot_id, $message_thread_id );
+
+		if ( null === $binding || ! $binding->is_active() ) {
+			return false;
+		}
+
+		$reason_code = $deleted ? 'telegram_topic_deleted' : 'telegram_topic_closed';
+
+		// Result intentionally unused: fail-closed "claimed regardless" per
+		// this method's own docblock — the event never reaches legacy
+		// mutation either way.
+		$this->sc_client->report_channel_unavailable( $binding->binding_uuid(), $reason_code );
+
+		return true;
+	}
+
+	/**
 	 * Marks a conversation topic unavailable on forum_topic_closed / forum_topic_deleted
 	 * when the exact (bot_id, chat_id, message_thread_id) tuple matches. Returns true
 	 * when the update was a topic service message (handled or ignored), so callers
@@ -393,6 +470,22 @@ final class WebhookController {
 		}
 
 		return $decoded['message']['from']['id'];
+	}
+
+	/**
+	 * Public wrapper for `extract_metadata()`, for
+	 * `Cli\QuiescenceCommand`'s own cohort-aware replay loop (docs/adr/0042
+	 * §3): it needs a buffered row's `message_thread_id` to decide, per
+	 * row, whether an active Support Chat binding now exists — the
+	 * identical metadata this class's own live path already extracts, not
+	 * a second implementation of the same parsing.
+	 *
+	 * @param array<string, mixed> $decoded The decoded update body.
+	 *
+	 * @return array{0: UpdateType, 1: string|null, 2: int|null}
+	 */
+	public function extract_metadata_for_cutover_replay( array $decoded ): array {
+		return $this->extract_metadata( $decoded );
 	}
 
 	/**

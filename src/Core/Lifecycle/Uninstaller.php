@@ -103,6 +103,12 @@ final class Uninstaller {
 		Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE,
 	);
 
+	private const CUTOVER_TABLES = array(
+		Migrator::CUTOVER_RUNS_TABLE,
+		Migrator::CUTOVER_TRANSITIONS_TABLE,
+		Migrator::CUTOVER_ACTIVATION_AUDIT_TABLE,
+	);
+
 	/**
 	 * Runs the uninstall routine.
 	 */
@@ -136,6 +142,7 @@ final class Uninstaller {
 		$this->drop_adapter_m1_tables();
 		$this->drop_adapter_m1_auth_tables();
 		$this->drop_quiescence_tables();
+		$this->drop_cutover_tables();
 		delete_option( Settings::OPTION_NAME );
 		delete_option( 'universal_telegram_db_version' );
 		delete_option( OwnKeyManager::OPTION_PUBLIC );
@@ -323,6 +330,23 @@ final class Uninstaller {
 		global $wpdb;
 
 		foreach ( self::QUIESCENCE_TABLES as $table_name ) {
+			$table = $wpdb->prefix . $table_name;
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
+			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
+		}
+	}
+
+	/**
+	 * Drops the SC-M03 final-cutover tables (ADR-0042): cutover runs, their
+	 * append-only transition audit, and the per-candidate activation audit.
+	 * The additive handoff/incident columns on the quiescence deferred-
+	 * updates table are dropped along with that table by
+	 * drop_quiescence_tables() above.
+	 */
+	private function drop_cutover_tables(): void {
+		global $wpdb;
+
+		foreach ( self::CUTOVER_TABLES as $table_name ) {
 			$table = $wpdb->prefix . $table_name;
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
 			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );

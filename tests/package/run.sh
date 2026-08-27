@@ -173,13 +173,13 @@ if [ -z "$(m06_column_exists "conversations" "owner_active_slot")" ]; then
 fi
 echo "OK: universal_telegram_conversations.owner_user_id and owner_active_slot columns exist."
 
-echo "== Verifying db_version reached 34 =="
+echo "== Verifying db_version reached 36 =="
 DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "34" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=34, got ${DB_VERSION}" >&2
+if [ "36" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=36, got ${DB_VERSION}" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 34."
+echo "OK: universal_telegram_db_version is 36."
 
 echo "== Verifying SC-M03 WP2 quiescence tables exist (ADR-0040) =="
 for TABLE in quiescence_state quiescence_transitions quiescence_deferred_updates; do
@@ -206,6 +206,24 @@ if [ -z "$(echo "$BINDING_STATUS_TYPE" | grep -o 'prepared')" ]; then
 	exit 1
 fi
 echo "OK: universal_telegram_support_chat_bindings.status ENUM includes 'prepared'."
+
+echo "== Verifying SC-M03 final-cutover tables exist (ADR-0042) =="
+for TABLE in cutover_runs cutover_transitions cutover_activation_audit; do
+	if [ -z "$(m02_table_exists "$TABLE")" ]; then
+		echo "FAIL: expected table universal_telegram_${TABLE} to exist" >&2
+		exit 1
+	fi
+done
+echo "OK: cutover_runs, cutover_transitions, and cutover_activation_audit tables exist."
+
+echo "== Verifying SC-M03 final-cutover handoff/incident columns exist (ADR-0042) =="
+for COLUMN in handed_off_at incident_reason incident_recorded_at incident_resolved_at incident_resolution incident_po_decision_ref; do
+	if [ -z "$(m06_column_exists "quiescence_deferred_updates" "$COLUMN")" ]; then
+		echo "FAIL: expected universal_telegram_quiescence_deferred_updates.${COLUMN} column to exist" >&2
+		exit 1
+	fi
+done
+echo "OK: quiescence_deferred_updates handoff/incident columns exist."
 
 echo "== Verifying M07.1 topic lifecycle columns exist =="
 if [ -z "$(m06_column_exists conversations topic_lifecycle_state)" ]; then

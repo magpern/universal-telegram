@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.17.0
+Stable tag: 0.19.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,25 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.19.0 =
+* SC-M03 final cutover (ADR-0042): a new cutover-orchestration state
+  machine layered above (not replacing) legacy-chat quiescence; a
+  monotonic-CAS `prepared → active` binding activation saga with
+  whole-cohort preflight and automatic in-run compensation on any
+  commit-phase failure; a cohort-aware amendment to the existing
+  deferred-update replay loop dispositioning each buffered row through
+  either the existing Support Chat Contract handoff path or the existing
+  legacy replay path, decided live at drain time; a UT-owned incident
+  record for pre-dispatch failures and Support Chat provenance conflicts,
+  including a narrowly-scoped, Product-Owner-approved terminal-
+  acknowledgement exception; and a correction to inbound topic-lifecycle
+  service-message handling so an active-binding topic's event reaches
+  Support Chat's existing `report_channel_unavailable` path instead of
+  legacy conversation mutation. New
+  `wp universal-telegram cutover {status,begin,activate,confirm-complete,incident-acknowledge,recover}`
+  command. No production quiescence, cutover, route switch, soak,
+  rollback, or deletion is performed by this release — the engine only.
 
 = 0.17.0 =
 * Legacy-chat quiescence (SC-M03 Work Package 2, ADR-0040): a WP-CLI-only,

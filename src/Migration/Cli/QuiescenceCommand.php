@@ -9,9 +9,12 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Migration\Cli;
 
+use UniversalTelegram\Migration\CutoverIncidentReason;
+use UniversalTelegram\Migration\CutoverReplayDispatcher;
 use UniversalTelegram\Migration\DeferredUpdateRepository;
 use UniversalTelegram\Migration\QuiescenceGate;
 use UniversalTelegram\Migration\QuiescenceState;
+use UniversalTelegram\SupportChatAdapter\ChannelBindingRepository;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Inbound\WebhookController;
 
@@ -27,16 +30,20 @@ final class QuiescenceCommand {
 	/**
 	 * Constructor.
 	 *
-	 * @param QuiescenceGate           $gate       The state machine and drain proofs.
-	 * @param DeferredUpdateRepository $deferred   Table 3 access, for replay.
-	 * @param BotProfileRepository     $bots       Resolves a deferred row's bot_id back to a BotProfile for replay.
-	 * @param WebhookController        $webhook    Owns process_update(), the shared live/replay processing pipeline.
+	 * @param QuiescenceGate           $gate               The state machine and drain proofs.
+	 * @param DeferredUpdateRepository $deferred           Table 3 access, for replay.
+	 * @param BotProfileRepository     $bots               Resolves a deferred row's bot_id back to a BotProfile for replay.
+	 * @param WebhookController        $webhook            Owns process_update(), the shared live/replay processing pipeline.
+	 * @param ChannelBindingRepository $bindings           Resolves, per row, whether an active binding now exists (docs/adr/0042 §3).
+	 * @param CutoverReplayDispatcher  $cutover_dispatcher Dispositions a row whose topic now has an active binding.
 	 */
 	public function __construct(
 		private readonly QuiescenceGate $gate,
 		private readonly DeferredUpdateRepository $deferred,
 		private readonly BotProfileRepository $bots,
-		private readonly WebhookController $webhook
+		private readonly WebhookController $webhook,
+		private readonly ChannelBindingRepository $bindings,
+		private readonly CutoverReplayDispatcher $cutover_dispatcher
 	) {}
 
 	/**
@@ -195,11 +202,21 @@ final class QuiescenceCommand {
 	}
 
 	/**
-	 * `replay-deferred-updates`: decrypts and processes every currently-
+	 * `replay-deferred-updates`: decrypts and dispositions every currently-
 	 * unreplayed row, grouped by bot_id, ordered by update_id ascending
-	 * (id tie-breaker); stamps replayed_at only on success; then, only if
-	 * every row succeeded, attempts the locked `replaying → idle` CAS.
-	 * Safe to re-run repeatedly.
+	 * (id tie-breaker) — the single authoritative, cohort-aware drain
+	 * (docs/adr/0042 §3). Per row, a live check decides disposition:
+	 * whether an **active** Support Chat binding currently exists for the
+	 * row's `(bot_id, telegram_topic_id)` — the identical predicate
+	 * `InboundAdapterBridge::try_handle()` itself already evaluates for
+	 * live traffic, evaluated here fresh at drain time, never from a
+	 * cohort list computed earlier. An active-binding row is dispositioned
+	 * via `CutoverReplayDispatcher` (message/command/lifecycle-event/
+	 * incident); every other row replays through the existing, unchanged
+	 * legacy `process_update()` path. There is no separate "final handoff
+	 * scan" step — this loop, and the widened backlog predicate the final
+	 * CAS below observes, are the single authoritative barrier. Safe to
+	 * re-run repeatedly.
 	 */
 	private function replay_deferred_updates(): void {
 		$context = $this->gate->issue_replay_context();
@@ -209,8 +226,11 @@ final class QuiescenceCommand {
 			return;
 		}
 
-		$grouped   = $this->deferred->unreplayed_grouped_by_bot();
-		$processed = 0;
+		$grouped    = $this->deferred->unreplayed_grouped_by_bot();
+		$replayed   = 0;
+		$handed_off = 0;
+		$incidents  = 0;
+		$retried    = 0;
 
 		foreach ( $grouped as $bot_id => $records ) {
 			$bot = $this->bots->find( $bot_id );
@@ -224,8 +244,31 @@ final class QuiescenceCommand {
 				$payload = $this->deferred->decrypt_payload( $record );
 
 				if ( null === $payload ) {
-					\WP_CLI::error( sprintf( 'Failed to decrypt/process deferred update bot_id=%d update_id=%d.', $record->bot_id(), $record->update_id() ) ); // @phpstan-ignore class.notFound
-					return;
+					$this->deferred->record_incident( $record->id(), CutoverIncidentReason::DECRYPT_FAILED );
+					++$incidents;
+					continue;
+				}
+
+				list( , , $message_thread_id ) = $this->webhook->extract_metadata_for_cutover_replay( $payload );
+
+				$binding = null !== $message_thread_id ? $this->bindings->find_by_bot_topic( $bot_id, $message_thread_id ) : null;
+
+				if ( null !== $binding && $binding->is_active() ) {
+					$outcome = $this->cutover_dispatcher->dispatch( $bot, $record, $binding, $payload );
+
+					switch ( $outcome ) {
+						case CutoverReplayDispatcher::OUTCOME_HANDED_OFF:
+							++$handed_off;
+							break;
+						case CutoverReplayDispatcher::OUTCOME_INCIDENT:
+							++$incidents;
+							break;
+						default:
+							++$retried;
+							break;
+					}
+
+					continue;
 				}
 
 				try {
@@ -236,18 +279,26 @@ final class QuiescenceCommand {
 				}
 
 				$this->deferred->mark_replayed( $record->id() );
-				++$processed;
+				++$replayed;
 			}
 		}
 
 		$attempt = $this->gate->attempt_replaying_to_idle( 'wp-cli', $this->current_os_user_id() );
 
+		$summary = sprintf(
+			'Replayed %d update(s), handed off %d, %d incident(s), %d retryable.',
+			$replayed,
+			$handed_off,
+			$incidents,
+			$retried
+		);
+
 		if ( $attempt['success'] ) {
-			\WP_CLI::success( sprintf( 'Replayed %d update(s). State is now: idle.', $processed ) ); // @phpstan-ignore class.notFound
+			\WP_CLI::success( $summary . ' State is now: idle.' ); // @phpstan-ignore class.notFound
 			return;
 		}
 
-		\WP_CLI::log( sprintf( 'Replayed %d update(s). %d row(s) still remain — re-run this command.', $processed, $attempt['remaining'] ) ); // @phpstan-ignore class.notFound
+		\WP_CLI::log( $summary . sprintf( ' %d row(s) still remain (including any unresolved incidents) — re-run this command.', $attempt['remaining'] ) ); // @phpstan-ignore class.notFound
 	}
 
 	/**

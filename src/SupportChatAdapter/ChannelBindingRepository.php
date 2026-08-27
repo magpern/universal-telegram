@@ -206,6 +206,77 @@ final class ChannelBindingRepository {
 	}
 
 	/**
+	 * Activates a `prepared` binding — CAS-guarded and current-status-
+	 * guarded, unlike `set_status()` (docs/adr/0042 §2). Called only from
+	 * `CutoverActivationService`'s own per-candidate, lock-scoped
+	 * transaction (`QuiescenceGate::with_quiescence_lock()`). `cas_version`
+	 * is incremented, never reset — strictly monotonic, matching every
+	 * other CAS-guarded write on this table.
+	 *
+	 * @param string $binding_uuid Binding UUID.
+	 * @param int    $expected_cas Expected current `cas_version` (must be `prepared`).
+	 */
+	public function activate_prepared( string $binding_uuid, int $expected_cas ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::SUPPORT_CHAT_BINDINGS_TABLE;
+		$ok    = $wpdb->query(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"UPDATE {$table} SET status = %s, cas_version = cas_version + 1, updated_at = %s WHERE binding_uuid = %s AND status = %s AND cas_version = %d",
+				ChannelBinding::STATUS_ACTIVE,
+				current_time( 'mysql', true ),
+				$binding_uuid,
+				ChannelBinding::STATUS_PREPARED,
+				$expected_cas
+			)
+		);
+
+		return false !== $ok && (int) $ok > 0;
+	}
+
+	/**
+	 * Compensates a just-activated binding back to `prepared` — saga-
+	 * internal only, called exclusively from `CutoverActivationService`'s
+	 * own compensation path, synchronously within the same still-quiescent
+	 * `cutover activate` invocation that performed the activation being
+	 * reverted (docs/adr/0042 §2). Never a general operator command; there
+	 * is no CLI surface that calls this directly. `cas_version` is
+	 * incremented, never restored to its pre-activation value — a
+	 * compensated candidate ends at exactly two increments above its
+	 * pre-run value, never back at it (the corrected, monotonic invariant).
+	 *
+	 * @param string $binding_uuid Binding UUID.
+	 * @param int    $expected_cas Expected current `cas_version` (must be `active`).
+	 */
+	public function revert_activation( string $binding_uuid, int $expected_cas ): bool {
+		if ( ! $this->schema_health->is_available() ) {
+			return false;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::SUPPORT_CHAT_BINDINGS_TABLE;
+		$ok    = $wpdb->query(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"UPDATE {$table} SET status = %s, cas_version = cas_version + 1, updated_at = %s WHERE binding_uuid = %s AND status = %s AND cas_version = %d",
+				ChannelBinding::STATUS_PREPARED,
+				current_time( 'mysql', true ),
+				$binding_uuid,
+				ChannelBinding::STATUS_ACTIVE,
+				$expected_cas
+			)
+		);
+
+		return false !== $ok && (int) $ok > 0;
+	}
+
+	/**
 	 * Marks every active binding unavailable (adapter deactivation path).
 	 *
 	 * @return int Number of rows updated.
