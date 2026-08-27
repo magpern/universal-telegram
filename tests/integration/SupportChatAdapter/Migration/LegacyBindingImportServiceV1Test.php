@@ -39,6 +39,43 @@ use WP_UnitTestCase;
  * `tests/integration/SupportChatAdapter/Migration/LegacyExportServiceV1Test.php`
  * already documents), so the rejection path is not observable here.
  *
+ * **Test-isolation note (found and fixed during this work package, via a
+ * fresh-container full-suite bisection, not merely observed in CI):**
+ * `QuiescenceGate::with_quiescence_lock()` — the exact atomic assertion
+ * ADR-0009 §5/ADR-0041 §2 require `LegacyBindingImportServiceV1` to use
+ * on every real candidate it processes — opens its own `START
+ * TRANSACTION`/`COMMIT` pair (mirroring `decide_webhook_disposition()`/
+ * `attempt_replaying_to_idle()`, per `QuiescenceRaceInterleavingTest`'s
+ * own docblock). On `WP_UnitTestCase`'s single savepoint-based
+ * transaction for the whole PHPUnit process, a real `COMMIT` from inside
+ * any one test does not stay contained to that test: it collapses the
+ * savepoint chain the framework relies on to isolate every *other* test
+ * that runs afterward in the same process. Confirmed by direct isolation
+ * against a freshly recreated database container (removing this file
+ * alone restores a fully clean, zero-failure full suite run; restoring it
+ * alone, with nothing else changed, reproduces the identical single
+ * collision CI reported on every run —
+ * `BotCommandDispatcherFamilyFTest`'s own topic/destination fixture
+ * colliding with `conversations.destination_id`'s UNIQUE index, because
+ * this file's own fixtures previously reused small literal identifiers
+ * — `bot_id=5`, `destination_id=50`, `telegram_topic_id=500` — that a
+ * later, unrelated test's own real auto-increment-derived destination id
+ * could plausibly also compute once the savepoint chain is gone).
+ * `@runTestsInSeparateProcesses` was tried and rejected: PHPUnit must
+ * serialize the whole test object for the child process, and
+ * `WP_UnitTestCase`'s own hook registrations make that fail
+ * ("Serialization of 'Closure' is not allowed"). The actual fix is
+ * narrower and does not touch production code: every identifier this
+ * file ever persists past a `with_quiescence_lock()` commit is drawn from
+ * `self::unique_id()`, a fixed, monotonically-increasing, out-of-band
+ * base (nine digits) no other fixture in this repository's test suite
+ * plausibly reaches — the same class of collision-avoidance
+ * `BotCommandDispatcherFamilyFTest` itself already applies to its own
+ * `thread_id` via `random_int(1000, 999999)`, made deterministic and
+ * strictly non-overlapping here instead, so this file's own tests stay
+ * fully reproducible while guaranteeing no shared value with any other
+ * fixture in the suite, regardless of savepoint-chain breakage elsewhere.
+ *
  * @covers \UniversalTelegram\SupportChatAdapter\Migration\LegacyBindingImportServiceV1
  */
 final class LegacyBindingImportServiceV1Test extends WP_UnitTestCase {
@@ -49,6 +86,15 @@ final class LegacyBindingImportServiceV1Test extends WP_UnitTestCase {
 	private QuiescenceGate $quiescence;
 	private LegacyBindingImportServiceV1 $service;
 
+	/**
+	 * The next value `unique_id()` returns — module-static so it keeps
+	 * climbing across every test method in this file, never repeating
+	 * even after a commit breaks `WP_UnitTestCase`'s own isolation.
+	 *
+	 * @var int
+	 */
+	private static int $next_unique_id = 900000000;
+
 	protected function setUp(): void {
 		parent::setUp();
 
@@ -57,13 +103,9 @@ final class LegacyBindingImportServiceV1Test extends WP_UnitTestCase {
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$wpdb->query( "UPDATE {$state_table} SET state = 'idle', updated_at = NOW() WHERE id = 1" );
 
-		// A prior test's QuiescenceGate::enter()/confirm() commit (see
-		// tearDown() below) can leave rows from an earlier run's process
-		// (or, in this file's own case, an interrupted prior invocation)
-		// permanently committed on this persistent DB volume, past what
-		// WP_UnitTestCase's own rollback can ever remove. Cleaned here too,
-		// not only in tearDown(), so the very first test in a run starts
-		// from a genuinely empty table regardless of what came before.
+		// Belt-and-suspenders, not the primary fix (see the class docblock):
+		// clean this file's own tables before and after every test in case
+		// an earlier run's commit ever left something behind.
 		$wpdb->query( 'DELETE FROM ' . $wpdb->prefix . Migrator::SUPPORT_CHAT_BINDINGS_TABLE ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		$wpdb->query( 'DELETE FROM ' . $wpdb->prefix . Migrator::CONVERSATIONS_TABLE ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
@@ -78,17 +120,6 @@ final class LegacyBindingImportServiceV1Test extends WP_UnitTestCase {
 		$this->service       = new LegacyBindingImportServiceV1( $this->conversations, $this->bindings, $this->quiescence, $this->schema_health );
 	}
 
-	/**
-	 * QuiescenceGate::enter()/confirm()'s own CAS transitions each commit
-	 * their own short transaction, which — on WP_UnitTestCase's shared
-	 * connection — also commits whatever this test itself inserted earlier
-	 * in the same method, past WP_UnitTestCase's own per-test rollback
-	 * (the identical hazard QuiescenceGateTest's and
-	 * QuiescenceSupportChatNonInterferenceTest's own tearDown() methods
-	 * already document and clean up for their own tables). Cleaned
-	 * explicitly here so a conversation or binding row from one test never
-	 * leaks into the next and collides with its UNIQUE constraints.
-	 */
 	protected function tearDown(): void {
 		global $wpdb;
 		$wpdb->query( 'DELETE FROM ' . $wpdb->prefix . Migrator::SUPPORT_CHAT_BINDINGS_TABLE ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
@@ -98,36 +129,61 @@ final class LegacyBindingImportServiceV1Test extends WP_UnitTestCase {
 	}
 
 	/**
-	 * A ready-to-bind legacy conversation: created topic, active lifecycle.
+	 * A fresh, never-repeated identifier (see the class docblock) — the
+	 * actual fix for this file's cross-test collision hazard.
 	 */
-	private function seed_bindable_conversation( int $bot_id = 5, int $destination_id = 50, int $telegram_topic_id = 500 ): int {
+	private static function unique_id(): int {
+		return self::$next_unique_id++;
+	}
+
+	/**
+	 * A ready-to-bind legacy conversation: created topic, active
+	 * lifecycle, entirely unique `bot_id`/`destination_id`/
+	 * `telegram_topic_id` unless explicitly overridden by a test that
+	 * needs a specific structural value (`0`/`null`-shaped exclusions).
+	 *
+	 * @return array{source_conversation_id:int, bot_id:int, destination_id:int, telegram_topic_id:int}
+	 */
+	private function seed_bindable_conversation( ?int $bot_id = null, ?int $destination_id = null, ?int $telegram_topic_id = null ): array {
+		$bot_id            = $bot_id ?? self::unique_id();
+		$destination_id    = $destination_id ?? self::unique_id();
+		$telegram_topic_id = $telegram_topic_id ?? self::unique_id();
+
 		$conversation = $this->conversations->create( wp_generate_uuid4(), 'secret-hash-' . wp_generate_uuid4(), $bot_id, null );
 		$this->assertNotNull( $conversation );
 
 		$this->conversations->mark_topic_created( $conversation->id(), $telegram_topic_id, $destination_id );
 
-		return $conversation->id();
+		return array(
+			'source_conversation_id' => $conversation->id(),
+			'bot_id'                 => $bot_id,
+			'destination_id'         => $destination_id,
+			'telegram_topic_id'      => $telegram_topic_id,
+		);
 	}
 
 	/**
+	 * @param array{source_conversation_id:int, bot_id:int, destination_id:int, telegram_topic_id:int} $seeded                    A seeded conversation's identity fields.
+	 * @param string|null                                                                              $support_conversation_uuid Explicit target UUID, or a fresh one.
+	 *
 	 * @return array{source_conversation_id:int, bot_id:int, destination_id:int, telegram_topic_id:int, support_conversation_uuid:string}
 	 */
-	private function candidate( int $source_conversation_id, int $bot_id, int $destination_id, int $telegram_topic_id, ?string $support_conversation_uuid = null ): array {
+	private function candidate( array $seeded, ?string $support_conversation_uuid = null ): array {
 		return array(
-			'source_conversation_id'    => $source_conversation_id,
-			'bot_id'                    => $bot_id,
-			'destination_id'            => $destination_id,
-			'telegram_topic_id'         => $telegram_topic_id,
+			'source_conversation_id'    => $seeded['source_conversation_id'],
+			'bot_id'                    => $seeded['bot_id'],
+			'destination_id'            => $seeded['destination_id'],
+			'telegram_topic_id'         => $seeded['telegram_topic_id'],
 			'support_conversation_uuid' => $support_conversation_uuid ?? wp_generate_uuid4(),
 		);
 	}
 
 	public function test_creates_a_prepared_binding_never_active(): void {
-		$id = $this->seed_bindable_conversation( 5, 50, 500 );
+		$seeded = $this->seed_bindable_conversation();
 		$this->quiescence->enter();
 		$this->quiescence->confirm();
 
-		$candidate = $this->candidate( $id, 5, 50, 500 );
+		$candidate = $this->candidate( $seeded );
 		$result    = $this->service->import_batch( array( $candidate ) )[0];
 
 		$this->assertSame( BindingImportOutcome::CREATED, $result['outcome'] );
@@ -140,11 +196,11 @@ final class LegacyBindingImportServiceV1Test extends WP_UnitTestCase {
 	}
 
 	public function test_rerun_against_own_prepared_binding_is_idempotent_success(): void {
-		$id = $this->seed_bindable_conversation( 5, 50, 500 );
+		$seeded = $this->seed_bindable_conversation();
 		$this->quiescence->enter();
 		$this->quiescence->confirm();
 
-		$candidate = $this->candidate( $id, 5, 50, 500 );
+		$candidate = $this->candidate( $seeded );
 		$first     = $this->service->import_batch( array( $candidate ) )[0];
 		$this->assertSame( BindingImportOutcome::CREATED, $first['outcome'] );
 
@@ -165,16 +221,16 @@ final class LegacyBindingImportServiceV1Test extends WP_UnitTestCase {
 	 * success — it is a distinct, elevated-priority conflict.
 	 */
 	public function test_matching_active_binding_is_a_conflict_never_idempotent_success(): void {
-		$id                        = $this->seed_bindable_conversation( 5, 50, 500 );
+		$seeded                    = $this->seed_bindable_conversation();
 		$support_conversation_uuid = wp_generate_uuid4();
 
-		$existing = $this->bindings->create( wp_generate_uuid4(), $support_conversation_uuid, 'ensure-key-active', 5, 50, 500, ChannelBinding::STATUS_ACTIVE );
+		$existing = $this->bindings->create( wp_generate_uuid4(), $support_conversation_uuid, 'ensure-key-active-' . $seeded['bot_id'], $seeded['bot_id'], $seeded['destination_id'], $seeded['telegram_topic_id'], ChannelBinding::STATUS_ACTIVE );
 		$this->assertNotNull( $existing );
 
 		$this->quiescence->enter();
 		$this->quiescence->confirm();
 
-		$candidate = $this->candidate( $id, 5, 50, 500, $support_conversation_uuid );
+		$candidate = $this->candidate( $seeded, $support_conversation_uuid );
 		$result    = $this->service->import_batch( array( $candidate ) )[0];
 
 		$this->assertSame( BindingImportOutcome::CONFLICT_EXISTING_ACTIVE, $result['outcome'] );
@@ -188,44 +244,52 @@ final class LegacyBindingImportServiceV1Test extends WP_UnitTestCase {
 	}
 
 	public function test_matching_unavailable_binding_is_status_unresolved_conflict(): void {
-		$id                        = $this->seed_bindable_conversation( 5, 50, 500 );
+		$seeded                    = $this->seed_bindable_conversation();
 		$support_conversation_uuid = wp_generate_uuid4();
 
-		$this->bindings->create( wp_generate_uuid4(), $support_conversation_uuid, 'ensure-key-unavail', 5, 50, 500, ChannelBinding::STATUS_UNAVAILABLE );
+		$this->bindings->create( wp_generate_uuid4(), $support_conversation_uuid, 'ensure-key-unavail-' . $seeded['bot_id'], $seeded['bot_id'], $seeded['destination_id'], $seeded['telegram_topic_id'], ChannelBinding::STATUS_UNAVAILABLE );
 
 		$this->quiescence->enter();
 		$this->quiescence->confirm();
 
-		$candidate = $this->candidate( $id, 5, 50, 500, $support_conversation_uuid );
+		$candidate = $this->candidate( $seeded, $support_conversation_uuid );
 		$result    = $this->service->import_batch( array( $candidate ) )[0];
 
 		$this->assertSame( BindingImportOutcome::CONFLICT_EXISTING_STATUS_UNRESOLVED, $result['outcome'] );
 	}
 
 	public function test_mismatched_existing_binding_is_a_conflict(): void {
-		$id = $this->seed_bindable_conversation( 5, 50, 500 );
+		$seeded = $this->seed_bindable_conversation();
 
 		// A pre-existing binding for the same (bot_id, telegram_topic_id) pointing at a different Support Chat conversation.
-		$this->bindings->create( wp_generate_uuid4(), wp_generate_uuid4(), 'ensure-key-mismatch', 5, 50, 500, ChannelBinding::STATUS_PREPARED );
+		$this->bindings->create( wp_generate_uuid4(), wp_generate_uuid4(), 'ensure-key-mismatch-' . $seeded['bot_id'], $seeded['bot_id'], $seeded['destination_id'], $seeded['telegram_topic_id'], ChannelBinding::STATUS_PREPARED );
 
 		$this->quiescence->enter();
 		$this->quiescence->confirm();
 
-		$candidate = $this->candidate( $id, 5, 50, 500 ); // A different support_conversation_uuid.
+		$candidate = $this->candidate( $seeded ); // A different support_conversation_uuid.
 		$result    = $this->service->import_batch( array( $candidate ) )[0];
 
 		$this->assertSame( BindingImportOutcome::CONFLICT_EXISTING_MISMATCHED, $result['outcome'] );
 	}
 
 	public function test_topic_never_created_is_a_conclusive_skip(): void {
-		$conversation = $this->conversations->create( wp_generate_uuid4(), 'secret-hash', 5, null );
+		$bot_id       = self::unique_id();
+		$conversation = $this->conversations->create( wp_generate_uuid4(), 'secret-hash-' . wp_generate_uuid4(), $bot_id, null );
 		$this->assertNotNull( $conversation );
 		// Never mark_topic_created(): topic_creation_state stays 'none'.
 
 		$this->quiescence->enter();
 		$this->quiescence->confirm();
 
-		$candidate = $this->candidate( $conversation->id(), 5, 50, 500 );
+		$candidate = $this->candidate(
+			array(
+				'source_conversation_id' => $conversation->id(),
+				'bot_id'                 => $bot_id,
+				'destination_id'         => self::unique_id(),
+				'telegram_topic_id'      => self::unique_id(),
+			)
+		);
 		$result    = $this->service->import_batch( array( $candidate ) )[0];
 
 		$this->assertSame( BindingImportOutcome::SKIP_TOPIC_STATE_CHANGED, $result['outcome'] );
@@ -236,23 +300,23 @@ final class LegacyBindingImportServiceV1Test extends WP_UnitTestCase {
 	 * (e.g. the remote topic was deleted) between migration and this run.
 	 */
 	public function test_topic_lifecycle_no_longer_active_is_a_conclusive_skip(): void {
-		$id = $this->seed_bindable_conversation( 5, 50, 500 );
-		$this->conversations->mark_topic_lifecycle( $id, TopicLifecycleState::UNAVAILABLE );
+		$seeded = $this->seed_bindable_conversation();
+		$this->conversations->mark_topic_lifecycle( $seeded['source_conversation_id'], TopicLifecycleState::UNAVAILABLE );
 
 		$this->quiescence->enter();
 		$this->quiescence->confirm();
 
-		$candidate = $this->candidate( $id, 5, 50, 500 );
+		$candidate = $this->candidate( $seeded );
 		$result    = $this->service->import_batch( array( $candidate ) )[0];
 
 		$this->assertSame( BindingImportOutcome::SKIP_TOPIC_STATE_CHANGED, $result['outcome'] );
 	}
 
 	public function test_not_quiescent_is_retryable_not_terminal(): void {
-		$id = $this->seed_bindable_conversation( 5, 50, 500 );
+		$seeded = $this->seed_bindable_conversation();
 		// Gate left at its default 'idle' state — never entered/confirmed.
 
-		$candidate = $this->candidate( $id, 5, 50, 500 );
+		$candidate = $this->candidate( $seeded );
 		$result    = $this->service->import_batch( array( $candidate ) )[0];
 
 		$this->assertSame( BindingImportOutcome::RETRY_NOT_QUIESCENT, $result['outcome'] );
@@ -270,8 +334,8 @@ final class LegacyBindingImportServiceV1Test extends WP_UnitTestCase {
 	 * property this design relies on for automatic reruns.
 	 */
 	public function test_retry_after_quiescence_achieved_succeeds(): void {
-		$id        = $this->seed_bindable_conversation( 5, 50, 500 );
-		$candidate = $this->candidate( $id, 5, 50, 500 );
+		$seeded    = $this->seed_bindable_conversation();
+		$candidate = $this->candidate( $seeded );
 
 		$first = $this->service->import_batch( array( $candidate ) )[0];
 		$this->assertSame( BindingImportOutcome::RETRY_NOT_QUIESCENT, $first['outcome'] );
@@ -284,11 +348,11 @@ final class LegacyBindingImportServiceV1Test extends WP_UnitTestCase {
 	}
 
 	public function test_dry_run_writes_nothing_but_reports_would_create(): void {
-		$id = $this->seed_bindable_conversation( 5, 50, 500 );
+		$seeded = $this->seed_bindable_conversation();
 		$this->quiescence->enter();
 		$this->quiescence->confirm();
 
-		$candidate = $this->candidate( $id, 5, 50, 500 );
+		$candidate = $this->candidate( $seeded );
 		$result    = $this->service->import_batch( array( $candidate ), true )[0];
 
 		$this->assertSame( BindingImportOutcome::CREATED, $result['outcome'] );
@@ -309,9 +373,17 @@ final class LegacyBindingImportServiceV1Test extends WP_UnitTestCase {
 	}
 
 	public function test_batch_ceiling_of_100_enforced_server_side(): void {
+		$bot_id     = self::unique_id();
 		$candidates = array();
 		for ( $i = 0; $i < 150; $i++ ) {
-			$candidates[] = $this->candidate( $i + 1, 5, 50, 500 + $i );
+			$candidates[] = $this->candidate(
+				array(
+					'source_conversation_id' => $i + 1,
+					'bot_id'                 => $bot_id,
+					'destination_id'         => self::unique_id(),
+					'telegram_topic_id'      => self::unique_id(),
+				)
+			);
 		}
 
 		$results = $this->service->import_batch( $candidates );
