@@ -131,16 +131,41 @@ unbounded transient retry:
   `incident_resolution = 'retried_success'`) or by the existing authority-gated
   `cutover incident-acknowledge --po-decision-ref` terminal path (ADR-0042 §4 — unchanged,
   opaque ref, never stamps `replayed_at`/`handed_off_at`).
-- Genuinely transient failures — Support Chat unreachable, `503`, `contract_auth_failed`,
-  not-paired, discovery-incompatible, a caught collaborator exception — stay
-  `OUTCOME_RETRY_TRANSIENT` and are **not** incidents. Unchanged.
+- Add a second closed code — `handoff_rejected` — for every **other** deterministic Support
+  Chat refusal after active-binding selection (`400 invalid_body`, `400 invalid_operator`,
+  `400 unsupported_operation`, `409 already_claimed`, `409 claimed_by_other`,
+  `409 invalid_transition`). Retrying any of these produces the identical refusal forever, so
+  they must be classified incidents, not retryable. Same durable-incident semantics as above.
+- `409 handoff_provenance_conflict` stays its own existing incident code (unchanged).
+
+**Exhaustive classification — every Contract outcome after active-binding selection maps to a
+named retryable outcome or a named incident; no generic fallback remains:**
+
+| Contract result (source-verified) | Origin | Deterministic? | `finish()` outcome |
+|---|---|---|---|
+| `{ok:true}` (`200`) | SC handler success (incl. resolve/reopen already-in-target-state short-circuit, ADR-0010 §5) | — | `OUTCOME_HANDED_OFF` |
+| `404 not_found` | SC `resolve_conversation()` → `null` (unknown or malformed ref) | yes | `OUTCOME_INCIDENT` — **`unresolved_case_reference`** (new) |
+| `400 invalid_body` | SC — reply text empty or > 4096 chars | yes | `OUTCOME_INCIDENT` — **`handoff_rejected`** (new) |
+| `400 invalid_operator` | SC — `operator_user_id` missing/invalid on a lifecycle op | yes | `OUTCOME_INCIDENT` — `handoff_rejected` |
+| `400 unsupported_operation` | SC — op not in the six (structurally unreachable from this class; a code bug if seen) | yes | `OUTCOME_INCIDENT` — `handoff_rejected` |
+| `409 already_claimed` / `409 claimed_by_other` / `409 invalid_transition` | SC — domain lifecycle conflict | yes | `OUTCOME_INCIDENT` — `handoff_rejected` |
+| `409 handoff_provenance_conflict` | SC `dispatch_with_provenance()` — `(bot_id,update_id)` maps to a different `kind`/`channel_case_ref` | yes | `OUTCOME_INCIDENT` — `handoff_provenance_conflict` (existing) |
+| `503 request_failed` | SC — `messages->create()` returned `null` (transient DB write failure) | no | `OUTCOME_RETRY_TRANSIENT` |
+| `401 contract_auth_failed` | SC `ContractOperationsController` — signature/nonce/clock; recoverable by re-pair or clock correction | no | `OUTCOME_RETRY_TRANSIENT` (unpaired/unavailable peer) |
+| `sc_contract_not_paired` / `sc_authenticated_contract_unavailable` / `sc_contract_discovery_incompatible` / `sc_contract_signing_unavailable` / `sc_contract_transport_failed` | UT `SupportChatContractClient` client-side gate — call never sent | no | `OUTCOME_RETRY_TRANSIENT` (transport / unavailable / unpaired peer) |
+| `sc_contract_unsupported_operation` | UT client — op not on the adapter allow-list (code bug; unreachable in normal operation) | yes | `OUTCOME_INCIDENT` — `handoff_rejected` |
+| caught `\Throwable` from a collaborator inside `dispatch()` | UT | (indeterminate) | `OUTCOME_RETRY_TRANSIENT` — but the replay command **reports the retryable count every pass**, so a count that never decreases is an operator-visible escalation signal, never a *silent* infinite loop |
+
 - No legacy-processing fallback after an active binding is selected (the dispatcher already has
-  none); no implicit UUID-equality assumption; no silent retry loop without an outcome.
+  none); no implicit UUID-equality assumption; no `default`/catch-all arm that produces an
+  unbounded silent retry — the only `OUTCOME_RETRY_TRANSIENT` cases are the explicitly listed
+  transient/transport/unavailable/unpaired ones plus a caught exception that the replay command
+  surfaces on every pass.
 - **Live inbound** (`InboundAdapterBridge::try_handle()`) intentionally discards the Contract
   result and marks the update ingested regardless (at-most-once). The correction makes it send
   the resolvable ref so a `404` no longer occurs for a correctly-bound topic; the at-most-once
   ingest contract is **not** changed and no live-path incident record is introduced (a live
-  `404` after this fix implies genuine Support Chat data loss and is out of scope — the
+  `404`/refusal after this fix implies genuine Support Chat data loss and is out of scope — the
   remediation plan adds only a non-content audit event for it).
 
 ### 4. Scope boundary
@@ -162,9 +187,13 @@ call gains the conversation-UUID ref but its ordering and fail-closed semantics 
    *Rejected* by Product Owner direction: contradicts shipped `LegacyBindingImportServiceV1` /
    `EnsureChannelCaseService`, forces an ADR-0041 / Support Chat ADR-0009 amendment, removes
    re-keying ability.
-3. **Keep `404` as transient (no `unresolved_case_reference` code).** *Rejected*: leaves the
-   fail-closed defect — replay can still block forever without a classified outcome if a Support
-   Chat conversation is genuinely absent.
+3. **Keep `404` and the deterministic 4xx/409 refusals as transient (no new incident codes).**
+   *Rejected*: leaves the fail-closed defect — replay can still block forever without a
+   classified outcome whenever Support Chat durably refuses a handoff.
+3a. **One combined new code covering `404` + the other deterministic refusals.** *Rejected*:
+   `404 not_found` (unresolvable case reference) and a lifecycle/body refusal are diagnostically
+   different — an operator triages them differently — so two codes (`unresolved_case_reference`,
+   `handoff_rejected`) are kept.
 4. **Do nothing.** *Rejected*: no real cohort can be handed off; Tier 2 and production cutover
    permanently blocked; `CutoverHandoffIntegrationTest` asserts a non-production condition.
 
@@ -175,9 +204,11 @@ call gains the conversation-UUID ref but its ordering and fail-closed semantics 
   consistently. F1's `404 → OUTCOME_RETRY_TRANSIENT` dead-end is removed for a correctly-prepared
   cohort; a genuinely unresolvable reference now produces a classified terminal incident instead
   of an infinite retry.
-- One new closed incident code (`unresolved_case_reference`). `CutoverIncidentReason::all()` and
-  the ADR-0042 §4 vocabulary gain it; the "UT incident never writes an SC map row" structural
-  property is preserved for it.
+- Two new closed incident codes (`unresolved_case_reference`, `handoff_rejected`).
+  `CutoverIncidentReason::all()` and the ADR-0042 §4 vocabulary gain both; the "UT incident never
+  writes an SC map row" structural property is preserved for each. `finish()` has no generic
+  transient fallback after the change — every Contract outcome is a named retryable outcome or a
+  named incident.
 - `CutoverHandoffIntegrationTest` (7 cases) and `CutoverTier1HandoffResolutionTest` are rewritten
   to use real distinct-`binding_uuid` bindings; the "does not resolve" F1 test inverts to "now
   resolves". Adapter outbound/inbound interop and unit suites follow.
@@ -201,9 +232,9 @@ touched.
 - `docs/adr/README.md` — ADR-0043 row; next available number becomes 0044.
 - `docs/plans/sc-m03-final-cutover-f1-channel-case-ref-remediation-plan-v1.md` — new; the
   adapter edit set, fail-closed classification, tests, CI, rollout, Tier 1 gate.
-- `docs/plans/sc-m03-final-cutover-dev-rehearsal-plan-v1.md` — immutable (frozen plan); F1 halt
-  and acceptance gate recorded in the closure and the Support Chat decision record; runbook v2
-  is an implementation-phase deliverable.
+- `docs/plans/sc-m03-final-cutover-dev-rehearsal-plan-v1.md` — a dated non-design "Amendment A"
+  status footer records the F1 halt and the Tier 1 acceptance gate; design sections unchanged;
+  runbook v2 is an implementation-phase deliverable.
 - `docs/milestones/ut-adapter-m1-universal-support-chat-adapter.md` — §0d planning note.
 - `docs/closure/sc-m03-final-cutover-dev-rehearsal-tier1-closure.md`,
   `docs/closure/sc-m03-final-cutover-dev-rehearsal-tier1-approval.md` — referenced, not edited.

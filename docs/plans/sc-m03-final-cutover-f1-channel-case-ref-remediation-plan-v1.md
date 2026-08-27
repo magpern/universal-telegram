@@ -112,10 +112,15 @@ Per ADR-0043 §Decision and Support Chat ADR-0011 §Decision:
 2. **Resolve inbound `channel_case_ref` by conversation UUID** at R1.
 3. **`EnsureChannelCaseService::ensure()` returns the conversation UUID** as `channel_case_ref`
    in all branches (the value is its `$conversation_uuid` argument).
-4. **Add `CutoverIncidentReason::UNRESOLVED_CASE_REFERENCE = 'unresolved_case_reference'`** to
-   the closed vocabulary; `finish()` classifies a `404 not_found` (and any Support Chat
-   malformed/absent-case-reference rejection) as this durable incident. Transient failures stay
-   `OUTCOME_RETRY_TRANSIENT`.
+4. **Add two closed incident codes** to `CutoverIncidentReason` —
+   `UNRESOLVED_CASE_REFERENCE = 'unresolved_case_reference'` (Support Chat `404 not_found` after
+   active-binding selection) and `HANDOFF_REJECTED = 'handoff_rejected'` (every other
+   deterministic Support Chat refusal: `400 invalid_body` / `400 invalid_operator` /
+   `400 unsupported_operation` / `409 already_claimed` / `409 claimed_by_other` /
+   `409 invalid_transition`, and the UT-client `sc_contract_unsupported_operation` code-bug
+   guard). `finish()` is rewritten so **every** branch returns a named outcome — no generic
+   `return OUTCOME_RETRY_TRANSIENT` fallback (see §7). Only the explicitly transient conditions
+   stay retryable.
 5. **`binding_uuid` never crosses the Contract v1 wire.** No SC-side binding-map resolver, no
    direct UT SQL from SC, no shared map, no UUID-equality assumption, no legacy fallback after
    an active binding is selected.
@@ -123,13 +128,13 @@ Per ADR-0043 §Decision and Support Chat ADR-0011 §Decision:
    `db_version` bump either plugin.
 
 Rejected alternatives: ADR-0043 §Alternatives (SC resolver / new op; identifier collapse;
-`404`-stays-transient; do nothing).
+`404`-stays-transient; one combined code; do nothing).
 
 ## 5. Directory, namespace, schema, API impact (scoped)
 
 - **Changed source** (≈8 files, all under `src/`): S1–S7 + R1 files, plus
-  `src/Migration/CutoverIncidentReason.php` (one constant + `all()`) and the `finish()` arm in
-  `CutoverReplayDispatcher.php`. No new file, no namespace change.
+  `src/Migration/CutoverIncidentReason.php` (two constants + `all()`) and the rewritten
+  `finish()` classification in `CutoverReplayDispatcher.php`. No new file, no namespace change.
 - **Schema / migration**: none. **Explicit proof no data-model migration is needed**:
   `support_conversation_uuid` is an existing `NOT NULL UNIQUE` column on every binding row;
   `legacy_handoff_map` / deferred handoff+incident columns are empty everywhere; the new
@@ -152,17 +157,29 @@ No migration, no dual-read window, no compatibility shim. The one-to-one `UNIQUE
 
 ## 7. Failure classification and fail-closed behaviour
 
-| Contract result | Meaning after correction | `finish()` outcome | Blocks `replaying → idle` / `confirm-complete`? | Resolution |
-|---|---|---|---|---|
-| `{ok: true}` | handed off | `OUTCOME_HANDED_OFF` (stamps `handed_off_at`) | no | — |
-| `409 handoff_provenance_conflict` | durable provenance mismatch | `OUTCOME_INCIDENT` (`handoff_provenance_conflict`) | yes | real retry succeeds, or `incident-acknowledge` |
-| `404 not_found` / malformed-ref rejection | **Support Chat cannot resolve the conversation UUID** — data integrity, not transient | `OUTCOME_INCIDENT` (`unresolved_case_reference`) — **new** | yes | real retry succeeds (auto `retried_success`), or `incident-acknowledge --po-decision-ref` |
-| `503` / transport / `contract_auth_failed` / not-paired / discovery-incompatible / caught exception | genuinely transient | `OUTCOME_RETRY_TRANSIENT` | not by itself (row simply left unresolved for the next pass) | next ordinary replay pass |
-| pre-dispatch `decrypt_failed` / `parse_failed` / `unsupported_command` / `unmapped_sender` | UT-only classification failure | `OUTCOME_INCIDENT` | yes | real retry, or `incident-acknowledge` |
+**Exhaustive.** After the caller has selected an **active** binding and `CutoverReplayDispatcher`
+has dispatched, every possible Contract result maps to a named outcome. `finish()` is rewritten
+to remove the current generic `return self::OUTCOME_RETRY_TRANSIENT` tail; an unlisted/unknown
+`reason` string maps to `handoff_rejected` (fail-closed), never to a silent retry.
+
+| Contract result (source-verified) | Origin | `finish()` outcome | Incident code | Blocks `replaying → idle` / `confirm-complete`? | Resolution |
+|---|---|---|---|---|---|
+| `{ok:true}` (`200`), incl. resolve/reopen already-in-target-state short-circuit | SC handler | `OUTCOME_HANDED_OFF` (stamps `handed_off_at`) | — | no | — |
+| `404 not_found` | SC `resolve_conversation()` → `null` (unknown/malformed ref) | `OUTCOME_INCIDENT` | **`unresolved_case_reference`** (new) | yes | real retry succeeds (`retried_success`), or `incident-acknowledge --po-decision-ref` |
+| `400 invalid_body` / `400 invalid_operator` / `400 unsupported_operation` / `409 already_claimed` / `409 claimed_by_other` / `409 invalid_transition` | SC handler — deterministic domain refusal | `OUTCOME_INCIDENT` | **`handoff_rejected`** (new) | yes | real retry succeeds, or `incident-acknowledge` |
+| `409 handoff_provenance_conflict` | SC `dispatch_with_provenance()` | `OUTCOME_INCIDENT` | `handoff_provenance_conflict` (existing) | yes | real retry succeeds, or `incident-acknowledge` |
+| any other / unrecognised `ok:false` `reason` from a `2xx`-authenticated call | SC | `OUTCOME_INCIDENT` | `handoff_rejected` (fail-closed default) | yes | as above |
+| `503 request_failed` | SC — `messages->create()` returned `null` (transient DB write failure) | `OUTCOME_RETRY_TRANSIENT` | — | no (row left unresolved for the next pass) | next ordinary replay pass |
+| `401 contract_auth_failed` | SC `ContractOperationsController` — signature/nonce/clock (re-pair / clock fix) | `OUTCOME_RETRY_TRANSIENT` | — | no | next pass after re-pair |
+| `sc_contract_not_paired` / `sc_authenticated_contract_unavailable` / `sc_contract_discovery_incompatible` / `sc_contract_signing_unavailable` / `sc_contract_transport_failed` | UT `SupportChatContractClient` client-side gate — call never sent | `OUTCOME_RETRY_TRANSIENT` | — | no | next pass after the environmental condition clears |
+| `sc_contract_unsupported_operation` | UT client — op not on the adapter allow-list (code bug; unreachable normally) | `OUTCOME_INCIDENT` | `handoff_rejected` | yes | code fix + real retry |
+| caught `\Throwable` from a collaborator inside `dispatch()` | UT | `OUTCOME_RETRY_TRANSIENT` | — | no | next pass; **the replay command reports the retryable count every pass**, so a non-decreasing count is an operator-visible escalation, never a silent infinite loop |
+| pre-dispatch `decrypt_failed` / `parse_failed` / `unsupported_command` / `unmapped_sender` (SC never called) | UT | `OUTCOME_INCIDENT` | existing codes | yes | real retry, or `incident-acknowledge` |
 
 Fail-closed guarantees: no legacy-processing fallback once an active binding is selected; no
-implicit UUID equality; every terminal condition has a classified outcome; no unbounded retry
-loop can silently block replay.
+implicit UUID equality; **every** Contract outcome is a named retryable outcome or a named
+incident; the only retryable branches are the explicitly transient/transport/unavailable/unpaired
+ones plus a caught exception surfaced on every pass; no `default` arm silently retries forever.
 
 ## 8. Handling of the old erroneous `channel_case_ref` values in test-only / DEV evidence
 
@@ -193,15 +210,21 @@ Every binding is created by the real `LegacyBindingImportServiceV1` or real
 | T6 | Provenance mismatch | pre-seed a `legacy_handoff_map` row with a different `kind`/`channel_case_ref` for the same `(bot_id,update_id)` | `409 handoff_provenance_conflict`; UT `handoff_provenance_conflict` incident; no SC domain/map write |
 | T7 | Lifecycle event reporting | buffered `forum_topic_closed` on an active-bound topic | `report_channel_unavailable` with the conversation-UUID ref; SC channel status degraded; legacy UT conversation row unmutated |
 | T8 | **Unresolved case reference (fail-closed)** | active binding whose `support_conversation_uuid` points at a conversation deleted on the SC side | `finish()` → `OUTCOME_INCIDENT` (`unresolved_case_reference`); `replaying → idle` and `confirm-complete` refused; no map row; ciphertext + audit retained |
-| T9 | Transient stays transient | SC made unreachable mid-replay | `OUTCOME_RETRY_TRANSIENT`; row unresolved but not an incident; next pass succeeds |
-| T10 | No plaintext persistence | after T3–T7 | `SHOW COLUMNS` + filtered `SELECT *` on `legacy_handoff_map`, `quiescence_deferred_updates` incident columns, `cutover_*` audit — only ids/uuids/fixed-vocabulary/timestamps; `verify_step_11` passes |
+| T8b | **`handoff_rejected` (fail-closed)** | buffered reply > 4096 chars → SC `400 invalid_body`; and a buffered `/resolve` against an already-resolved conversation → SC `409 invalid_transition` | each → `OUTCOME_INCIDENT` (`handoff_rejected`); replay completion blocked; no map row |
+| T9 | Transient stays transient | SC `503 request_failed` and SC made unreachable (`sc_contract_transport_failed`) mid-replay | `OUTCOME_RETRY_TRANSIENT`; row unresolved but not an incident; next pass succeeds; retryable count reported |
+| T9b | **No generic silent retry** | inject an `ok:false` result with an unrecognised `reason` string on a `200` call | `finish()` → `OUTCOME_INCIDENT` (`handoff_rejected`), **not** `OUTCOME_RETRY_TRANSIENT` |
+| T10 | No plaintext persistence | after T3–T8b | `SHOW COLUMNS` + filtered `SELECT *` on `legacy_handoff_map`, `quiescence_deferred_updates` incident columns, `cutover_*` audit — only ids/uuids/fixed-vocabulary/timestamps; `verify_step_11` passes |
 | T11 | Degenerate guard | one binding with `binding_uuid == support_conversation_uuid` | still resolves (no regression for the historical fixture shape) |
 | T12 | Rewrite `CutoverHandoffIntegrationTest` (7 cases) | distinct `binding_uuid` throughout | every case asserts wire `channel_case_ref` = conversation UUID ≠ `binding_uuid` |
+| T13 | Invert `CutoverTier1HandoffResolutionTest` | the merged characterization test's real `legacy-bind` setup | `test_handoff_does_not_resolve_…` → `test_handoff_resolves_a_real_legacy_bind_prepared_binding` asserting `OUTCOME_HANDED_OFF` |
+| T14 | `finish()` classification is total | table-driven over every row of §7 | every Contract result maps to exactly one named outcome; no `default`/unhandled path |
 
 **Real dual-plugin coverage** (interop harness `bin/docker/test-integration-interop.sh`, real
-two-way pairing, `pre_http_request` fake, `down -v` between): T1, T2, T3, T4, T5, T6, T7, T8,
-T10. Unit-level: T9, T11, plus `EnsureChannelCaseServiceTest`, `InboundAdapterBridgeTest`,
-`CutoverReplayDispatcherTest`, `DeliverMessageServiceTest` argument/return updates.
+two-way pairing, `pre_http_request` fake, `down -v` between runs): T1, T2, T3, T4, T5, T6, T7,
+T8, T8b, T10, T13. Unit-level: T9, T9b, T11, T14, plus `EnsureChannelCaseServiceTest`,
+`InboundAdapterBridgeTest`, `CutoverReplayDispatcherTest`, `DeliverMessageServiceTest`
+argument/return updates. **No test may seed `binding_uuid == support_conversation_uuid`** except
+T11.
 
 ## 10. CI impact
 
@@ -219,18 +242,20 @@ verbatim result lines attached to the implementation report, exactly as the Tier
    after doc CI green. **No code. No PO implementation acceptance.**
 2. **WP-F1-2 (Support Chat)** — comment corrections + interop fixture alignment; no `db_version`
    bump. (Support Chat companion plan owns it.)
-3. **WP-F1-3 (UT, adapter send + incident vocab)** — S1–S7 + `ChannelBinding` doc; add
-   `CutoverIncidentReason::UNRESOLVED_CASE_REFERENCE`; `finish()` classification arm. Unit +
-   adapter interop tests (T1, T2, T8, T9, T11).
+3. **WP-F1-3 (UT, adapter send + incident vocab + classification)** — S1–S7 + `ChannelBinding`
+   doc; add `CutoverIncidentReason::UNRESOLVED_CASE_REFERENCE` and `::HANDOFF_REJECTED`; rewrite
+   `finish()` to the exhaustive §7 mapping (no generic transient tail). Unit + adapter interop
+   tests (T1, T2, T8, T8b, T9, T9b, T11, T14).
 4. **WP-F1-4 (UT, inbound resolve)** — R1; outbound interop + unit tests.
 5. **WP-F1-5 (cutover-handoff tests)** — rewrite `CutoverHandoffIntegrationTest` (T12); invert
-   `CutoverTier1HandoffResolutionTest`; T3–T7, T10. Run the full interop suite locally on both
-   variants; attach evidence.
+   `CutoverTier1HandoffResolutionTest` (T13); T3–T7, T10. Run the full interop suite locally on
+   both variants; attach evidence.
 6. **WP-F1-6 (DEV rehearsal runbook v2)** — new
    `docs/plans/sc-m03-final-cutover-dev-rehearsal-plan-v2.md` (+ Support Chat companion v2)
    superseding v1: F1 resolution as a hard precondition; the §1.3/§2 "wire detail" note changed
-   from "fixture-seeding nuance" to "resolved by ADR-0043 / Support Chat ADR-0011"; a
-   `unresolved_case_reference` incident scenario added to the Run 3 family.
+   from "fixture-seeding nuance" to "resolved by ADR-0043 / Support Chat ADR-0011"; new
+   `unresolved_case_reference` and `handoff_rejected` incident scenarios added to the Run 3
+   family. (v1 carries only the non-design "Amendment A" status footer added by this freeze.)
 7. **WP-F1-7** — implementation report citing this plan's freeze SHA.
 
 WP-F1-3/4 may land in one PR. WP-F1-2 is an independent Support Chat PR. Do not merge any code
@@ -252,8 +277,9 @@ Tier 2 stays blocked on B1, B2, and F1 and remains unexecuted.
 |---|---|
 | A live binding has `binding_uuid != support_conversation_uuid` and an in-flight SC reference | A-F1-1/A-F1-2 verification on DEV before merge; SC holds no durable ref outside the empty map; worst case one retriable delivery |
 | `CutoverHandoffIntegrationTest` rewrite masks a regression | keep T11 degenerate guard; assert wire value ≠ `binding_uuid` in T12 |
-| `unresolved_case_reference` misclassifies a transient `404` | `finish()` distinguishes `404 not_found` from `503`/transport/`contract_auth_failed`; T9 pins transient-stays-transient |
-| New incident code breaks the "no SC map row for a UT incident" property | T10 asserts it structurally for the new code |
+| `unresolved_case_reference` / `handoff_rejected` misclassifies a transient condition | `finish()` distinguishes `404`/`4xx`/`409` (deterministic → incident) from `503 request_failed` / `401 contract_auth_failed` / client transport-unavailable gates (→ retryable); T9 + T9b pin both directions; T14 proves totality |
+| New incident codes break the "no SC map row for a UT incident" property | T10 asserts it structurally for both new codes |
+| A deterministic 409 lifecycle conflict that is actually idempotent-benign becomes a noisy incident | acceptable fail-closed default; the implementation MAY narrow a specific 409 toward idempotent-success only with a proof it is safe, documented in the implementation report — the freeze default is incident |
 | Someone treats Tier 1 re-attempt or F1 implementation as authorized by this freeze | §11a + §12 acceptance text; ADR-0043 Status is Proposed; no acceptance record created here |
 | Scope creep into an `ensure_channel_case` Contract operation | ADR-0043 / Support Chat ADR-0011 explicitly reject it; this plan changes no Contract operation set |
 
@@ -270,8 +296,10 @@ Tier 2 stays blocked on B1, B2, and F1 and remains unexecuted.
 - Changing the quiescence state machine, the activation/compensation saga, `cas_version`
   monotonicity, `try_handle()`'s `return false` for non-lifecycle bot commands, or the
   `maybe_mark_topic_unavailable()` ordering.
-- Editing `docs/closure/sc-m03-final-cutover-dev-rehearsal-tier1-closure.md` or the frozen
-  rehearsal plan v1 (immutable records).
+- Editing `docs/closure/sc-m03-final-cutover-dev-rehearsal-tier1-closure.md` (immutable record).
+  Editing the **design sections** of the frozen rehearsal plan v1 — this freeze appends only a
+  dated non-design "Amendment A" status footer (F1 halt + correction gate); the design revision
+  is deferred to runbook v2.
 - Any Product Owner implementation acceptance (separate later action, §12 below).
 
 ## 14. Definition of done
@@ -280,8 +308,9 @@ Tier 2 stays blocked on B1, B2, and F1 and remains unexecuted.
 - `channel_case_ref` carries the Support Chat conversation UUID at every send site (S1–S6),
   resolved by conversation UUID at R1; `binding_uuid` appears in **no** Contract v1
   request/response body (grep-proven).
-- `CutoverIncidentReason::UNRESOLVED_CASE_REFERENCE` added; `finish()` classifies `404` as a
-  durable incident; transient failures unchanged; T8 + T9 green.
+- `CutoverIncidentReason::UNRESOLVED_CASE_REFERENCE` and `::HANDOFF_REJECTED` added; `finish()`
+  matches the exhaustive §7 table with **no generic transient fallback**; T8, T8b, T9, T9b, T14
+  green.
 - `CutoverHandoffIntegrationTest` (7 cases) and `CutoverTier1HandoffResolutionTest` pass with a
   **distinct** `binding_uuid`; full local interop suite green on both WP/PHP variants; result
   lines in the implementation report.
