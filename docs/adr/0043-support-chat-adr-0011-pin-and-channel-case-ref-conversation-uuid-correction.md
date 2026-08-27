@@ -2,16 +2,23 @@
 
 ## Status
 
-**Proposed** — awaiting Product Owner review. Documentation-only; no code, schema, or
-`Migrator::target_version()` change is made by this ADR. The adapter-side changes it specifies
-are executed only under the separately-reviewed remediation plan
-`docs/plans/sc-m03-final-cutover-f1-channel-case-ref-remediation-plan-v1.md` after acceptance.
+**Accepted** — 2026-08-27, by the Product Owner. The verbatim authorization is recorded in
+`docs/closure/sc-m03-final-cutover-f1-identity-correction-implementation-approval.md`, with a
+companion record in Universal Support Chat
+(`docs/decisions/sc-m03-final-cutover-dev-rehearsal-po-decisions.md` decision item 7, "F1
+implementation acceptance — recorded"). Acceptance PRs: universal-telegram #52,
+universal-support-chat #25. Acceptance authorizes only implementation of the frozen F1
+remediation work packages (this ADR's plan and its Support Chat companion); it authorizes no
+schema, `Migrator::target_version()`, or plugin-version change, no new Contract operation, and
+no DEV, production, or operational cutover / rehearsal action. Documentation-only; no code or
+schema change is made by this ADR itself. Proposed 2026-08-27.
 
 **Pins Support Chat ADR-0011** ("Contract v1 `channel_case_ref` is the Support Chat conversation
 UUID; provenance-map and fail-closed semantics"). **Amends ADR-0042 §3 (handoff `channel_case_ref`
-sender identity) and §4/§5 (closed incident vocabulary).** On acceptance, ADR-0042's Status field
-gains "handoff `channel_case_ref` sender identity and closed incident vocabulary amended by
-ADR-0043" (Status-field-only change per the immutability rule; ADR-0042's body is not edited).
+sender identity) and §4/§5 (closed incident vocabulary).** The Status-field amendment note on
+ADR-0042 ("handoff `channel_case_ref` sender identity and closed incident vocabulary amended by
+ADR-0043" — a Status-field-only change per the immutability rule; ADR-0042's body is not edited)
+is applied as a work package of the F1 implementation, per the remediation plan.
 
 ## Context
 
