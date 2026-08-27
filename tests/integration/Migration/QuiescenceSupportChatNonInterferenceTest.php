@@ -98,8 +98,8 @@ final class QuiescenceSupportChatNonInterferenceTest extends WP_UnitTestCase {
 		global $wpdb;
 		$wpdb->query( 'UPDATE ' . $wpdb->prefix . Migrator::QUIESCENCE_STATE_TABLE . " SET state = 'quiescent', entered_quiescent_at = NOW() WHERE id = 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
-		$service = new DeliverMessageService( $bindings, $keys, $messages, new Dispatcher( $schema_health ) );
 		// The Contract `channel_case_ref` is the SC conversation UUID (ADR-0043); `deliver()` resolves it back to the binding.
+		$service = new DeliverMessageService( $bindings, $keys, $messages, new Dispatcher( $schema_health ) );
 		$result  = $service->deliver( $binding->support_conversation_uuid(), 'non-interference-key-1', 'Hello from a visitor', 'Visitor' );
 
 		$this->assertTrue( $result['ok'], 'Support Chat adapter delivery must succeed while state = quiescent (it is never gated by quiescence).' );
