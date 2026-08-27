@@ -142,7 +142,7 @@ final class CutoverReplayDispatcherTest extends WP_UnitTestCase {
 					array(
 						'type'   => 'bot_command',
 						'offset' => 0,
-						'length' => 9, // strlen('/presence').
+						'length' => 9, // The length of the word "/presence".
 					),
 				),
 				'from'     => array( 'id' => 12345 ),
