@@ -182,4 +182,107 @@ final class QuiescenceRaceInterleavingTest extends WP_UnitTestCase {
 		$this->assertSame( 'process', $disposition );
 		$this->assertSame( 0, $gate->deferred_update_backlog_count() );
 	}
+
+	/**
+	 * Support Chat ADR-0009 §5 / this repository's ADR-0041 §2's atomic
+	 * quiescence assertion (`with_quiescence_lock()`, SC-M03 work package 5)
+	 * must serialize on the identical Table 1 row lock the two tests above
+	 * already prove for decide_webhook_disposition()/attempt_replaying_to_idle()
+	 * — a third caller contending for the same lock, not a second,
+	 * independent implementation.
+	 */
+	public function test_with_quiescence_lock_blocks_behind_a_concurrent_holder_and_proceeds_once_released(): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query( "UPDATE {$this->state_table} SET state = 'quiescent', updated_at = NOW() WHERE id = 1" );
+		$wpdb->query( 'COMMIT' );
+		$wpdb->query( 'START TRANSACTION' );
+
+		$this->second_connection->query( 'START TRANSACTION' );
+		$locked = $this->second_connection->query( "SELECT state FROM {$this->state_table} WHERE id = 1 FOR UPDATE" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$this->assertNotFalse( $locked );
+
+		$wpdb->query( 'SET SESSION innodb_lock_wait_timeout = 1' );
+		$suppressed = $wpdb->suppress_errors( true );
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$blocked_attempt = $wpdb->query( "SELECT state FROM {$this->state_table} WHERE id = 1 FOR UPDATE" );
+		$lock_error      = (string) $wpdb->last_error;
+		$wpdb->suppress_errors( $suppressed );
+
+		$this->assertFalse( $blocked_attempt, 'with_quiescence_lock() must contend for the identical row lock, not a second, independent one.' );
+		$this->assertStringContainsStringIgnoringCase( 'lock wait timeout', $lock_error );
+
+		$this->second_connection->query( 'COMMIT' );
+		$wpdb->query( 'SET SESSION innodb_lock_wait_timeout = 50' );
+
+		$schema_health = new SchemaHealth();
+		$gate          = new QuiescenceGate(
+			$schema_health,
+			new DeferredUpdateRepository( $schema_health, new CredentialVault() ),
+			new QuiescenceTransitionRepository()
+		);
+
+		$work_ran = false;
+		$result   = $gate->with_quiescence_lock(
+			function () use ( &$work_ran ) {
+				$work_ran = true;
+				return true;
+			}
+		);
+
+		$this->assertTrue( $work_ran, 'Once the lock is genuinely free and state is quiescent, $work must run.' );
+		$this->assertSame( QuiescenceGate::LOCK_RESULT_COMMITTED, $result );
+	}
+
+	/**
+	 * A forced exception inside $work must roll back everything $work did,
+	 * and release the lock — proving the check and the write genuinely
+	 * share one transaction, not two.
+	 */
+	public function test_with_quiescence_lock_rolls_back_and_releases_the_lock_on_exception(): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query( "UPDATE {$this->state_table} SET state = 'quiescent', updated_at = NOW() WHERE id = 1" );
+		$wpdb->query( 'COMMIT' );
+		$wpdb->query( 'START TRANSACTION' );
+
+		$schema_health = new SchemaHealth();
+		$gate          = new QuiescenceGate(
+			$schema_health,
+			new DeferredUpdateRepository( $schema_health, new CredentialVault() ),
+			new QuiescenceTransitionRepository()
+		);
+
+		try {
+			$gate->with_quiescence_lock(
+				function () {
+					global $wpdb;
+					$wpdb->query(
+						"INSERT INTO {$this->deferred_table} (bot_id, update_id, update_type, payload_ciphertext, received_at) VALUES (1, 99, 'message', 'ciphertext', NOW())" // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+					);
+					throw new \RuntimeException( 'forced failure inside $work' );
+				}
+			);
+			$this->fail( 'Expected exception to propagate.' );
+		} catch ( \RuntimeException $exception ) {
+			$this->assertSame( 'forced failure inside $work', $exception->getMessage() );
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$this->deferred_table} WHERE update_id = 99" );
+		$this->assertSame( 0, $count, 'A thrown exception inside $work must roll back everything $work wrote.' );
+
+		// The lock must be released: a second, immediate call must not block.
+		$second_call_ran = false;
+		$result          = $gate->with_quiescence_lock(
+			function () use ( &$second_call_ran ) {
+				$second_call_ran = true;
+				return true;
+			}
+		);
+		$this->assertTrue( $second_call_ran );
+		$this->assertSame( QuiescenceGate::LOCK_RESULT_COMMITTED, $result );
+	}
 }

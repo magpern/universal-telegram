@@ -173,13 +173,13 @@ if [ -z "$(m06_column_exists "conversations" "owner_active_slot")" ]; then
 fi
 echo "OK: universal_telegram_conversations.owner_user_id and owner_active_slot columns exist."
 
-echo "== Verifying db_version reached 33 =="
+echo "== Verifying db_version reached 34 =="
 DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "33" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=33, got ${DB_VERSION}" >&2
+if [ "34" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=34, got ${DB_VERSION}" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 33."
+echo "OK: universal_telegram_db_version is 34."
 
 echo "== Verifying SC-M03 WP2 quiescence tables exist (ADR-0040) =="
 for TABLE in quiescence_state quiescence_transitions quiescence_deferred_updates; do
@@ -198,6 +198,14 @@ for TABLE in support_chat_bindings support_chat_delivery_keys; do
 	fi
 done
 echo "OK: universal_telegram_support_chat_bindings and universal_telegram_support_chat_delivery_keys tables exist."
+
+echo "== Verifying SC-M03 WP5 prepared binding status exists (ADR-0041) =="
+BINDING_STATUS_TYPE="$(wp db query "SHOW COLUMNS FROM ${TABLE_PREFIX}universal_telegram_support_chat_bindings LIKE 'status'" --path="$WP_DIR" --allow-root --skip-column-names)"
+if [ -z "$(echo "$BINDING_STATUS_TYPE" | grep -o 'prepared')" ]; then
+	echo "FAIL: expected universal_telegram_support_chat_bindings.status ENUM to include 'prepared'" >&2
+	exit 1
+fi
+echo "OK: universal_telegram_support_chat_bindings.status ENUM includes 'prepared'."
 
 echo "== Verifying M07.1 topic lifecycle columns exist =="
 if [ -z "$(m06_column_exists conversations topic_lifecycle_state)" ]; then

@@ -183,6 +183,7 @@ use UniversalTelegram\SupportChatAdapter\Diagnostics\AdapterStatusPage;
 use UniversalTelegram\SupportChatAdapter\DiscoveryClient;
 use UniversalTelegram\SupportChatAdapter\Inbound\InboundAdapterBridge;
 use UniversalTelegram\SupportChatAdapter\Inbound\SupportChatContractClient;
+use UniversalTelegram\SupportChatAdapter\Migration\LegacyBindingImportServiceV1;
 use UniversalTelegram\SupportChatAdapter\Migration\LegacyExportServiceV1;
 use UniversalTelegram\SupportChatAdapter\Outbound\BackfillService;
 use UniversalTelegram\SupportChatAdapter\Outbound\DeliverMessageService;
@@ -507,6 +508,15 @@ final class Plugin {
 	 * @var LegacyExportServiceV1|null
 	 */
 	private ?LegacyExportServiceV1 $legacy_export_service = null;
+
+	/**
+	 * The legacy binding preparation boundary (Support Chat ADR-0009,
+	 * ADR-0041). Symmetric registration to legacy_export_service() above,
+	 * exposed via `Plugin::instance()->legacy_binding_import_service()`.
+	 *
+	 * @var LegacyBindingImportServiceV1|null
+	 */
+	private ?LegacyBindingImportServiceV1 $legacy_binding_import_service = null;
 
 	/**
 	 * The operator identity mapping admin page, constructed by init() (M07, docs/adr/0026).
@@ -882,6 +892,13 @@ final class Plugin {
 		$adapter_enabled   = ! empty( $settings_values['support_chat_adapter_enabled'] );
 		$adapter_bindings  = new ChannelBindingRepository( $this->schema_health );
 		$adapter_discovery = new DiscoveryClient();
+
+		$this->legacy_binding_import_service = new LegacyBindingImportServiceV1(
+			$this->conversation_repository,
+			$adapter_bindings,
+			$quiescence_gate,
+			$this->schema_health
+		);
 
 		$adapter_own_key     = new OwnKeyManager( $this->credential_vault );
 		$adapter_peers       = new PeerRepository( $this->schema_health );
@@ -2059,6 +2076,16 @@ final class Plugin {
 	 */
 	public function legacy_export_service(): ?LegacyExportServiceV1 {
 		return $this->legacy_export_service;
+	}
+
+	/**
+	 * The legacy binding preparation boundary (Support Chat ADR-0009,
+	 * ADR-0041). Available only after init() has run. Its own
+	 * import_batch() call rejects any invocation outside a WP-CLI process
+	 * and never writes status = active for any row it creates.
+	 */
+	public function legacy_binding_import_service(): ?LegacyBindingImportServiceV1 {
+		return $this->legacy_binding_import_service;
 	}
 
 	/**

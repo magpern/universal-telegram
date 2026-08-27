@@ -79,7 +79,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 33;
+		return 34;
 	}
 
 	/**
@@ -181,6 +181,7 @@ class Migrator {
 			31 => array( array( $this, 'step_31_create_support_chat_adapter_tables' ), array( $this, 'verify_step_31' ) ),
 			32 => array( array( $this, 'step_32_create_support_chat_contract_auth_tables' ), array( $this, 'verify_step_32' ) ),
 			33 => array( array( $this, 'step_33_create_quiescence_tables' ), array( $this, 'verify_step_33' ) ),
+			34 => array( array( $this, 'step_34_add_prepared_binding_status' ), array( $this, 'verify_step_34' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -2228,6 +2229,49 @@ class Migrator {
 		$row_exists = $wpdb->get_var( "SELECT COUNT(*) FROM {$state_table} WHERE id = 1" );
 
 		return $state_ok && $transitions_ok && $deferred_ok && null !== $row_exists && 1 === (int) $row_exists;
+	}
+
+	/**
+	 * Adds the non-routing `prepared` binding status (Support Chat ADR-0009,
+	 * ADR-0041), additive only: existing `active`/`unavailable`/`closed`
+	 * rows and the existing `active` default are unaffected.
+	 * ChannelBinding::is_active() is unchanged and requires no schema
+	 * awareness of this new value — a `prepared` row simply falls into its
+	 * existing "not active" branch.
+	 */
+	private function step_34_add_prepared_binding_status(): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::SUPPORT_CHAT_BINDINGS_TABLE;
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// SHOW COLUMNS (this connection), not INFORMATION_SCHEMA — same
+		// stale-cache reasoning as step_29's column checks.
+		$column = $wpdb->get_row( "SHOW COLUMNS FROM {$table} LIKE 'status'", ARRAY_A );
+
+		if ( null !== $column && isset( $column['Type'] ) && ! str_contains( (string) $column['Type'], "'prepared'" ) ) {
+			$wpdb->query(
+				"ALTER TABLE {$table}
+					MODIFY COLUMN status ENUM('active','unavailable','closed','prepared') NOT NULL DEFAULT 'active'"
+			);
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies the `status` column's ENUM definition includes `prepared`.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_34(): bool {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::SUPPORT_CHAT_BINDINGS_TABLE;
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$column = $wpdb->get_row( "SHOW COLUMNS FROM {$table} LIKE 'status'", ARRAY_A );
+
+		return null !== $column && isset( $column['Type'] ) && str_contains( (string) $column['Type'], "'prepared'" );
 	}
 
 	/**
