@@ -198,43 +198,76 @@ out of scope for this work package (ADR-0041 §6).**
   assertions, OK (1 pre-existing unrelated skip); the 4 new
   `LegacyBindingImportServiceV1Test` unit tests pass in isolation.
 - `bin/docker/test-integration-wp-only.sh --wp-version=7.1 --php-version=8.3`
-  — 1113 tests, 3580 assertions, 31 failures, 58 pre-existing unrelated
-  skips. **This is not a clean run, and is not represented as one.**
-  Confirmed by an isolated baseline run against unmodified `main`
-  (`7abb4eb`, this work's own base commit, with every file this branch
-  adds or touches removed/stashed): the baseline itself already shows
-  **30 pre-existing failures** (`NotificationDispatcherTest`,
-  `ChatWidgetAssetsTest`, `ChatWidgetAvailabilityTest`,
-  `OperatorIdentityRepositoryTest`, `ConversationsControllerTest`,
-  `OperationalSummarySweepTest`, and others), all pre-dating and unrelated
-  to this work package. The one additional failure on top of that
-  30-failure baseline
+  — **1113 tests, 3624 assertions, zero failures, 58 pre-existing
+  unrelated skips**, verified clean from a freshly recreated database
+  container, twice. Also verified clean, fresh, on
+  `--wp-version=6.9 --php-version=8.1` (floor) and via
+  `test-integration-interop.sh` (35 tests, 413 assertions, real
+  dual-plugin, OK).
+
+  **A real test-isolation bug was found, root-caused, and fixed during
+  this work package's own validation — not merely documented as
+  pre-existing.** An earlier revision of this closure incorrectly
+  attributed a single full-suite failure
   (`BotCommandDispatcherFamilyFTest::test_confirm_from_a_different_mapped_operator_does_not_match`)
-  passes cleanly when run in isolation (`--filter
-  BotCommandDispatcherFamilyFTest`: 13 tests, 36 assertions, OK) — it is
-  order-dependent flakiness within the full-suite run, not a regression
-  this work package introduces. Every test this work package itself adds
-  (`LegacyBindingImportServiceV1Test` ×2,
-  `InboundAdapterBridgeNonInterferenceTest`, the two new
-  `QuiescenceRaceInterleavingTest` methods) passes in both the full run
-  and in isolation.
+  to pre-existing, order-dependent flakiness in the test suite generally.
+  That conclusion was wrong: it was based on a baseline comparison run
+  against this environment's long-lived, previously-reused Docker
+  database volume, which had silently accumulated committed state across
+  many earlier manual invocations that same session. Recreating the
+  database container fresh (`docker compose down -v`) and re-running the
+  full suite against the unmodified pre-WP5 base commit (`7abb4eb`)
+  showed **zero failures** — proving the earlier "30 pre-existing
+  failures" baseline was itself an artifact of the contaminated
+  container, not a real characteristic of this repository's test suite.
+
+  Bisecting from a fresh container confirmed the true, fully
+  deterministic cause: `tests/integration/SupportChatAdapter/Migration/LegacyBindingImportServiceV1Test.php`
+  alone. `QuiescenceGate::with_quiescence_lock()` — the atomic assertion
+  ADR-0009 §5/ADR-0041 §2 require `LegacyBindingImportServiceV1` to use on
+  every real candidate — opens its own `START TRANSACTION`/`COMMIT` pair
+  (mirroring the pre-existing `decide_webhook_disposition()`/
+  `attempt_replaying_to_idle()` pattern `QuiescenceRaceInterleavingTest`
+  already documents). On `WP_UnitTestCase`'s single savepoint-based
+  transaction for the whole PHPUnit process, a real `COMMIT` from inside
+  any one test collapses the savepoint chain the framework relies on to
+  isolate every other test that runs afterward in the same process. This
+  test file's original fixtures reused small literal identifiers
+  (`bot_id=5`, `destination_id=50`, `telegram_topic_id=500`) that, once
+  the savepoint chain broke, collided with `BotCommandDispatcherFamilyFTest`'s
+  own real, unrelated `conversations.destination_id` UNIQUE-index
+  fixture — removing this one file restored a fully clean run; restoring
+  it alone, unmodified, reproduced the identical single failure on every
+  run.
+
+  **Fix** (test-only, no production code changed):
+  `LegacyBindingImportServiceV1Test.php` now draws every identifier it
+  persists past a `with_quiescence_lock()` commit from
+  `self::unique_id()`, a fixed, monotonically-increasing, out-of-band base
+  (starting at 900000000) instead of small reused literals — the same
+  class of collision-avoidance `BotCommandDispatcherFamilyFTest` itself
+  already applies to its own `thread_id` via `random_int()`, made
+  deterministic here. `@runTestsInSeparateProcesses` was tried first and
+  rejected: PHPUnit must serialize the whole test object for the child
+  process, and `WP_UnitTestCase`'s own hook registrations make that fail
+  ("Serialization of 'Closure' is not allowed"). Verified clean twice more
+  from fresh containers after the fix, and confirmed green in real CI
+  (see below) — the single failure does not recur.
 - `bin/docker/composer.sh run-script check-doc-links` — same pre-existing,
   unrelated failures already documented in the WP8 closure
   (`docs/plans/m07-1-conversation-topic-lifecycle-and-repair-plan-v1.md`),
   confirmed unchanged by `git diff` against this branch. Not wired into
   CI (confirmed by inspection of `.github/workflows/ci.yml`).
-- **Real CI (GitHub Actions, PR #41), after fixing a genuine bug found by
-  CI** (`tests/package/run.sh` hardcoded `db_version=33`; updated to `34`
-  and a new `prepared`-ENUM verification added, mirroring the script's
-  existing per-step column checks): `phpcs`, `static-analysis`, `unit`
-  (8.1/8.3/8.4), `build`, `js-behavioural`, and all three
-  `package-acceptance` variants (6.9/8.1, 7.1/8.3, 7.1/8.3+WooCommerce
-  11.0.1) — **all green**. The three `integration-wp-only-{floor,current}`/
-  `integration-wc-present-current` jobs each report exactly **one**
-  failure, the identical `BotCommandDispatcherFamilyFTest` case already
-  identified above as order-dependent and confirmed passing in isolation
-  — consistent across all three CI variants, not a new or different
-  failure introduced by the CI environment.
+- **Real CI (GitHub Actions, PR #41), after fixing two genuine bugs found
+  during this work package's own validation** (`tests/package/run.sh`
+  hardcoded `db_version=33`, updated to `34` with a new `prepared`-ENUM
+  verification added; and the test-isolation collision above): **every
+  job green, on both the `push` and `pull_request` triggered runs, no
+  exceptions** — `phpcs`, `static-analysis`, `unit` (8.1/8.3/8.4), `build`,
+  `js-behavioural`, all three `package-acceptance` variants (6.9/8.1,
+  7.1/8.3, 7.1/8.3+WooCommerce 11.0.1), and all three
+  `integration-wp-only-{floor,current}`/`integration-wc-present-current`
+  variants.
 
 ## Next
 
