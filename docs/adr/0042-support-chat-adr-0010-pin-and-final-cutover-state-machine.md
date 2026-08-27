@@ -156,6 +156,6 @@ wp universal-telegram cutover incident-acknowledge --id=<row> --po-decision-ref=
 
 | Item | Value |
 |---|---|
-| Support Chat ADR-0010 | Commit SHA `<SC_ADR0010_MERGE_SHA>` — `https://github.com/magpern/universal-support-chat/blob/<SC_ADR0010_MERGE_SHA>/docs/adr/0010-final-cutover-handoff-contract-and-cohort-activation.md` |
+| Support Chat ADR-0010 | Commit SHA `be7461544a39c7ad074164d21e3c1b04c71f2fc2` — `https://github.com/magpern/universal-support-chat/blob/be7461544a39c7ad074164d21e3c1b04c71f2fc2/docs/adr/0010-final-cutover-handoff-contract-and-cohort-activation.md` |
 
-Universal Telegram does not copy Support Chat ADR-0010's text into this repository, mirroring the existing ADR-0037/ADR-0038/ADR-0039/ADR-0041 rule against duplicating Support Chat's ADRs. The placeholder above is replaced with Support Chat ADR-0010's real merge SHA once that PR merges, before this ADR's own PR merges — mirroring the identical placeholder-then-`sed` sequencing ADR-0041 already used for Support Chat ADR-0009.
+Universal Telegram does not copy Support Chat ADR-0010's text into this repository, mirroring the existing ADR-0037/ADR-0038/ADR-0039/ADR-0041 rule against duplicating Support Chat's ADRs. The pin SHA above was filled in from Support Chat PR #16's real merge commit before this ADR's own PR merged — mirroring the identical placeholder-then-`sed` sequencing ADR-0041 already used for Support Chat ADR-0009.
