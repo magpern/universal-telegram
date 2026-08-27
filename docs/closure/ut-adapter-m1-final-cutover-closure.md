@@ -205,3 +205,103 @@ further work (a real mutual-pairing cutover interop suite, a DEV
 rehearsal, or any production execution) may begin until this one is
 Product Owner accepted, per this repository's own `docs/governance.md`
 milestone lifecycle.
+
+## Addendum: mutual-pairing interop suite (correction, post-merge)
+
+Both this work package's implementation PR (UT PR #45,
+`4355c22dfb4e4d5796ae43da6f9b7ff17ca1c3e3`) and Support Chat's own
+counterpart (SC PR #18, `2a259cb6b766f9bf0d81b8b5aa494b323fd9a9c5`) have
+since merged to their respective `main` branches. This addendum closes
+the one gap the "Test evidence" section above explicitly disclosed at
+merge time: no suite previously drove `CutoverReplayDispatcher` all the
+way through a real, signed `SupportChatContractClient` call into Support
+Chat's real, registered REST controller and real `HandoffMapRepository`.
+
+**New suite**: `tests/integration/Interop/CutoverHandoffIntegrationTest.php`
+(this repository), extending the existing `InteropTestCase` — real
+two-way Ed25519 pairing, both plugins' real production-registered REST
+routes, no fake client, no mocked handler, no direct repository write
+standing in for the wire call. Seven tests, exercising:
+
+1. A deferred operator reply through the real client creates the real SC
+   message and exactly one real handoff-map row, then UT stamps
+   `handed_off_at`.
+2. A retry before `handed_off_at` was stamped (simulated by a second real
+   call with identical provenance before the row's own `mark_handed_off()`
+   runs) converges: no duplicate SC message, no duplicate map row,
+   `handed_off_at` eventually stamped by the real dispatcher.
+3. The real `claim` command dispatches the correct real SC operation with
+   provenance (real conversation assignment observed).
+4. A real topic-lifecycle event (`forum_topic_closed`) reports real SC
+   channel-unavailable idempotently, with a real matching-provenance retry
+   writing no second map row.
+5. A deliberately mismatched pre-existing real handoff-map row yields the
+   real `409 handoff_provenance_conflict`, a real UT-owned incident
+   (`handoff_provenance_conflict`), no new SC domain write, and no
+   `handed_off_at`.
+6. A UT-only pre-dispatch incident (`unsupported_command`) makes zero real
+   Contract requests (verified via a `rest_pre_dispatch` observer counting
+   real calls to the SC route) and writes no real handoff-map row.
+7. The real wire request is captured (same `rest_pre_dispatch` observer)
+   and shown to carry `source_bot_id`/`source_update_id`; the real
+   handoff-map row is read directly from the database and shown to carry
+   only `id`/`bot_id`/`update_id`/`kind`/`channel_case_ref`/
+   `target_message_uuid`/`created_at` — no column, and no persisted value,
+   contains the reply's plaintext content.
+
+**Test-isolation hazard, root-caused and fixed**: this class is the first
+in this repository's own interop suite to trigger
+`dispatch_with_provenance()`'s real `START TRANSACTION`/`COMMIT` — the
+identical class of hazard already documented on both sides
+(`QuiescenceProviderIntegrationTest`, Support Chat's own
+`ContractOperationsControllerTest`). Fixed with the same established
+pattern: explicit real-transaction-committed cleanup of every table this
+class's own tests touch, run from both `setUp()` (before
+`parent::setUp()` builds this test's own fresh fixtures) and `tearDown()`
+(after), ending with an explicit `COMMIT`. Verified clean: the full
+42-test interop suite (35 pre-existing tests across the suite's other
+files, unaffected, plus this new file's own 7 tests) passed on both
+supported
+WP/PHP variant pairs, each run from freshly recreated disposable database
+containers (`docker compose down -v` before each run).
+
+**No production defect was found or fixed.** The only bug this correction
+uncovered was in the new test's own seeding: `CutoverReplayDispatcher`'s
+real production code sends `$binding->binding_uuid()` as
+`channel_case_ref`, and Support Chat's real dispatcher resolves
+`channel_case_ref` directly as its own `conversation_uuid` — so this
+suite's own binding fixtures needed `binding_uuid` seeded equal to the
+real SC conversation UUID (test-fixture-only; `EnsureChannelCaseService`'s
+own production binding-creation path, which mints an independent opaque
+`binding_uuid`, is unrelated and unchanged). No `src/` file changed in
+this correction.
+
+**Full validation, this correction**:
+- `bin/docker/phpcs.sh` (whole repository) — clean, 0 errors, 0 warnings
+  (548 files).
+- `bin/docker/phpstan.sh` (whole repository, `src/` only per this
+  repository's own configured scope) — `[OK] No errors` (285 files).
+- `bin/docker/test-unit.sh` — 395 tests, 1224 assertions, OK (1
+  pre-existing unrelated skip).
+- `bin/docker/test-integration-wp-only.sh`, both `--wp-version=6.9
+  --php-version=8.1` and `--wp-version=7.1 --php-version=8.3`, each from a
+  freshly recreated database container: 1131 tests, 3758 assertions, zero
+  failures, 58 pre-existing unrelated skips — unaffected by this
+  correction.
+- `bin/docker/test-integration-interop.sh`, both `--wp-version=6.9
+  --php-version=8.1` and `--wp-version=7.1 --php-version=8.3`, each from a
+  freshly recreated database container: **42 tests, 580 assertions, OK**
+  on both variants.
+
+**No DEV or production rehearsal, quiescence operation, cutover,
+migration, route switch, deployment, release, tag, rollback, or data
+deletion was performed.** Every write in every test above occurred
+against disposable, per-test-run WordPress databases.
+
+Both this closure record and Support Chat's own now carry real,
+mutually-paired, live-round-trip evidence for the cutover handoff
+mechanics; the "dedicated new dual-plugin interop suite... not built in
+this closure" gap named in the "Test evidence" section above is closed
+by this addendum. The primary remaining item before any production claim
+is unchanged from before: a disposable DEV rehearsal exercising a real
+cohort end-to-end — not initiated by this correction.
