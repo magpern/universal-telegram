@@ -1,19 +1,20 @@
 <?php
 /**
- * SC-M03 final-cutover Tier 1 characterization: does the cohort-aware
- * deferred-update handoff resolve a REAL prepared binding (one produced by
- * the real WP5 `LegacyBindingImportServiceV1`, which mints an independent
- * opaque `binding_uuid`) to its Support Chat conversation?
+ * SC-M03 final-cutover — real `legacy-bind` prepared-binding handoff (F1
+ * regression coverage).
  *
- * `CutoverHandoffIntegrationTest` only ever passes because it deliberately
- * seeds `binding_uuid == conversation_uuid` ("test-fixture-only", per its
- * own docblock and the final-cutover closure addendum). This test asks the
- * question the disposable DEV rehearsal must answer: with a binding whose
- * `binding_uuid` is a real, independent UUID (every real binding-creation
- * path — `EnsureChannelCaseService` and `LegacyBindingImportServiceV1` —
- * mints one), does the real `CutoverReplayDispatcher` -> real
- * `SupportChatContractClient` -> real Support Chat `ContractOperationDispatcher`
- * chain hand the update off?
+ * Finding F1 (`docs/closure/sc-m03-final-cutover-dev-rehearsal-tier1-closure.md`)
+ * was that a REAL prepared binding produced by the real WP5
+ * `LegacyBindingImportServiceV1` — which mints an independent opaque
+ * `binding_uuid` — could not be resolved by Support Chat, because Universal
+ * Telegram sent `binding_uuid` as `channel_case_ref` while Support Chat
+ * resolves `channel_case_ref` as its own `conversation_uuid`. ADR-0043 /
+ * Support Chat ADR-0011 corrected the adapter to send
+ * `ChannelBinding::support_conversation_uuid()`. This test proves the fix:
+ * the real `CutoverReplayDispatcher` -> real `SupportChatContractClient` ->
+ * real Support Chat `ContractOperationDispatcher` chain now hands off a
+ * real `legacy-bind` cohort's update, with `binding_uuid` never equal to
+ * the conversation UUID.
  *
  * @package UniversalTelegram
  */
@@ -44,7 +45,7 @@ if ( ! defined( 'WP_CLI' ) ) {
 }
 
 /**
- * @coversNothing Characterization / rehearsal-gap probe, not a unit under test.
+ * @coversNothing End-to-end regression coverage for finding F1 (ADR-0043).
  */
 final class CutoverTier1HandoffResolutionTest extends InteropTestCase {
 
@@ -108,9 +109,9 @@ final class CutoverTier1HandoffResolutionTest extends InteropTestCase {
 	}
 
 	/**
-	 * Positive control — the fixture convention CutoverHandoffIntegrationTest
-	 * relies on: when binding_uuid == the SC conversation UUID, the real
-	 * chain hands off.
+	 * Degenerate-case guard (ADR-0043 test matrix T11): the historical
+	 * fixture shape where binding_uuid == the SC conversation UUID still
+	 * resolves — no regression for a binding that happens to satisfy it.
 	 */
 	public function test_handoff_succeeds_when_binding_uuid_equals_conversation_uuid(): void {
 		$conversation_uuid = $this->create_sc_conversation();
@@ -138,15 +139,16 @@ final class CutoverTier1HandoffResolutionTest extends InteropTestCase {
 	}
 
 	/**
-	 * FINDING F1 — a REAL prepared binding produced by the real WP5
-	 * `LegacyBindingImportServiceV1` (independent opaque binding_uuid, the
-	 * only kind a real cutover cohort ever activates) is NOT resolvable by
-	 * Support Chat's `resolve_conversation()`, which treats channel_case_ref
-	 * strictly as its own conversation_uuid. The handoff never completes:
-	 * outcome is retry-transient (not handed off, not an incident), no SC
-	 * message, no handoff-map row, no handed_off_at.
+	 * F1 fixed (ADR-0043 test matrix T13) — a REAL prepared binding produced
+	 * by the real WP5 `LegacyBindingImportServiceV1` (independent opaque
+	 * binding_uuid, the only kind a real cutover cohort ever activates) is
+	 * now handed off: the adapter sends `support_conversation_uuid()`, which
+	 * Support Chat's `resolve_conversation()` resolves to the real
+	 * conversation. Outcome is `OUTCOME_HANDED_OFF`, one real SC message,
+	 * one real handoff-map row keyed by the conversation UUID, `handed_off_at`
+	 * stamped.
 	 */
-	public function test_handoff_does_not_resolve_a_real_legacy_bind_prepared_binding(): void {
+	public function test_handoff_resolves_a_real_legacy_bind_prepared_binding(): void {
 		// Real SC conversation (Phase A would create this; here we create it
 		// directly, then hand its UUID to legacy-bind as the WP5 candidate does).
 		$conversation_uuid = $this->create_sc_conversation();
@@ -216,20 +218,24 @@ final class CutoverTier1HandoffResolutionTest extends InteropTestCase {
 		$outcome = $this->dispatcher->dispatch( $bot, $record, $active, $decoded );
 
 		self::assertSame(
-			CutoverReplayDispatcher::OUTCOME_RETRY_TRANSIENT,
+			CutoverReplayDispatcher::OUTCOME_HANDED_OFF,
 			$outcome,
-			'F1: SC cannot resolve the independent binding_uuid to a conversation, so the handoff returns 404 not_found -> retry-transient, never handed off, never an incident.'
+			'F1 fixed: the adapter sends support_conversation_uuid(), which SC resolves to the real conversation — the real legacy-bind cohort update hands off.'
 		);
 
 		$row = $this->ut_deferred->find_by_id( $record->id() );
-		self::assertNull( $row['handed_off_at'], 'F1: handed_off_at must not be stamped.' );
-		self::assertNull( $row['incident_reason'], 'F1: not an incident either — it is silently retryable forever, so replaying->idle and confirm-complete stay blocked.' );
+		self::assertNotNull( $row['handed_off_at'], 'handed_off_at must be stamped after the real SC success.' );
+		self::assertNull( $row['incident_reason'], 'A successful handoff is never an incident.' );
 
-		self::assertNull( $this->sc_handoff_map->find( $this->bot_id, $update_id ), 'F1: no SC handoff-map row.' );
+		$map_row = $this->sc_handoff_map->find( $this->bot_id, $update_id );
+		self::assertNotNull( $map_row, 'Exactly one SC handoff-map row for the handed-off update.' );
+		self::assertSame( 'message', $map_row['kind'] );
+		self::assertSame( $conversation_uuid, $map_row['channel_case_ref'], 'The handoff-map row is keyed by the SC conversation UUID, never the binding UUID.' );
+		self::assertNotSame( $active->binding_uuid(), $map_row['channel_case_ref'] );
 
 		$sc_conversation = $this->sc_conversations->find_by_uuid( $conversation_uuid );
 		self::assertNotNull( $sc_conversation );
-		self::assertCount( 0, $this->sc_messages->list_for_conversation( $sc_conversation->id() ), 'F1: no SC message created.' );
+		self::assertCount( 1, $this->sc_messages->list_for_conversation( $sc_conversation->id() ), 'Exactly one real SC message from the real handoff.' );
 
 		// Reset the real quiescence state this test opened, back to idle.
 		global $wpdb;

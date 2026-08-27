@@ -41,8 +41,10 @@ final class DeliverMessageServiceTest extends WP_UnitTestCase {
 		$this->assertNotNull( $binding );
 
 		// Destination/bot rows may be missing — enqueue may fail; idempotency still must reuse after first accept key insert.
-		$first  = $service->deliver( $binding->binding_uuid(), 'deliver-key-1', 'hello', 'Visitor' );
-		$second = $service->deliver( $binding->binding_uuid(), 'deliver-key-1', 'hello again', 'Visitor' );
+		// `channel_case_ref` on the wire is the SC conversation UUID (ADR-0043), which
+		// `deliver()` resolves back to the local binding via `find_by_conversation_uuid()`.
+		$first  = $service->deliver( $binding->support_conversation_uuid(), 'deliver-key-1', 'hello', 'Visitor' );
+		$second = $service->deliver( $binding->support_conversation_uuid(), 'deliver-key-1', 'hello again', 'Visitor' );
 
 		if ( $first['ok'] ) {
 			$this->assertTrue( $second['ok'] );

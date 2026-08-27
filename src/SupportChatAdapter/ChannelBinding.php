@@ -11,8 +11,12 @@ namespace UniversalTelegram\SupportChatAdapter;
 
 /**
  * One UT-owned binding between a Support Chat conversation and a Telegram
- * forum topic. Support Chat stores only the opaque binding_uuid as
- * channel_case_ref.
+ * forum topic. `binding_uuid` is this plugin's own binding-row identity
+ * (lookup, activation CAS, lifecycle, routing, idempotency/audit keys) and
+ * is **never** sent on the Contract v1 wire (docs/adr/0043). The Contract v1
+ * `channel_case_ref` is always `support_conversation_uuid` — the Support
+ * Chat conversation/case UUID, which Support Chat resolves through its own
+ * conversation repository.
  */
 final class ChannelBinding {
 
@@ -33,8 +37,8 @@ final class ChannelBinding {
 	 * Constructor.
 	 *
 	 * @param int         $id                         Primary key.
-	 * @param string      $binding_uuid               Opaque channel_case_ref.
-	 * @param string      $support_conversation_uuid  Support Chat conversation UUID.
+	 * @param string      $binding_uuid               UT-local binding-row identity — never sent on the Contract v1 wire (docs/adr/0043).
+	 * @param string      $support_conversation_uuid  Support Chat conversation UUID — the Contract v1 `channel_case_ref`.
 	 * @param string      $ensure_idempotency_key     Ensure idempotency key.
 	 * @param int         $bot_id                     Bot primary key.
 	 * @param int         $destination_id             Topic destination primary key.
@@ -70,7 +74,9 @@ final class ChannelBinding {
 	}
 
 	/**
-	 * Opaque channel_case_ref UUID.
+	 * UT-local binding-row identity (docs/adr/0043). Used for binding
+	 * lookup, activation CAS, lifecycle, routing, and UT-local
+	 * idempotency/audit keys — never sent on the Contract v1 wire.
 	 */
 	public function binding_uuid(): string {
 		return $this->binding_uuid;

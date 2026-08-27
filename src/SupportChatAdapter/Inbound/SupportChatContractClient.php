@@ -67,7 +67,7 @@ final class SupportChatContractClient {
 	/**
 	 * Ingests an operator reply into Support Chat.
 	 *
-	 * @param string               $channel_case_ref Opaque binding UUID.
+	 * @param string               $channel_case_ref Support Chat conversation UUID (docs/adr/0043) — never the UT-local binding UUID.
 	 * @param string               $idempotency_key  Remote-update idempotency key.
 	 * @param string               $plaintext_body   Reply body (in memory).
 	 * @param int                  $operator_user_id Mapped WP operator user id.
@@ -105,7 +105,7 @@ final class SupportChatContractClient {
 	/**
 	 * Lifecycle claim.
 	 *
-	 * @param string   $channel_case_ref Opaque binding UUID.
+	 * @param string   $channel_case_ref Support Chat conversation UUID (docs/adr/0043) — never the UT-local binding UUID.
 	 * @param int      $operator_user_id Operator WP user id.
 	 * @param string   $idempotency_key  Idempotency key.
 	 * @param int|null $source_bot_id    Cutover-replay provenance only; null for live traffic.
@@ -120,7 +120,7 @@ final class SupportChatContractClient {
 	/**
 	 * Lifecycle release.
 	 *
-	 * @param string   $channel_case_ref Opaque binding UUID.
+	 * @param string   $channel_case_ref Support Chat conversation UUID (docs/adr/0043) — never the UT-local binding UUID.
 	 * @param int      $operator_user_id Operator WP user id.
 	 * @param string   $idempotency_key  Idempotency key.
 	 * @param int|null $source_bot_id    Cutover-replay provenance only; null for live traffic.
@@ -135,7 +135,7 @@ final class SupportChatContractClient {
 	/**
 	 * Lifecycle resolve.
 	 *
-	 * @param string   $channel_case_ref Opaque binding UUID.
+	 * @param string   $channel_case_ref Support Chat conversation UUID (docs/adr/0043) — never the UT-local binding UUID.
 	 * @param int      $operator_user_id Operator WP user id.
 	 * @param string   $idempotency_key  Idempotency key.
 	 * @param int|null $source_bot_id    Cutover-replay provenance only; null for live traffic.
@@ -150,7 +150,7 @@ final class SupportChatContractClient {
 	/**
 	 * Lifecycle reopen.
 	 *
-	 * @param string   $channel_case_ref Opaque binding UUID.
+	 * @param string   $channel_case_ref Support Chat conversation UUID (docs/adr/0043) — never the UT-local binding UUID.
 	 * @param int      $operator_user_id Operator WP user id.
 	 * @param string   $idempotency_key  Idempotency key.
 	 * @param int|null $source_bot_id    Cutover-replay provenance only; null for live traffic.
@@ -165,7 +165,7 @@ final class SupportChatContractClient {
 	/**
 	 * Updates the Support Chat conversation's assignee.
 	 *
-	 * @param string $channel_case_ref Opaque binding UUID.
+	 * @param string $channel_case_ref Support Chat conversation UUID (docs/adr/0043) — never the UT-local binding UUID.
 	 * @param int    $operator_user_id Newly assigned operator WP user id.
 	 * @param string $idempotency_key  Idempotency key.
 	 *
@@ -178,7 +178,7 @@ final class SupportChatContractClient {
 	/**
 	 * Reports channel unavailable for a binding.
 	 *
-	 * @param string   $channel_case_ref Opaque binding UUID.
+	 * @param string   $channel_case_ref Support Chat conversation UUID (docs/adr/0043) — never the UT-local binding UUID.
 	 * @param string   $reason_code      Fixed reason code.
 	 * @param int|null $source_bot_id    Cutover-replay/live-webhook-cross-talk-fix provenance only; null for the ordinary legacy-topic path.
 	 * @param int|null $source_update_id Cutover-replay/live-webhook-cross-talk-fix provenance only; null for the ordinary legacy-topic path.
@@ -202,7 +202,7 @@ final class SupportChatContractClient {
 	/**
 	 * Reports outbound delivery failure.
 	 *
-	 * @param string $channel_case_ref Opaque binding UUID.
+	 * @param string $channel_case_ref Support Chat conversation UUID (docs/adr/0043) — never the UT-local binding UUID.
 	 * @param string $idempotency_key  Original deliver key.
 	 * @param string $reason_code      Fixed reason code.
 	 *
@@ -229,7 +229,7 @@ final class SupportChatContractClient {
 	 * change.
 	 *
 	 * @param string   $operation        Contract operation name.
-	 * @param string   $channel_case_ref Opaque binding UUID.
+	 * @param string   $channel_case_ref Support Chat conversation UUID (docs/adr/0043) — never the UT-local binding UUID.
 	 * @param int      $operator_user_id Operator WP user id.
 	 * @param string   $idempotency_key  Idempotency key.
 	 * @param int|null $source_bot_id    Cutover-replay provenance only; null for live traffic.
