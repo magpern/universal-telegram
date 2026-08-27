@@ -543,3 +543,38 @@ rehearsal — even the Tier 1 prerequisite — may be executed.
 - No acceptance record is added; that is a later Product Owner action.
 - No code, schema, version, configuration, test, tag, release, deployment, or infrastructure
   change is made by the freeze.
+
+---
+
+## Amendment A — 2026-08-27 — Tier 1 halt (finding F1) and correction gate (non-design status note)
+
+This is a post-freeze **status amendment**. It changes no design section above; the design
+revision is a new file, `sc-m03-final-cutover-dev-rehearsal-plan-v2.md` (not yet written).
+
+- **Tier 1 was executed and HALTED** at the UT→SC deferred-update handoff phase by **finding
+  F1**, recorded in `docs/closure/sc-m03-final-cutover-dev-rehearsal-tier1-closure.md` (merge
+  `98c602543bd67bc471e2a88468d175fb6e659b46`; Support Chat closure merge
+  `fcbfaa773ef63661b6d8ce42962f10bb174588f8`) and pinned by
+  `tests/integration/Interop/CutoverTier1HandoffResolutionTest.php`.
+- **F1**: Contract v1 `channel_case_ref` was sent as the UT `binding_uuid`, but Support Chat
+  resolves it as its own `conversation_uuid`; every real binding mints an independent
+  `binding_uuid`. Secondary defect: `CutoverReplayDispatcher::finish()` classified the
+  resulting `404 not_found` as an unbounded `OUTCOME_RETRY_TRANSIENT`, blocking replay
+  completion with no classified outcome.
+- **Correction frozen** (documentation-only, Proposed): **ADR-0043** (this repo) + **Support
+  Chat ADR-0011**, and `docs/plans/sc-m03-final-cutover-f1-channel-case-ref-remediation-plan-v1.md`.
+  `channel_case_ref` = Support Chat conversation/case UUID; UT emits
+  `ChannelBinding::support_conversation_uuid()`; `binding_uuid` stays UT-local, off the wire;
+  new closed incidents `unresolved_case_reference` / `handoff_rejected` make every Contract
+  outcome after active-binding selection a named retryable outcome or a named incident. No
+  schema/`db_version` change. Identifier collapse (option (c)) and an SC-side
+  binding→conversation resolver are rejected.
+- **Tier 1 acceptance gate**: Tier 1 **cannot be accepted** until the correction is implemented
+  in both repositories and its real-binding handoff path (bindings from
+  `LegacyBindingImportServiceV1` / `EnsureChannelCaseService`, not equality fixtures) passes
+  green in the interop harness. A Tier 1 re-attempt requires a **separate Approval A addendum**
+  and runs only under runbook **v2**.
+- **Tier 2** retains its **B1** and **B2** blockers and its **unexecuted** status, and is
+  **additionally blocked on F1**. Approval B is unchanged and cannot take effect early.
+- Product Owner implementation acceptance for F1 is **not** recorded by this amendment — see the
+  remediation plan §15.
