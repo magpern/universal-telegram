@@ -223,6 +223,18 @@ out of scope for this work package (ADR-0041 §6).**
   (`docs/plans/m07-1-conversation-topic-lifecycle-and-repair-plan-v1.md`),
   confirmed unchanged by `git diff` against this branch. Not wired into
   CI (confirmed by inspection of `.github/workflows/ci.yml`).
+- **Real CI (GitHub Actions, PR #41), after fixing a genuine bug found by
+  CI** (`tests/package/run.sh` hardcoded `db_version=33`; updated to `34`
+  and a new `prepared`-ENUM verification added, mirroring the script's
+  existing per-step column checks): `phpcs`, `static-analysis`, `unit`
+  (8.1/8.3/8.4), `build`, `js-behavioural`, and all three
+  `package-acceptance` variants (6.9/8.1, 7.1/8.3, 7.1/8.3+WooCommerce
+  11.0.1) — **all green**. The three `integration-wp-only-{floor,current}`/
+  `integration-wc-present-current` jobs each report exactly **one**
+  failure, the identical `BotCommandDispatcherFamilyFTest` case already
+  identified above as order-dependent and confirmed passing in isolation
+  — consistent across all three CI variants, not a new or different
+  failure introduced by the CI environment.
 
 ## Next
 
