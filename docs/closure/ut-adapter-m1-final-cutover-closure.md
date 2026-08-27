@@ -305,3 +305,23 @@ this closure" gap named in the "Test evidence" section above is closed
 by this addendum. The primary remaining item before any production claim
 is unchanged from before: a disposable DEV rehearsal exercising a real
 cohort end-to-end — not initiated by this correction.
+
+## Product Owner acceptance (final)
+
+> Product Owner accepts the SC-M03 final-cutover implementation and its
+> closure addenda.
+>
+> Acceptance covers the merged implementation and correction evidence,
+> including the real UT-to-SC deferred-handoff round-trip suite on UT
+> `a220ad9` and SC `a8797ed`.
+>
+> This acceptance does not authorize a DEV or production quiescence
+> window, migration, cohort activation, route switch, cutover,
+> deployment, soak, rollback, deletion, release, or tag. The next
+> possible activity is a separately planned, disposable DEV rehearsal.
+
+This supersedes the "Pending" status recorded in the "Product Owner
+acceptance" section above — that original text is left unedited per this
+repository's own "accurate closure records, without rewriting historical
+closures" convention; this section is the current, authoritative
+acceptance status.
