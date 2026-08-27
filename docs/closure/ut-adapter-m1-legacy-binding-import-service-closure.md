@@ -269,16 +269,35 @@ out of scope for this work package (ADR-0041 §6).**
   `integration-wp-only-{floor,current}`/`integration-wc-present-current`
   variants.
 
+## Ordered-merge addendum
+
+This PR (#41) was merged **first**, per the two-repository merge order
+Support Chat ADR-0009's Compatibility/Migration Impact section requires,
+after the test-isolation correction documented above reached fully green
+CI on both `push` and `pull_request` triggered runs, every job, on head
+`496cbdb`.
+
+- Merge commit: `700f740a5dec2d1edffb4fe46b93d55e9d93492e` (`main`).
+- Support Chat then re-ran its real dual-plugin interop suite against this
+  exact merged commit (both supported WP/PHP pairs, fresh database
+  containers) before merging its own SC PR #14 — see that repository's
+  closure record's "Ordered-merge re-validation" addendum for the full
+  evidence. SC PR #14 merge commit: `33ba2f126efcbed73218cc7f291c1f6b50c10b62`.
+
 ## Next
 
-Per this milestone's frozen plan (§11, definition of done) and ADR-0041
-§7: this repository's own obligation under ADR-0041 is now closed pending
-Product Owner acceptance and merge. **Support Chat's SC-M03 work package 5
-(candidate identification, schema, and the `legacy-bind` WP-CLI command,
-consuming this service) may not begin implementation until this PR merges
-to `main`** — the two-repository gate ADR-0041 §7 and Support Chat's own
-ADR-0009 Compatibility/Migration Impact section both require.
+Both repositories' SC-M03 work package 5 implementation PRs are now
+merged to `main`. This remains preparation-only: `LegacyBindingImportServiceV1`
+never writes `status = 'active'` under any condition, and no
+`prepared → active` activation mechanism, route switch, soak, rollback, or
+cutover has been designed, authorized, or performed by this or any prior
+task in this work package.
 
 ## Product Owner acceptance
 
-Pending. This PR is opened for review and is **not merged** by this task.
+**Accepted.** Ordered merge (this PR first, then Support Chat's
+re-validated PR #14) explicitly directed and reviewed by the Product
+Owner in this session, 2026-08-27, after the test-isolation correction
+above. Final merge SHAs: Universal Telegram
+`700f740a5dec2d1edffb4fe46b93d55e9d93492e`, Universal Support Chat
+`33ba2f126efcbed73218cc7f291c1f6b50c10b62`.
