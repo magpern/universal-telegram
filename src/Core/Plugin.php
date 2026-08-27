@@ -134,7 +134,11 @@ use UniversalTelegram\Integrations\WooCommerce\WooCommerceCommandQueryService;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Persistence\MigrationFailedException;
 use UniversalTelegram\Persistence\MigrationLock;
+use UniversalTelegram\Migration\Cli\CutoverCommand;
 use UniversalTelegram\Migration\Cli\QuiescenceCommand;
+use UniversalTelegram\Migration\CutoverActivationService;
+use UniversalTelegram\Migration\CutoverReplayDispatcher;
+use UniversalTelegram\Migration\CutoverRunRepository;
 use UniversalTelegram\Migration\DeferredUpdateRepository;
 use UniversalTelegram\Migration\QuiescenceGate;
 use UniversalTelegram\Migration\QuiescenceState;
@@ -939,7 +943,9 @@ final class Plugin {
 			$this->bot_command_dispatcher,
 			(int) $settings_values['telegram_webhook_max_body_bytes'],
 			$adapter_inbound,
-			$quiescence_gate
+			$quiescence_gate,
+			$adapter_bindings,
+			$adapter_sc_client
 		);
 		add_action( 'rest_api_init', array( $this->webhook_controller, 'register_routes' ) );
 
@@ -972,11 +978,29 @@ final class Plugin {
 		add_action( 'rest_api_init', array( $adapter_outbound, 'register_routes' ) );
 		( new BindingImportCommand( $adapter_bindings ) )->register();
 
+		$cutover_runs       = new CutoverRunRepository( $this->schema_health );
+		$cutover_activation = new CutoverActivationService( $adapter_bindings, $quiescence_gate, $cutover_runs );
+		$cutover_dispatcher = new CutoverReplayDispatcher(
+			$this->operator_identity_repository,
+			$adapter_sc_client,
+			$quiescence_deferred_updates,
+			$this->audit_logger
+		);
+
 		( new QuiescenceCommand(
 			$quiescence_gate,
 			$quiescence_deferred_updates,
 			$this->bot_profile_repository,
-			$this->webhook_controller
+			$this->webhook_controller,
+			$adapter_bindings,
+			$cutover_dispatcher
+		) )->register();
+
+		( new CutoverCommand(
+			$cutover_runs,
+			$cutover_activation,
+			$quiescence_gate,
+			$quiescence_deferred_updates
 		) )->register();
 
 		// Stash for Hub tab registration after TabRegistry exists.

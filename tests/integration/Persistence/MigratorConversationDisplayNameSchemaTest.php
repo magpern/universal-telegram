@@ -27,7 +27,7 @@ final class MigratorConversationDisplayNameSchemaTest extends WP_UnitTestCase {
 		$migrator = new Migrator( new MigrationLock() );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 34, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 36, (int) get_option( 'universal_telegram_db_version' ) );
 
 		$columns = $wpdb->get_col(
 			$wpdb->prepare(
@@ -46,7 +46,7 @@ final class MigratorConversationDisplayNameSchemaTest extends WP_UnitTestCase {
 		update_option( 'universal_telegram_db_version', 14 );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 34, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 36, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 
 	public function test_upgrade_from_db_version_15_is_a_safe_no_op(): void {
@@ -56,6 +56,6 @@ final class MigratorConversationDisplayNameSchemaTest extends WP_UnitTestCase {
 		update_option( 'universal_telegram_db_version', 15 );
 		$migrator->maybe_migrate();
 
-		$this->assertSame( 34, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 36, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 }

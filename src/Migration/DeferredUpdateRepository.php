@@ -112,6 +112,49 @@ class DeferredUpdateRepository {
 	}
 
 	/**
+	 * Looks up one row by its own primary key, for the `incident-acknowledge`
+	 * CLI action's own validation (docs/adr/0042 §4) — never exposes
+	 * `payload_ciphertext`.
+	 *
+	 * @param int $id The row's own primary key.
+	 *
+	 * @return array{id: int, bot_id: int, update_id: int, incident_reason: ?string, incident_resolved_at: ?string, incident_po_decision_ref: ?string, replayed_at: ?string, handed_off_at: ?string}|null
+	 */
+	public function find_by_id( int $id ): ?array {
+		if ( ! $this->schema_health->is_available() ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE;
+
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT id, bot_id, update_id, incident_reason, incident_resolved_at, incident_po_decision_ref, replayed_at, handed_off_at FROM {$table} WHERE id = %d",
+				$id
+			),
+			ARRAY_A
+		);
+
+		if ( null === $row ) {
+			return null;
+		}
+
+		return array(
+			'id'                       => (int) $row['id'],
+			'bot_id'                   => (int) $row['bot_id'],
+			'update_id'                => (int) $row['update_id'],
+			'incident_reason'          => null === $row['incident_reason'] ? null : (string) $row['incident_reason'],
+			'incident_resolved_at'     => null === $row['incident_resolved_at'] ? null : (string) $row['incident_resolved_at'],
+			'incident_po_decision_ref' => null === $row['incident_po_decision_ref'] ? null : (string) $row['incident_po_decision_ref'],
+			'replayed_at'              => null === $row['replayed_at'] ? null : (string) $row['replayed_at'],
+			'handed_off_at'            => null === $row['handed_off_at'] ? null : (string) $row['handed_off_at'],
+		);
+	}
+
+	/**
 	 * Whether a (bot_id, update_id) row already exists.
 	 *
 	 * @param int $bot_id    The receiving bot.
@@ -277,6 +320,145 @@ class DeferredUpdateRepository {
 			array( '%s' ),
 			array( '%d' )
 		);
+	}
+
+	/**
+	 * Stamps `handed_off_at` — only ever called after Support Chat's
+	 * handler has already returned `{ok: true}` for this row (docs/adr/0042
+	 * §3–§4), never before. A crash after Support Chat's own commit but
+	 * before this stamp leaves the row simply un-stamped, safely re-
+	 * dispatched (and converging, per Support Chat ADR-0010 §4) on the next
+	 * replay pass.
+	 *
+	 * @param int $id The row's own primary key.
+	 */
+	public function mark_handed_off( int $id ): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE;
+
+		$wpdb->update(
+			$table,
+			array( 'handed_off_at' => current_time( 'mysql', true ) ),
+			array( 'id' => $id ),
+			array( '%s' ),
+			array( '%d' )
+		);
+	}
+
+	/**
+	 * Records a UT-only incident (docs/adr/0042 §4): a pre-dispatch failure
+	 * (decrypt/parse/unsupported-command/unmapped-sender) or a Support Chat
+	 * provenance-conflict refusal. Never sets `replayed_at`/`handed_off_at`
+	 * — an incident row remains outstanding, blocking the widened
+	 * `replaying → idle` backlog predicate, until explicitly resolved
+	 * (`resolve_incident_retried()`/`resolve_incident_acknowledged()`).
+	 * `$reason` must be one of the five closed, non-content reason codes
+	 * this ADR fixes — enforced by `CutoverIncidentReason`, not re-validated
+	 * here.
+	 *
+	 * @param int    $id     The row's own primary key.
+	 * @param string $reason One of `CutoverIncidentReason`'s constants.
+	 */
+	public function record_incident( int $id, string $reason ): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE;
+
+		$wpdb->update(
+			$table,
+			array(
+				'incident_reason'      => $reason,
+				'incident_recorded_at' => current_time( 'mysql', true ),
+			),
+			array( 'id' => $id ),
+			array( '%s', '%s' ),
+			array( '%d' )
+		);
+	}
+
+	/**
+	 * Resolves an incident by successful retry through a now-supported
+	 * path — stamps `incident_resolved_at`/`incident_resolution` for audit
+	 * continuity only. The row's real terminal state is whatever
+	 * `mark_replayed()`/`mark_handed_off()` the successful retry itself
+	 * calls; this method never sets either column (docs/adr/0042 §4).
+	 *
+	 * @param int $id The row's own primary key.
+	 */
+	public function resolve_incident_retried( int $id ): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE;
+
+		$wpdb->update(
+			$table,
+			array(
+				'incident_resolved_at' => current_time( 'mysql', true ),
+				'incident_resolution'  => 'retried_success',
+			),
+			array( 'id' => $id ),
+			array( '%s', '%s' ),
+			array( '%d' )
+		);
+	}
+
+	/**
+	 * Resolves an incident by explicit, Product-Owner-approved terminal
+	 * acknowledgement (docs/adr/0042 §4, Support Chat ADR-0010 §5/PO
+	 * decision record) — stamps `incident_resolved_at`/`incident_resolution`
+	 * only. Never sets `replayed_at` or `handed_off_at`; the row's
+	 * ciphertext and every other column are left untouched, permanently
+	 * retained. Only reachable via `Cli\CutoverCommand`'s own
+	 * `--assume-cutover-authority`-gated `incident-acknowledge` action,
+	 * which is the sole caller responsible for validating `$po_decision_ref`
+	 * is a non-empty, opaque reference — never free-form content — before
+	 * calling this method.
+	 *
+	 * @param int    $id              The row's own primary key.
+	 * @param string $po_decision_ref Opaque, pre-existing Product Owner decision reference.
+	 */
+	public function resolve_incident_acknowledged( int $id, string $po_decision_ref ): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE;
+
+		$wpdb->update(
+			$table,
+			array(
+				'incident_resolved_at'     => current_time( 'mysql', true ),
+				'incident_resolution'      => 'po_acknowledged_terminal',
+				'incident_po_decision_ref' => $po_decision_ref,
+			),
+			array( 'id' => $id ),
+			array( '%s', '%s', '%s' ),
+			array( '%d' )
+		);
+	}
+
+	/**
+	 * The widened backlog count (docs/adr/0042 §3): rows resolved by
+	 * neither ordinary legacy replay, a successful Support Chat handoff,
+	 * nor an explicitly resolved incident. This is the predicate
+	 * `attempt_replaying_to_idle()`'s final CAS must observe as zero before
+	 * `replaying → idle` may proceed — an unresolved incident correctly,
+	 * structurally blocks it.
+	 *
+	 * @return int
+	 */
+	public function unresolved_backlog_count(): int {
+		if ( ! $this->schema_health->is_available() ) {
+			return 0;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::QUIESCENCE_DEFERRED_UPDATES_TABLE;
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$count = $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE replayed_at IS NULL AND handed_off_at IS NULL AND incident_resolved_at IS NULL" );
+
+		return null === $count ? 0 : (int) $count;
 	}
 
 	/**

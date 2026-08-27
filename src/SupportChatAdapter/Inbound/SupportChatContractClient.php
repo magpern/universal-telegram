@@ -72,6 +72,8 @@ final class SupportChatContractClient {
 	 * @param string               $plaintext_body   Reply body (in memory).
 	 * @param int                  $operator_user_id Mapped WP operator user id.
 	 * @param array<string, mixed> $remote_meta      Non-secret remote metadata.
+	 * @param int|null             $source_bot_id    Cutover-replay provenance only (docs/adr/0042 §3/Support Chat ADR-0010 §4); null for live traffic.
+	 * @param int|null             $source_update_id Cutover-replay provenance only; null for live traffic.
 	 *
 	 * @return array{ok: bool, status: int, reason: string|null}
 	 */
@@ -80,16 +82,22 @@ final class SupportChatContractClient {
 		string $idempotency_key,
 		string $plaintext_body,
 		int $operator_user_id,
-		array $remote_meta = array()
+		array $remote_meta = array(),
+		?int $source_bot_id = null,
+		?int $source_update_id = null
 	): array {
 		return $this->call(
 			'ingest_operator_reply',
-			array(
-				'channel_case_ref' => $channel_case_ref,
-				'idempotency_key'  => $idempotency_key,
-				'body'             => $plaintext_body,
-				'operator_user_id' => $operator_user_id,
-				'remote_meta'      => $remote_meta,
+			$this->with_provenance(
+				array(
+					'channel_case_ref' => $channel_case_ref,
+					'idempotency_key'  => $idempotency_key,
+					'body'             => $plaintext_body,
+					'operator_user_id' => $operator_user_id,
+					'remote_meta'      => $remote_meta,
+				),
+				$source_bot_id,
+				$source_update_id
 			)
 		);
 	}
@@ -97,53 +105,61 @@ final class SupportChatContractClient {
 	/**
 	 * Lifecycle claim.
 	 *
-	 * @param string $channel_case_ref Opaque binding UUID.
-	 * @param int    $operator_user_id Operator WP user id.
-	 * @param string $idempotency_key  Idempotency key.
+	 * @param string   $channel_case_ref Opaque binding UUID.
+	 * @param int      $operator_user_id Operator WP user id.
+	 * @param string   $idempotency_key  Idempotency key.
+	 * @param int|null $source_bot_id    Cutover-replay provenance only; null for live traffic.
+	 * @param int|null $source_update_id Cutover-replay provenance only; null for live traffic.
 	 *
 	 * @return array{ok: bool, status: int, reason: string|null}
 	 */
-	public function claim( string $channel_case_ref, int $operator_user_id, string $idempotency_key ): array {
-		return $this->lifecycle_call( 'claim', $channel_case_ref, $operator_user_id, $idempotency_key );
+	public function claim( string $channel_case_ref, int $operator_user_id, string $idempotency_key, ?int $source_bot_id = null, ?int $source_update_id = null ): array {
+		return $this->lifecycle_call( 'claim', $channel_case_ref, $operator_user_id, $idempotency_key, $source_bot_id, $source_update_id );
 	}
 
 	/**
 	 * Lifecycle release.
 	 *
-	 * @param string $channel_case_ref Opaque binding UUID.
-	 * @param int    $operator_user_id Operator WP user id.
-	 * @param string $idempotency_key  Idempotency key.
+	 * @param string   $channel_case_ref Opaque binding UUID.
+	 * @param int      $operator_user_id Operator WP user id.
+	 * @param string   $idempotency_key  Idempotency key.
+	 * @param int|null $source_bot_id    Cutover-replay provenance only; null for live traffic.
+	 * @param int|null $source_update_id Cutover-replay provenance only; null for live traffic.
 	 *
 	 * @return array{ok: bool, status: int, reason: string|null}
 	 */
-	public function release( string $channel_case_ref, int $operator_user_id, string $idempotency_key ): array {
-		return $this->lifecycle_call( 'release', $channel_case_ref, $operator_user_id, $idempotency_key );
+	public function release( string $channel_case_ref, int $operator_user_id, string $idempotency_key, ?int $source_bot_id = null, ?int $source_update_id = null ): array {
+		return $this->lifecycle_call( 'release', $channel_case_ref, $operator_user_id, $idempotency_key, $source_bot_id, $source_update_id );
 	}
 
 	/**
 	 * Lifecycle resolve.
 	 *
-	 * @param string $channel_case_ref Opaque binding UUID.
-	 * @param int    $operator_user_id Operator WP user id.
-	 * @param string $idempotency_key  Idempotency key.
+	 * @param string   $channel_case_ref Opaque binding UUID.
+	 * @param int      $operator_user_id Operator WP user id.
+	 * @param string   $idempotency_key  Idempotency key.
+	 * @param int|null $source_bot_id    Cutover-replay provenance only; null for live traffic.
+	 * @param int|null $source_update_id Cutover-replay provenance only; null for live traffic.
 	 *
 	 * @return array{ok: bool, status: int, reason: string|null}
 	 */
-	public function resolve( string $channel_case_ref, int $operator_user_id, string $idempotency_key ): array {
-		return $this->lifecycle_call( 'resolve', $channel_case_ref, $operator_user_id, $idempotency_key );
+	public function resolve( string $channel_case_ref, int $operator_user_id, string $idempotency_key, ?int $source_bot_id = null, ?int $source_update_id = null ): array {
+		return $this->lifecycle_call( 'resolve', $channel_case_ref, $operator_user_id, $idempotency_key, $source_bot_id, $source_update_id );
 	}
 
 	/**
 	 * Lifecycle reopen.
 	 *
-	 * @param string $channel_case_ref Opaque binding UUID.
-	 * @param int    $operator_user_id Operator WP user id.
-	 * @param string $idempotency_key  Idempotency key.
+	 * @param string   $channel_case_ref Opaque binding UUID.
+	 * @param int      $operator_user_id Operator WP user id.
+	 * @param string   $idempotency_key  Idempotency key.
+	 * @param int|null $source_bot_id    Cutover-replay provenance only; null for live traffic.
+	 * @param int|null $source_update_id Cutover-replay provenance only; null for live traffic.
 	 *
 	 * @return array{ok: bool, status: int, reason: string|null}
 	 */
-	public function reopen( string $channel_case_ref, int $operator_user_id, string $idempotency_key ): array {
-		return $this->lifecycle_call( 'reopen', $channel_case_ref, $operator_user_id, $idempotency_key );
+	public function reopen( string $channel_case_ref, int $operator_user_id, string $idempotency_key, ?int $source_bot_id = null, ?int $source_update_id = null ): array {
+		return $this->lifecycle_call( 'reopen', $channel_case_ref, $operator_user_id, $idempotency_key, $source_bot_id, $source_update_id );
 	}
 
 	/**
@@ -162,17 +178,23 @@ final class SupportChatContractClient {
 	/**
 	 * Reports channel unavailable for a binding.
 	 *
-	 * @param string $channel_case_ref Opaque binding UUID.
-	 * @param string $reason_code      Fixed reason code.
+	 * @param string   $channel_case_ref Opaque binding UUID.
+	 * @param string   $reason_code      Fixed reason code.
+	 * @param int|null $source_bot_id    Cutover-replay/live-webhook-cross-talk-fix provenance only; null for the ordinary legacy-topic path.
+	 * @param int|null $source_update_id Cutover-replay/live-webhook-cross-talk-fix provenance only; null for the ordinary legacy-topic path.
 	 *
 	 * @return array{ok: bool, status: int, reason: string|null}
 	 */
-	public function report_channel_unavailable( string $channel_case_ref, string $reason_code ): array {
+	public function report_channel_unavailable( string $channel_case_ref, string $reason_code, ?int $source_bot_id = null, ?int $source_update_id = null ): array {
 		return $this->call(
 			'report_channel_unavailable',
-			array(
-				'channel_case_ref' => $channel_case_ref,
-				'reason_code'      => $reason_code,
+			$this->with_provenance(
+				array(
+					'channel_case_ref' => $channel_case_ref,
+					'reason_code'      => $reason_code,
+				),
+				$source_bot_id,
+				$source_update_id
 			)
 		);
 	}
@@ -198,24 +220,60 @@ final class SupportChatContractClient {
 	}
 
 	/**
-	 * Shared body shape for the four operator-user-id lifecycle operations.
+	 * Shared body shape for the five operator-user-id lifecycle operations.
+	 * `$source_bot_id`/`$source_update_id` are accepted here (rather than
+	 * only on the four cutover-eligible callers) purely so
+	 * `update_assignment()` can keep sharing this helper without its own
+	 * duplicate copy — `update_assignment()` itself never passes them, so
+	 * they are always null for that operation, exactly as before this
+	 * change.
 	 *
-	 * @param string $operation        Contract operation name.
-	 * @param string $channel_case_ref Opaque binding UUID.
-	 * @param int    $operator_user_id Operator WP user id.
-	 * @param string $idempotency_key  Idempotency key.
+	 * @param string   $operation        Contract operation name.
+	 * @param string   $channel_case_ref Opaque binding UUID.
+	 * @param int      $operator_user_id Operator WP user id.
+	 * @param string   $idempotency_key  Idempotency key.
+	 * @param int|null $source_bot_id    Cutover-replay provenance only; null for live traffic.
+	 * @param int|null $source_update_id Cutover-replay provenance only; null for live traffic.
 	 *
 	 * @return array{ok: bool, status: int, reason: string|null}
 	 */
-	private function lifecycle_call( string $operation, string $channel_case_ref, int $operator_user_id, string $idempotency_key ): array {
+	private function lifecycle_call( string $operation, string $channel_case_ref, int $operator_user_id, string $idempotency_key, ?int $source_bot_id = null, ?int $source_update_id = null ): array {
 		return $this->call(
 			$operation,
-			array(
-				'channel_case_ref' => $channel_case_ref,
-				'operator_user_id' => $operator_user_id,
-				'idempotency_key'  => $idempotency_key,
+			$this->with_provenance(
+				array(
+					'channel_case_ref' => $channel_case_ref,
+					'operator_user_id' => $operator_user_id,
+					'idempotency_key'  => $idempotency_key,
+				),
+				$source_bot_id,
+				$source_update_id
 			)
 		);
+	}
+
+	/**
+	 * Adds the optional `source_bot_id`/`source_update_id` provenance
+	 * fields to a request body — present only when both are supplied
+	 * (cutover-replay-originated calls), entirely absent otherwise, so
+	 * every existing live call site's wire shape is byte-for-byte
+	 * unchanged (docs/adr/0042 §3, Support Chat ADR-0010 §4).
+	 *
+	 * @param array<string, mixed> $body             The base request body.
+	 * @param int|null             $source_bot_id    Cutover-replay provenance, or null.
+	 * @param int|null             $source_update_id Cutover-replay provenance, or null.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function with_provenance( array $body, ?int $source_bot_id, ?int $source_update_id ): array {
+		if ( null === $source_bot_id || null === $source_update_id ) {
+			return $body;
+		}
+
+		$body['source_bot_id']    = $source_bot_id;
+		$body['source_update_id'] = $source_update_id;
+
+		return $body;
 	}
 
 	/**

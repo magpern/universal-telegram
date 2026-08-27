@@ -53,6 +53,9 @@ class Migrator {
 	public const QUIESCENCE_STATE_TABLE              = 'universal_telegram_quiescence_state';
 	public const QUIESCENCE_TRANSITIONS_TABLE        = 'universal_telegram_quiescence_transitions';
 	public const QUIESCENCE_DEFERRED_UPDATES_TABLE   = 'universal_telegram_quiescence_deferred_updates';
+	public const CUTOVER_RUNS_TABLE                  = 'universal_telegram_cutover_runs';
+	public const CUTOVER_TRANSITIONS_TABLE           = 'universal_telegram_cutover_transitions';
+	public const CUTOVER_ACTIVATION_AUDIT_TABLE      = 'universal_telegram_cutover_activation_audit';
 
 	private const DB_VERSION_OPTION = 'universal_telegram_db_version';
 
@@ -79,7 +82,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 34;
+		return 36;
 	}
 
 	/**
@@ -182,6 +185,8 @@ class Migrator {
 			32 => array( array( $this, 'step_32_create_support_chat_contract_auth_tables' ), array( $this, 'verify_step_32' ) ),
 			33 => array( array( $this, 'step_33_create_quiescence_tables' ), array( $this, 'verify_step_33' ) ),
 			34 => array( array( $this, 'step_34_add_prepared_binding_status' ), array( $this, 'verify_step_34' ) ),
+			35 => array( array( $this, 'step_35_create_cutover_tables' ), array( $this, 'verify_step_35' ) ),
+			36 => array( array( $this, 'step_36_add_deferred_update_handoff_incident_columns' ), array( $this, 'verify_step_36' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -2272,6 +2277,158 @@ class Migrator {
 		$column = $wpdb->get_row( "SHOW COLUMNS FROM {$table} LIKE 'status'", ARRAY_A );
 
 		return null !== $column && isset( $column['Type'] ) && str_contains( (string) $column['Type'], "'prepared'" );
+	}
+
+	/**
+	 * Creates the three SC-M03 final-cutover tables (ADR-0042 §1–§2):
+	 * `cutover_runs` (one row per operator-initiated cutover run, never a
+	 * singleton — a Product Owner may approve multiple, sequential
+	 * cohorts), `cutover_transitions` (append-only per-run audit trail,
+	 * mirroring `quiescence_transitions`' own shape), and
+	 * `cutover_activation_audit` (one row per per-candidate
+	 * activate/compensate action, run-correlated via `run_id`). No column
+	 * on any of the three ever carries binding or message content — only
+	 * ids, uuids, a fixed state/action vocabulary, and timestamps.
+	 */
+	private function step_35_create_cutover_tables(): void {
+		global $wpdb;
+
+		$runs_table        = $wpdb->prefix . self::CUTOVER_RUNS_TABLE;
+		$transitions_table = $wpdb->prefix . self::CUTOVER_TRANSITIONS_TABLE;
+		$audit_table       = $wpdb->prefix . self::CUTOVER_ACTIVATION_AUDIT_TABLE;
+		$charset_collate   = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$runs_table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				run_uuid CHAR(36) NOT NULL,
+				state VARCHAR(20) NOT NULL,
+				cohort_count INT UNSIGNED NOT NULL DEFAULT 0,
+				entered_prepared_at DATETIME NULL,
+				entered_activating_at DATETIME NULL,
+				activated_at DATETIME NULL,
+				activation_failed_at DATETIME NULL,
+				completed_at DATETIME NULL,
+				created_at DATETIME NOT NULL,
+				updated_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY run_uuid (run_uuid),
+				KEY state (state)
+			) {$charset_collate}"
+		);
+
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$transitions_table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				run_id BIGINT UNSIGNED NOT NULL,
+				from_state VARCHAR(20) NOT NULL,
+				to_state VARCHAR(20) NOT NULL,
+				requested_by BIGINT UNSIGNED NULL,
+				requested_via VARCHAR(32) NOT NULL,
+				detail VARCHAR(191) NULL,
+				occurred_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				KEY run_id (run_id)
+			) {$charset_collate}"
+		);
+
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$audit_table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				run_id BIGINT UNSIGNED NOT NULL,
+				binding_uuid CHAR(36) NOT NULL,
+				action VARCHAR(16) NOT NULL,
+				from_cas INT UNSIGNED NOT NULL,
+				to_cas INT UNSIGNED NOT NULL,
+				occurred_at DATETIME NOT NULL,
+				PRIMARY KEY (id),
+				KEY run_id (run_id),
+				KEY binding_uuid (binding_uuid)
+			) {$charset_collate}"
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Verifies all three cutover tables exist with the expected columns.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_35(): bool {
+		global $wpdb;
+
+		$runs_ok = $this->table_has_columns(
+			$wpdb->prefix . self::CUTOVER_RUNS_TABLE,
+			array( 'id', 'run_uuid', 'state', 'cohort_count', 'entered_prepared_at', 'entered_activating_at', 'activated_at', 'activation_failed_at', 'completed_at', 'created_at', 'updated_at' )
+		);
+
+		$transitions_ok = $this->table_has_columns(
+			$wpdb->prefix . self::CUTOVER_TRANSITIONS_TABLE,
+			array( 'id', 'run_id', 'from_state', 'to_state', 'requested_by', 'requested_via', 'detail', 'occurred_at' )
+		);
+
+		$audit_ok = $this->table_has_columns(
+			$wpdb->prefix . self::CUTOVER_ACTIVATION_AUDIT_TABLE,
+			array( 'id', 'run_id', 'binding_uuid', 'action', 'from_cas', 'to_cas', 'occurred_at' )
+		);
+
+		return $runs_ok && $transitions_ok && $audit_ok;
+	}
+
+	/**
+	 * Adds the additive handoff/incident columns to the existing
+	 * `quiescence_deferred_updates` table (ADR-0042 §3–§4): `handed_off_at`
+	 * (stamped only after Support Chat durably confirms a successful
+	 * transactional handoff — never before), and five incident-tracking
+	 * columns for UT-only pre-dispatch failures and provenance conflicts —
+	 * `incident_resolution` stores only the short, fixed
+	 * `retried_success`/`po_acknowledged_terminal` vocabulary;
+	 * `incident_po_decision_ref` holds the opaque Product Owner reference
+	 * separately, in its own appropriately-sized column, never concatenated
+	 * into `incident_resolution` itself.
+	 * Existing rows and the existing `replayed_at` column/semantics are
+	 * entirely unaffected.
+	 */
+	private function step_36_add_deferred_update_handoff_incident_columns(): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::QUIESCENCE_DEFERRED_UPDATES_TABLE;
+
+		$columns = array(
+			'handed_off_at'            => 'DATETIME NULL',
+			'incident_reason'          => 'VARCHAR(64) NULL',
+			'incident_recorded_at'     => 'DATETIME NULL',
+			'incident_resolved_at'     => 'DATETIME NULL',
+			'incident_resolution'      => 'VARCHAR(32) NULL',
+			'incident_po_decision_ref' => 'VARCHAR(191) NULL',
+		);
+
+		foreach ( $columns as $column => $definition ) {
+			// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			// SHOW COLUMNS (this connection), not INFORMATION_SCHEMA — same
+			// stale-cache reasoning as step_29's/step_34's own column checks.
+			$existing = $wpdb->get_row( "SHOW COLUMNS FROM {$table} LIKE '{$column}'", ARRAY_A );
+
+			if ( null === $existing ) {
+				$wpdb->query( "ALTER TABLE {$table} ADD COLUMN {$column} {$definition}" );
+			}
+			// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		}
+	}
+
+	/**
+	 * Verifies all five new columns exist.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_36(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::QUIESCENCE_DEFERRED_UPDATES_TABLE,
+			array( 'handed_off_at', 'incident_reason', 'incident_recorded_at', 'incident_resolved_at', 'incident_resolution', 'incident_po_decision_ref' )
+		);
 	}
 
 	/**
