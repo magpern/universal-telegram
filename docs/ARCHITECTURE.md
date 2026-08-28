@@ -24,6 +24,8 @@ This document records the plugin's thirteen authoritative product boundaries and
 
 ## Support Chat extraction (ADR-0037)
 
+> **ADR-0044 (2026-08-28) completes this extraction.** Universal Telegram is now a **Telegram transport / Support Chat adapter plugin only**. Its legacy website chat (widget, conversations, messages, notes, operator workflow/Hub, chat AI, visitor tracking, digests/summaries) and the entire SC-M03 migration/cutover track are **retired and removed** — the legacy data is discarded, not migrated. Universal Telegram keeps: the Telegram transport (bots, destinations, webhook ingress/dedupe, outbound delivery, retry/queue, circuit breaker, rate limiting, audit/event history, generic notification rules), the Support Chat Contract v1 adapter (pairing, bindings, discovery, inbound bridge, outbound delivery, diagnostics, delivery idempotency), the Telegram-user → WordPress-operator identity **mapping** (for inbound-reply attribution), and generic operational alerts through Telegram. A guarded `wp universal-telegram legacy-chat purge --assume-legacy-chat-removal-authority` removes obsolete legacy data while preserving bot credentials and every transport/adapter table.
+
 Website support chat is extracted to standalone **Universal Support Chat**. This plugin remains responsible for Telegram transport, bots/destinations/webhooks/commands, event/WooCommerce/error notifications, and an optional Support Chat adapter (UT Adapter M1).
 
 - ADR-0033–0036 are **Superseded by ADR-0037** for future UT chat-product implementation direction; historical ADR bodies are preserved.

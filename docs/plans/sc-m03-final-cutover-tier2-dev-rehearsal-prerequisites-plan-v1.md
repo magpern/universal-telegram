@@ -1,5 +1,8 @@
 # SC-M03 Final-Cutover — Tier 2 Disposable DEV Rehearsal Prerequisites Plan v1 (primary)
 
+> **CLOSED — superseded by [ADR-0044](../adr/0044-universal-telegram-transport-only-retire-legacy-chat-and-cutover.md) (2026-08-28).** Universal Telegram becomes transport/adapter only; its legacy website chat is retired and **discarded, not migrated**. There is no UT→SC data migration, no cutover, and no Tier 2 rehearsal; the proposed Approval B is withdrawn unsigned. This document is retained unedited as a historical record.
+
+
 **Status: planning-only. FROZEN. This document authorizes nothing.** It provisions no
 infrastructure; creates no container, network, volume, database, Redis instance, SWAG vhost, DNS
 record, or TLS certificate; creates no Telegram bot, supergroup, topic, token, or webhook;

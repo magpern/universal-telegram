@@ -1,5 +1,8 @@
 # Closure Record — SC-M03 Final-Cutover Disposable DEV Rehearsal, Tier 1
 
+> **CLOSED — superseded by [ADR-0044](../adr/0044-universal-telegram-transport-only-retire-legacy-chat-and-cutover.md) (2026-08-28).** Universal Telegram becomes transport/adapter only; its legacy website chat is retired and **discarded, not migrated**. There is no UT→SC data migration, no cutover, and no Tier 2 rehearsal; the proposed Approval B is withdrawn unsigned. This document is retained unedited as a historical record.
+
+
 > **Addendum 2026-08-28 (does not alter this record).** F1 was corrected and merged in both
 > repositories; DEV rehearsal runbook v2 supersedes v1; and the single Product-Owner-authorised
 > Tier 1 re-attempt under v2 **was executed on 2026-08-28 and PASSED** on both supported WP/PHP

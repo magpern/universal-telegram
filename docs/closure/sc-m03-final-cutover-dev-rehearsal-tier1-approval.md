@@ -1,5 +1,8 @@
 # SC-M03 Final-Cutover Disposable DEV Rehearsal — Product Owner Approval A (Tier 1)
 
+> **CLOSED — superseded by [ADR-0044](../adr/0044-universal-telegram-transport-only-retire-legacy-chat-and-cutover.md) (2026-08-28).** Universal Telegram becomes transport/adapter only; its legacy website chat is retired and **discarded, not migrated**. There is no UT→SC data migration, no cutover, and no Tier 2 rehearsal; the proposed Approval B is withdrawn unsigned. This document is retained unedited as a historical record.
+
+
 ## Status
 
 **Approval A recorded.** Tier 1 (the disposable automated operational-sequence / integration

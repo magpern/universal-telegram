@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Accepted.
+
+> **Superseded by ADR-0044** (2026-08-28, Product Owner). Universal Telegram becomes transport/adapter only; its legacy website chat is retired and discarded, not migrated, so the SC-M03 migration/cutover track this ADR belongs to is closed. This Status note is the only change; the sections below are retained unedited as the historical record.
 
 ## Context
 
