@@ -9,7 +9,7 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Shared;
 
-use UniversalTelegram\Automations\Digest\DigestEligibility;
+use UniversalTelegram\Telegram\Configuration\DestinationEligibility;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\BotStatus;
 
@@ -19,7 +19,7 @@ use UniversalTelegram\Telegram\Configuration\BotStatus;
  * every active bot is emitted up front (tagged with data-bot-id) so an
  * administrator sees eligible destinations immediately after choosing a
  * bot, without an intermediate save/reload — the server-side eligibility
- * rule (DigestEligibility::eligible_destinations_for_bot()) remains the
+ * rule (DestinationEligibility::eligible_destinations_for_bot()) remains the
  * single source of truth for which rows are offered at all.
  */
 final class BotDestinationPairFields {
@@ -34,12 +34,12 @@ final class BotDestinationPairFields {
 	/**
 	 * Constructor.
 	 *
-	 * @param BotProfileRepository $bots               Active-bot listing.
-	 * @param DigestEligibility    $digest_eligibility Eligible-destination filter.
+	 * @param BotProfileRepository   $bots               Active-bot listing.
+	 * @param DestinationEligibility $digest_eligibility Eligible-destination filter.
 	 */
 	public function __construct(
 		private readonly BotProfileRepository $bots,
-		private readonly DigestEligibility $digest_eligibility
+		private readonly DestinationEligibility $digest_eligibility
 	) {}
 
 	/**

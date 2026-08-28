@@ -13,6 +13,8 @@ schema, `Migrator::target_version()`, or plugin-version change, no new Contract 
 no DEV, production, or operational cutover / rehearsal action. Documentation-only; no code or
 schema change is made by this ADR itself. Proposed 2026-08-27.
 
+> **Superseded by ADR-0044** (2026-08-28, Product Owner). Universal Telegram becomes transport/adapter only; its legacy website chat is retired and discarded, not migrated, so the SC-M03 migration/cutover track this ADR belongs to is closed. This Status note is the only change; the sections below are retained unedited as the historical record.
+
 **Pins Support Chat ADR-0011** ("Contract v1 `channel_case_ref` is the Support Chat conversation
 UUID; provenance-map and fail-closed semantics"). **Amends ADR-0042 §3 (handoff `channel_case_ref`
 sender identity) and §4/§5 (closed incident vocabulary).** The Status-field amendment note on

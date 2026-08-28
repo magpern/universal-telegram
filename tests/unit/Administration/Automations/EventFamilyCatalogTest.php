@@ -46,10 +46,4 @@ final class EventFamilyCatalogTest extends TestCase {
 			}
 		}
 	}
-
-	public function test_visitor_click_is_excluded_from_every_family(): void {
-		foreach ( EventFamilyCatalog::families() as $family ) { // phpcs:ignore PHPCompatibility.Extensions.RemovedExtensions.famRemoved -- false positive: the sniff misidentifies the `families(` call as the removed ext/fam extension.
-			$this->assertNotContains( 'visitor.click', $family['event_types'] );
-		}
-	}
 }

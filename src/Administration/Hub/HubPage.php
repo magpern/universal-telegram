@@ -9,13 +9,9 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Hub;
 
-use UniversalTelegram\Administration\AI\ApprovedContentPage;
 use UniversalTelegram\Administration\Automations\EventHistoryPage;
 use UniversalTelegram\Administration\Automations\NotificationTesterPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderPage;
-use UniversalTelegram\Administration\Conversations\ConversationInboxPage;
-use UniversalTelegram\Administration\Conversations\OperatorIdentityPage;
-use UniversalTelegram\Administration\Visitor\VisitorTrackingPage;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 
 /**
@@ -55,11 +51,6 @@ final class HubPage {
 		NotificationTesterPage::TAB_ID => array( 'notifications-activity', NotificationTesterPage::TAB_ID ),
 		'events'                       => array( 'notifications-activity', 'events' ),
 		EventHistoryPage::TAB_ID       => array( 'notifications-activity', EventHistoryPage::TAB_ID ),
-		VisitorTrackingPage::TAB_ID    => array( 'notifications-activity', VisitorTrackingPage::TAB_ID ),
-		ConversationInboxPage::TAB_ID  => array( 'conversations', ConversationInboxPage::TAB_ID ),
-		OperatorIdentityPage::TAB_ID   => array( 'conversations', OperatorIdentityPage::TAB_ID ),
-		'ai'                           => array( 'ai-hub', 'ai' ),
-		ApprovedContentPage::TAB_ID    => array( 'ai-hub', ApprovedContentPage::TAB_ID ),
 	);
 
 	/**

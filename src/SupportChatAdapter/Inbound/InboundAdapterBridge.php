@@ -10,7 +10,7 @@ declare( strict_types=1 );
 namespace UniversalTelegram\SupportChatAdapter\Inbound;
 
 use UniversalTelegram\Audit\AuditLogger;
-use UniversalTelegram\Conversations\OperatorIdentityRepository;
+use UniversalTelegram\SupportChatAdapter\Identity\OperatorIdentityMapRepository;
 use UniversalTelegram\Privacy\Classification;
 use UniversalTelegram\SupportChatAdapter\AdapterAvailability;
 use UniversalTelegram\SupportChatAdapter\ChannelBindingRepository;
@@ -29,18 +29,18 @@ final class InboundAdapterBridge {
 	/**
 	 * Constructor.
 	 *
-	 * @param ChannelBindingRepository   $bindings            Binding storage.
-	 * @param DiscoveryClient            $discovery           Contract discovery.
-	 * @param SupportChatContractClient  $sc_client           SC Contract client.
-	 * @param OperatorIdentityRepository $operator_identities Operator map.
-	 * @param AuditLogger                $audit               Audit logger.
-	 * @param bool                       $adapter_enabled     Settings flag.
+	 * @param ChannelBindingRepository      $bindings            Binding storage.
+	 * @param DiscoveryClient               $discovery           Contract discovery.
+	 * @param SupportChatContractClient     $sc_client           SC Contract client.
+	 * @param OperatorIdentityMapRepository $operator_identities Operator map.
+	 * @param AuditLogger                   $audit               Audit logger.
+	 * @param bool                          $adapter_enabled     Settings flag.
 	 */
 	public function __construct(
 		private readonly ChannelBindingRepository $bindings,
 		private readonly DiscoveryClient $discovery,
 		private readonly SupportChatContractClient $sc_client,
-		private readonly OperatorIdentityRepository $operator_identities,
+		private readonly OperatorIdentityMapRepository $operator_identities,
 		private readonly AuditLogger $audit,
 		private readonly bool $adapter_enabled
 	) {}

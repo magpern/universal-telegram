@@ -15,7 +15,6 @@ use UniversalTelegram\Administration\Automations\RuleBuilderPage;
 use UniversalTelegram\Administration\Automations\NotificationTesterPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
 use UniversalTelegram\Administration\Telegram\BotManagementPage;
-use UniversalTelegram\Administration\Visitor\VisitorTrackingPage;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 
 /**
@@ -54,7 +53,6 @@ class LegacyUrlRedirector {
 			RuleBuilderPage::SLUG        => array( RuleBuilderPage::TAB_ID, CapabilityRegistrar::MANAGE_AUTOMATIONS ),
 			NotificationTesterPage::SLUG => array( NotificationTesterPage::TAB_ID, CapabilityRegistrar::MANAGE_AUTOMATIONS ),
 			EventHistoryPage::SLUG       => array( EventHistoryPage::TAB_ID, CapabilityRegistrar::MANAGE_AUTOMATIONS ),
-			VisitorTrackingPage::SLUG    => array( VisitorTrackingPage::TAB_ID, CapabilityRegistrar::MANAGE ),
 		);
 	}
 

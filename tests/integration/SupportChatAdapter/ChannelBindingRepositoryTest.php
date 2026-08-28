@@ -90,6 +90,6 @@ final class ChannelBindingRepositoryTest extends WP_UnitTestCase {
 
 		$this->assertSame( $bindings, $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $bindings ) ) );
 		$this->assertSame( $keys, $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $keys ) ) );
-		$this->assertSame( '36', (string) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( '37', (string) get_option( 'universal_telegram_db_version' ) );
 	}
 }

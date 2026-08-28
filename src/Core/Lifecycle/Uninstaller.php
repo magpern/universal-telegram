@@ -140,6 +140,7 @@ final class Uninstaller {
 		$this->drop_m11a_tables();
 		$this->drop_m11b_tables();
 		$this->drop_adapter_m1_tables();
+		$this->drop_operator_identity_map_table();
 		$this->drop_adapter_m1_auth_tables();
 		$this->drop_quiescence_tables();
 		$this->drop_cutover_tables();
@@ -305,6 +306,18 @@ final class Uninstaller {
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
 			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
 		}
+	}
+
+	/**
+	 * Drops the retained operator-identity-map table (ADR-0044 §4).
+	 */
+	private function drop_operator_identity_map_table(): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::OPERATOR_IDENTITY_MAP_TABLE;
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, never user input.
+		$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
 	}
 
 	/**

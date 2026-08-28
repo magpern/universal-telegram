@@ -48,8 +48,6 @@ final class RuleBuilderPagePresetsTest extends WP_UnitTestCase {
 			Plugin::instance()->destination_repository(),
 			null,
 			null,
-			null,
-			null,
 			new WooCommerceSupport()
 		);
 	}

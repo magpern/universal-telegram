@@ -164,11 +164,6 @@ final class HubPageTest extends WP_UnitTestCase {
 			'test-notifications'               => array( 'test-notifications', 'notifications-activity', 'test-notifications' ),
 			'events'                           => array( 'events', 'notifications-activity', 'events' ),
 			'event-history'                    => array( 'event-history', 'notifications-activity', 'event-history' ),
-			'visitor-tracking'                 => array( 'visitor-tracking', 'notifications-activity', 'visitor-tracking' ),
-			'operator-inbox'                   => array( 'operator-inbox', 'conversations', 'operator-inbox' ),
-			'operator-identities'              => array( 'operator-identities', 'conversations', 'operator-identities' ),
-			'ai'                               => array( 'ai', 'ai-hub', 'ai' ),
-			'ai-content'                       => array( 'ai-content', 'ai-hub', 'ai-content' ),
 		);
 	}
 

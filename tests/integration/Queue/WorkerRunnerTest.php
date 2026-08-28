@@ -24,7 +24,7 @@ final class WorkerRunnerTest extends WP_UnitTestCase {
 		parent::setUp();
 		FailingJobFixture::reset();
 
-		// A small number of Migration-namespace tests exercise
+		// A prior generation of tests exercised
 		// QuiescenceGate's own real CAS transitions, whose commit (on
 		// WP_UnitTestCase's shared connection) can leave an Action-
 		// Scheduler action those tests enqueued moments earlier

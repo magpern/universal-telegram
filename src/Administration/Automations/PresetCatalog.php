@@ -183,26 +183,6 @@ final class PresetCatalog {
 			'message'              => 'API request failed: {{payload.route}} ({{payload.status}}).',
 			'requires_woocommerce' => false,
 		),
-		array(
-			'key'                  => 'visitor_product_viewed',
-			'title'                => 'Visitor viewed a product',
-			'description'          => 'Notify when a visitor views a product page.',
-			'event_type'           => 'visitor.product_viewed',
-			'conditions'           => array(),
-			'match_mode'           => 'all',
-			'message'              => 'A visitor viewed a product.',
-			'requires_woocommerce' => true,
-		),
-		array(
-			'key'                  => 'visitor_checkout_started',
-			'title'                => 'Visitor started checkout',
-			'description'          => 'Notify when a visitor opens checkout.',
-			'event_type'           => 'visitor.checkout_started_intent',
-			'conditions'           => array(),
-			'match_mode'           => 'all',
-			'message'              => 'A visitor opened checkout.',
-			'requires_woocommerce' => true,
-		),
 	);
 
 	/**

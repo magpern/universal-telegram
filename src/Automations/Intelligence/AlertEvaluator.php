@@ -9,14 +9,15 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Automations\Intelligence;
 
-use UniversalTelegram\Automations\Digest\DigestEligibility;
+use UniversalTelegram\Automations\EventCountAggregator;
+use UniversalTelegram\Telegram\Configuration\DestinationEligibility;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
 
 /**
  * Evaluates the three fixed threshold alert types
  * (docs/plans/m11b-digests-and-operational-intelligence-plan-v1.md §2.2) on
- * every operational-summary sweep tick — no second recurring action. Each
+ * every alert-sweep tick. Each
  * alert type is independently toggleable, default disabled, and bounded by
  * AlertRepository's own fixed 1-hour re-fire cooldown, the structural
  * anti-flood guarantee: this class never fires the same alert type twice
@@ -29,17 +30,17 @@ final class AlertEvaluator {
 	/**
 	 * Constructor.
 	 *
-	 * @param IntelligenceSettings         $settings            Supplies the alert_* fields.
-	 * @param DigestEligibility            $eligibility         Reused destination-eligibility rule (M11A §4).
-	 * @param OperationalSummaryRepository $repository          Bounded event_history aggregation.
-	 * @param AlertRepository              $alert_state         Cooldown/checkpoint persistence.
-	 * @param MessageDispatcher            $message_dispatcher  M01's own, unchanged outbound transport.
-	 * @param WooCommerceSupport           $woocommerce_support Governs WC-gated alert inertness.
+	 * @param IntelligenceSettings   $settings            Supplies the alert_* fields.
+	 * @param DestinationEligibility $eligibility         Destination-eligibility rule.
+	 * @param EventCountAggregator   $counts              Bounded event_history aggregation.
+	 * @param AlertRepository        $alert_state         Cooldown/checkpoint persistence.
+	 * @param MessageDispatcher      $message_dispatcher  M01's own, unchanged outbound transport.
+	 * @param WooCommerceSupport     $woocommerce_support Governs WC-gated alert inertness.
 	 */
 	public function __construct(
 		private readonly IntelligenceSettings $settings,
-		private readonly DigestEligibility $eligibility,
-		private readonly OperationalSummaryRepository $repository,
+		private readonly DestinationEligibility $eligibility,
+		private readonly EventCountAggregator $counts,
 		private readonly AlertRepository $alert_state,
 		private readonly MessageDispatcher $message_dispatcher,
 		private readonly WooCommerceSupport $woocommerce_support
@@ -74,7 +75,7 @@ final class AlertEvaluator {
 		}
 
 		$since = gmdate( 'Y-m-d H:i:s', time() - self::WINDOW_SECONDS );
-		$count = $this->repository->count_event_type_since( $event_type, $since );
+		$count = $this->counts->count_event_type_since( $event_type, $since );
 
 		if ( $count < $this->settings->alert_threshold( $alert_type ) ) {
 			return;
@@ -97,7 +98,7 @@ final class AlertEvaluator {
 		$threshold = $this->settings->alert_threshold( 'js_error_spike' );
 
 		foreach ( array( 'runtime', 'promise_rejection', 'resource_load' ) as $category ) {
-			$count = $this->repository->count_error_category_since( $category, $since );
+			$count = $this->counts->count_error_category_since( $category, $since );
 
 			if ( $count >= $threshold ) {
 				$this->fire( 'js_error_spike', sprintf( '%d "%s" errors in the last hour', $count, $category ) );

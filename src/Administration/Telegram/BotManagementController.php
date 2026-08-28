@@ -11,10 +11,9 @@ namespace UniversalTelegram\Administration\Telegram;
 
 use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Audit\AuditLogger;
-use UniversalTelegram\Conversations\ForumTopicRemoteDeleter;
+use UniversalTelegram\Telegram\Topics\ForumTopicRemoteDeleter;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Security\CredentialState;
-use UniversalTelegram\Migration\QuiescenceGate;
 use UniversalTelegram\Privacy\Classification;
 use UniversalTelegram\Queue\JobEnvelope;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
@@ -65,7 +64,6 @@ class BotManagementController {
 	 * @param ForumTopicRemoteDeleter        $remote_topics       Best-effort deleteForumTopic when a destination row is removed.
 	 * @param UnresolvedOutboundAbandoner    $unresolved_abandoner Drops pending rows when a destination or bot is removed.
 	 * @param DeadLetterDismisser            $dead_letter_dismisser Removes operator-reviewed dead-letter rows.
-	 * @param QuiescenceGate|null            $quiescence   Legacy-chat quiescence write-blocking gate (docs/adr/0040). Null only in a not-yet-migrated install.
 	 */
 	public function __construct(
 		private readonly BotProfileRepository $bots,
@@ -79,8 +77,7 @@ class BotManagementController {
 		private readonly AuditLogger $audit_logger,
 		private readonly ForumTopicRemoteDeleter $remote_topics,
 		private readonly UnresolvedOutboundAbandoner $unresolved_abandoner,
-		private readonly DeadLetterDismisser $dead_letter_dismisser,
-		private readonly ?QuiescenceGate $quiescence = null
+		private readonly DeadLetterDismisser $dead_letter_dismisser
 	) {}
 
 	/**
@@ -393,20 +390,9 @@ class BotManagementController {
 	}
 
 	/**
-	 * Handles the requeue_message operation. Blocked unconditionally during
-	 * any non-idle quiescence state, regardless of the requeued message's
-	 * origin — legacy conversation or Support Chat adapter binding
-	 * (docs/adr/0040 §2, entry point #8). Distinguishing origin at requeue
-	 * time would require the same destination_id-join the drain query
-	 * uses, but delivers little value for this rare, already-manual,
-	 * already-delayed administrative action; the dead-lettered row itself
-	 * is untouched, requeue is only deferred.
+	 * Handles the requeue_message operation.
 	 */
 	private function requeue_message(): void {
-		if ( null !== $this->quiescence && ! $this->quiescence->is_idle() ) {
-			return;
-		}
-
 		$message_id = isset( $_POST['message_id'] ) ? (int) $_POST['message_id'] : 0;
 
 		if ( 0 === $message_id ) {

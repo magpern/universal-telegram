@@ -12,7 +12,7 @@ final class EventCatalogLabelsTest extends TestCase {
 
 	public function test_known_event_types_return_plain_language_labels(): void {
 		$this->assertSame( 'Successful user login', EventCatalogLabels::event_type_label( 'wordpress.login_succeeded' ) ); // phpcs:ignore WordPress.WP.CapitalPDangit.MisspelledInText -- this is the literal event_type identifier string, not prose.
-		$this->assertSame( 'Visitor viewed a page', EventCatalogLabels::event_type_label( 'visitor.page_viewed' ) );
+		$this->assertSame( 'New user registered', EventCatalogLabels::event_type_label( 'wordpress.user_registered' ) ); // phpcs:ignore WordPress.WP.CapitalPDangit.MisspelledInText -- this is the literal event_type identifier string, not prose.
 	}
 
 	public function test_known_fields_return_plain_language_labels(): void {

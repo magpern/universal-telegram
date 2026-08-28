@@ -41,7 +41,7 @@ The official product name and technical identifiers are finalized in ADR-0002.
 
 ### Website chat
 
-> **Product direction (ADR-0037):** Website chat SoR, widget, Hub replies, availability, and future chat AI are owned by **Universal Support Chat**. The bullets below describe **legacy Universal Telegram chat behaviour** still present in runtime until Support Chat SC-M03 cutover, plus historical PR #30 planning (ADR-0033–0036) that is **superseded for UT implementation**. New chat-product work is not implemented in this plugin; optional escalated Telegram support continues via **UT Adapter M1**.
+> **Product direction (ADR-0037, completed by ADR-0044 2026-08-28):** Website chat SoR, widget, Hub replies, availability, and chat AI are owned by **Universal Support Chat**. **ADR-0044 removes the legacy Universal Telegram chat entirely** — widget, conversations, operator workflow, chat AI, visitor tracking, digests/summaries, and the whole SC-M03 migration/cutover track — with the legacy data discarded, not migrated. The bullets below are **historical**: they describe legacy UT chat behaviour that no longer exists in the plugin. Universal Telegram is now a Telegram transport / Support Chat adapter only; escalated Telegram support is the Contract v1 adapter (UT Adapter M1).
 
 * Display a configurable chat widget on selected pages (authenticated access per ADR-0025) — **legacy until SC-M03**.
 * Store every conversation in WordPress as the system of record — **moving to Support Chat**; UT retains legacy tables until cutover.

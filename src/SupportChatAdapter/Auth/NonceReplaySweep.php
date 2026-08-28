@@ -14,7 +14,7 @@ use UniversalTelegram\Queue\WorkerRunner;
 /**
  * Purges nonce-replay records older than the ADR-0007 §3 600-second
  * retention window. Mirrors this plugin's existing scheduled-cleanup
- * pattern (e.g. Automations\Intelligence\SummaryAiLeaseSweep): registered
+ * pattern: registered
  * once, at plugin init, as a fixed, idempotently-scheduled Action Scheduler
  * recurring action.
  */

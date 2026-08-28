@@ -11,8 +11,7 @@ namespace UniversalTelegram\Administration\Automations;
 
 use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Administration\Shared\BotDestinationPairFields;
-use UniversalTelegram\Automations\Digest\DigestEligibility;
-use UniversalTelegram\Automations\Intelligence\IntelligenceSettings;
+use UniversalTelegram\Telegram\Configuration\DestinationEligibility;
 use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
@@ -48,25 +47,21 @@ final class RuleBuilderPage {
 	/**
 	 * Constructor.
 	 *
-	 * @param NotificationRuleRepository $rules                Notification rules.
-	 * @param Registry                   $registry             The current request's event registry.
-	 * @param BotProfileRepository       $bots                 Bot profiles.
-	 * @param DestinationRepository      $destinations         Destinations.
-	 * @param DigestEligibility|null     $digest_eligibility   Live "currently batched by Visitor Digest" state (M11A §3.1); also supplies the shared destination-eligibility filter (§5) for the Intelligence section's dropdowns. Null only for pre-M11A callers.
-	 * @param Settings|null              $settings             Reads/writes the operational_summary_* and alert_* fields (§5). Null only for pre-M11B callers.
-	 * @param IntelligenceSettings|null  $intelligence_settings Typed reader over the same fields. Null only for pre-M11B callers.
-	 * @param IntelligencePanel|null     $intelligence_panel    The AI-summary review UI (§2.6/§5), composed after the settings form. Null only for pre-WP7 callers.
-	 * @param WooCommerceSupport|null    $woocommerce_support    Gates WooCommerce-only event families and presets (M08.1). Null only for pre-M08.1 callers, treated as WooCommerce-inactive.
+	 * @param NotificationRuleRepository  $rules                Notification rules.
+	 * @param Registry                    $registry             The current request's event registry.
+	 * @param BotProfileRepository        $bots                 Bot profiles.
+	 * @param DestinationRepository       $destinations         Destinations.
+	 * @param DestinationEligibility|null $digest_eligibility  Shared destination-eligibility filter for the alert-target dropdowns.
+	 * @param Settings|null               $settings             Reads/writes the operational_summary_* and alert_* fields (§5). Null only for pre-M11B callers.
+	 * @param WooCommerceSupport|null     $woocommerce_support    Gates WooCommerce-only event families and presets (M08.1). Null only for pre-M08.1 callers, treated as WooCommerce-inactive.
 	 */
 	public function __construct(
 		private readonly NotificationRuleRepository $rules,
 		private readonly Registry $registry,
 		private readonly BotProfileRepository $bots,
 		private readonly DestinationRepository $destinations,
-		private readonly ?DigestEligibility $digest_eligibility = null,
+		private readonly ?DestinationEligibility $digest_eligibility = null,
 		private readonly ?Settings $settings = null,
-		private readonly ?IntelligenceSettings $intelligence_settings = null,
-		private readonly ?IntelligencePanel $intelligence_panel = null,
 		private readonly ?WooCommerceSupport $woocommerce_support = null
 	) {}
 
@@ -477,7 +472,6 @@ final class RuleBuilderPage {
 			: array();
 
 		foreach ( array(
-			'operational_summary_enabled',
 			'alert_checkout_failure_count_enabled',
 			'alert_order_failure_spike_enabled',
 			'alert_js_error_spike_enabled',
@@ -488,13 +482,6 @@ final class RuleBuilderPage {
 		$current   = $this->settings->get();
 		$sanitized = $this->settings->sanitize( array_merge( $current, $input ) );
 		update_option( Settings::OPTION_NAME, $sanitized );
-
-		// The alert/summary destination fields above just changed; the
-		// shared DigestEligibility eligibility-filter methods (§5) used by
-		// this section's dropdowns already re-validate live on every read,
-		// but the digest's own cached is_active() must not be left stale by
-		// this save either, matching VisitorTrackingPage's own precedent.
-		$this->digest_eligibility->invalidate();
 
 		$this->redirect_and_exit( admin_url( 'admin.php?page=' . self::SLUG . '&tab=' . self::TAB_ID ) );
 	}
@@ -510,30 +497,12 @@ final class RuleBuilderPage {
 			return;
 		}
 
-		$values = null !== $this->intelligence_settings
-			? array_merge( $this->settings->get(), array() )
-			: $this->settings->get();
+		$values = $this->settings->get();
 
-		// Prefer the typed reader when present so the property is not write-only.
-		if ( null !== $this->intelligence_settings ) {
-			$values['operational_summary_enabled']  = $this->intelligence_settings->operational_summary_enabled();
-			$values['operational_summary_hour_utc'] = $this->intelligence_settings->operational_summary_hour_utc();
-		}
-
-		echo '<h2>' . esc_html__( 'Intelligence', 'universal-telegram' ) . '</h2>';
+		echo '<h2>' . esc_html__( 'Operational alerts', 'universal-telegram' ) . '</h2>';
 		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 		wp_nonce_field( self::INTELLIGENCE_NONCE_ACTION );
 		echo '<input type="hidden" name="action" value="' . esc_attr( self::INTELLIGENCE_ADMIN_POST_ACTION ) . '" />';
-
-		echo '<h3>' . esc_html__( 'Daily operations summary', 'universal-telegram' ) . '</h3>';
-		echo '<p><label><input type="checkbox" name="intelligence_settings[operational_summary_enabled]" value="1" ' . checked( $values['operational_summary_enabled'], true, false ) . ' /> ' .
-			esc_html__( 'Enable daily operations summary', 'universal-telegram' ) . '</label></p>';
-
-		$this->render_bot_destination_pair( 'operational_summary_bot_id', 'operational_summary_destination_id', $values );
-
-		echo '<p><label>' . esc_html__( 'Send hour (UTC)', 'universal-telegram' ) . ' ';
-		echo '<input type="number" min="0" max="23" name="intelligence_settings[operational_summary_hour_utc]" value="' . esc_attr( (string) $values['operational_summary_hour_utc'] ) . '" />';
-		echo '</label></p>';
 
 		echo '<h3>' . esc_html__( 'Threshold alerts', 'universal-telegram' ) . '</h3>';
 		echo '<p class="description">' . esc_html__( 'Each alert is disabled by default and, once fired, will not fire again for the same condition for one hour.', 'universal-telegram' ) . '</p>';
@@ -556,12 +525,8 @@ final class RuleBuilderPage {
 			echo '<input type="number" name="intelligence_settings[' . esc_attr( $threshold_field ) . ']" value="' . esc_attr( (string) $values[ $threshold_field ] ) . '" /></label></p>';
 		}
 
-		submit_button( __( 'Save Intelligence settings', 'universal-telegram' ) );
+		submit_button( __( 'Save alert settings', 'universal-telegram' ) );
 		echo '</form>';
-
-		if ( null !== $this->intelligence_panel ) {
-			$this->intelligence_panel->render();
-		}
 	}
 
 	/**
@@ -681,19 +646,9 @@ final class RuleBuilderPage {
 	 * @return string
 	 */
 	private function digest_badge( string $event_type ): string {
-		if ( null === $this->digest_eligibility ) {
-			return '';
-		}
+		unset( $event_type );
 
-		if ( ! in_array( $event_type, DigestEligibility::SUPPRESSED_EVENT_TYPES, true ) ) {
-			return '';
-		}
-
-		if ( ! $this->digest_eligibility->is_active() ) {
-			return '';
-		}
-
-		return ' <span class="ut-digest-badge">' . esc_html__( 'Currently batched by Visitor Digest', 'universal-telegram' ) . '</span>';
+		return '';
 	}
 
 	/**
@@ -954,13 +909,6 @@ final class RuleBuilderPage {
 					esc_html__( 'Requires WooCommerce, which is not currently active on this site.', 'universal-telegram' )
 				);
 			}
-		}
-
-		if ( null !== $this->digest_eligibility && $this->digest_eligibility->is_active() ) {
-			echo '<p class="description">' . esc_html__(
-				'Visitor Digest is currently enabled and active: page view, navigation, search, product view, and cart/checkout-intent event types will not send individually while that remains the case.',
-				'universal-telegram'
-			) . '</p>';
 		}
 	}
 

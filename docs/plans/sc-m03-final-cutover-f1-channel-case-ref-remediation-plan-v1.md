@@ -1,5 +1,8 @@
 # SC-M03 Final-Cutover — F1 `channel_case_ref` identity-correction plan v1 (Universal Telegram, primary)
 
+> **CLOSED — superseded by [ADR-0044](../adr/0044-universal-telegram-transport-only-retire-legacy-chat-and-cutover.md) (2026-08-28).** Universal Telegram becomes transport/adapter only; its legacy website chat is retired and **discarded, not migrated**. There is no UT→SC data migration, no cutover, and no Tier 2 rehearsal; the proposed Approval B is withdrawn unsigned. This document is retained unedited as a historical record.
+
+
 **Status: Proposed — awaiting Product Owner review. Documentation-only. No code, schema, test,
 CLI, version, or release change is made by committing this plan.** Implementation begins only
 after Product Owner acceptance of **ADR-0043** and **Support Chat ADR-0011**, and produces its
