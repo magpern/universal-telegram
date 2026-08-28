@@ -267,7 +267,7 @@ is expected to reach `confirm-complete`.
 | 9 | Phase B dry-run | no | `wp universal-support-chat legacy-migrate run --phase=reconcile --dry-run` |
 | 10 | Phase B real | **yes** | `wp universal-support-chat legacy-migrate run --phase=reconcile --assume-migration-authority` → cohort member `status='migrated'` |
 | 11 | Migration-evidence gate | no | Support Chat CLI + `wp eval` prove `status='migrated'` for every cohort member (resolves B4 / A4) **before** any `begin` |
-| 11a | **F1-correction gate (new — A9)** | no (read-only assertion over an already-activated fixture) | Activate one real `legacy-bind`-prepared binding (`activate_prepared`), buffer one operator reply for its topic, run one `replay-deferred-updates` pass, and assert: `OUTCOME_HANDED_OFF`; exactly one Support Chat message; exactly one `legacy_handoff_map` row whose `channel_case_ref` equals the **Support Chat conversation UUID** and **not** `binding->binding_uuid()`; `handed_off_at` stamped. **If this does not hold, HALT — F1's correction is not effective in this environment; do not run `cutover begin`.** (This may be performed as the committed interop assertion `CutoverTier1HandoffResolutionTest::test_handoff_resolves_a_real_legacy_bind_prepared_binding` re-run in the same disposable env.) |
+| 11a | **F1-correction gate (new — A9)** | **yes** — writes to the disposable test database only (activates a binding, buffers a deferred row, stamps `handed_off_at`, writes one `legacy_handoff_map` row; all torn down at `down -v`) | Activate one real `legacy-bind`-prepared binding (`activate_prepared`), buffer one operator reply for its topic, run one `replay-deferred-updates` pass, and assert: `OUTCOME_HANDED_OFF`; exactly one Support Chat message; exactly one `legacy_handoff_map` row whose `channel_case_ref` equals the **Support Chat conversation UUID** and **not** `binding->binding_uuid()`; `handed_off_at` stamped. **If this does not hold, HALT — F1's correction is not effective in this environment; do not run `cutover begin`.** (This may be performed as the committed interop assertion `CutoverTier1HandoffResolutionTest::test_handoff_resolves_a_real_legacy_bind_prepared_binding` re-run in the same disposable env.) |
 | 12 | Binding prep dry-run | no | `wp universal-support-chat legacy-bind run --dry-run` |
 | 13 | Binding prep real | **yes** | `wp universal-support-chat legacy-bind run --assume-binding-authority` → UT binding `status='prepared'`, independent `binding_uuid`; `legacy-bind status` shows `is_quiescent true` |
 | 14 | Cutover status | no | `wp universal-telegram cutover status` (no open run) |
@@ -480,9 +480,14 @@ The full text is in
 [`docs/closure/sc-m03-final-cutover-dev-rehearsal-tier1-approval-addendum.md`](../closure/sc-m03-final-cutover-dev-rehearsal-tier1-approval-addendum.md)
 (**Status: Proposed — awaiting Product Owner signature**). It authorizes **only** Tier 1's
 disposable container/PHPUnit interop harness against synthetic fixtures at the v2 pinned merged
-SHAs, and **explicitly excludes** Tier 2, the DEV VPS, any Telegram network traffic, any bot
-token or webhook, any real user data, `/opt/biopentra/dev/*`, `dev.biopentra.eu`, production,
-and every operational cutover action. Verbatim text reproduced in §10.3 below.
+SHAs — including the ephemeral Docker containers, networks, and named volumes that harness
+creates intrinsically from `docker/docker-compose.yml` + `docker/docker-compose.interop.yml` for
+fresh synthetic test databases and harness services, torn down by `docker compose … down -v`
+after every run. It **explicitly excludes** Tier 2, any DEV VPS instance / WordPress site /
+Redis service / SWAG configuration, any DNS record or TLS certificate, any Telegram network
+traffic / bot token / webhook / group / topic, any credential or host-level persistent service,
+any real user data, `/opt/biopentra/dev/*`, `dev.biopentra.eu`, production, and every
+operational cutover action. Verbatim text reproduced in §10.3 below.
 
 ### 10.2 Approval B — Tier 2, the actual disposable DEV rehearsal (unchanged from v1 §10)
 
@@ -515,6 +520,10 @@ SHAs updated to the v2 baselines (`32f17ea904a33cdd1f9b0225ba9638f95a09d883` /
 > - the container/PHPUnit interop harness only — `docker/docker-compose.yml` +
 >   `docker/docker-compose.interop.yml`, driven through `bin/docker/*.sh`, with
 >   `docker compose … down -v` before and after every run;
+> - the ephemeral Docker resources that harness creates intrinsically — Docker containers,
+>   networks, and named volumes brought up by `docker/docker-compose.yml` together with
+>   `docker/docker-compose.interop.yml`, solely for fresh synthetic test databases and harness
+>   services, and removed by `docker compose … down -v` after every run;
 > - fresh throwaway repository checkouts at the two pinned SHAs above;
 > - entirely synthetic fixture data created by the rehearsal's own code;
 > - Runs 1, 2, and 3 of runbook v2 §7, including the Run 1 step 11a F1-correction gate and the
@@ -530,7 +539,10 @@ SHAs updated to the v2 baselines (`32f17ea904a33cdd1f9b0225ba9638f95a09d883` /
 >   `pre_http_request` boundary must be confirmed in place before each run;
 > - any real, dedicated, or newly-created Telegram bot, supergroup, or topic;
 > - any real user, operator, or production conversation data in any fixture;
-> - any isolated-instance, container, network, volume, DNS, certificate, or credential creation;
+> - any infrastructure or resource creation beyond the ephemeral harness Docker resources named
+>   above — in particular no DEV VPS instance, WordPress site, Redis service, SWAG configuration,
+>   DNS record, TLS certificate, Telegram resource, credential, host-level persistent service, or
+>   any resource under `/opt/biopentra/dev/*` or `dev.biopentra.eu`;
 > - any production or DEV quiescence window, migration, binding preparation, cohort activation,
 >   deferred-update replay outside the disposable harness, route switch, cutover, soak,
 >   deployment, release, tag, rollback, deletion, or retention change;
@@ -558,15 +570,19 @@ the realism-dependent ones — runs only under Approval B.
 This document authorizes nothing. It does not authorize, and its existence must not be read as
 authorizing: execution of Tier 1 or Tier 2; any production or DEV quiescence window, migration,
 binding preparation, cohort activation, deferred-update replay, Telegram webhook registration, or
-any operational command against `dev.biopentra.eu` or production; creation of infrastructure,
-containers, Telegram bots, groups, topics, DNS records, certificates, or credentials; any schema,
-plugin-version, `db_version`, configuration, test, CI-workflow, tag, release, or deployment
-change; production cutover, route switch, soak, rollback, retention change, deletion, or removal
-of Universal Telegram legacy UI or data.
+any operational command against `dev.biopentra.eu` or production; creation of any infrastructure
+— a DEV VPS instance, WordPress site, Redis service, SWAG configuration, DNS record, TLS
+certificate, Telegram bot / group / topic, credential, or host-level persistent service; any
+schema, plugin-version, `db_version`, configuration, test, CI-workflow, tag, release, or
+deployment change; production cutover, route switch, soak, rollback, retention change, deletion,
+or removal of Universal Telegram legacy UI or data.
 
-Separate Product Owner approval — the Approval A addendum (§10.1 / §10.3), then Approval B — is
-required before the DEV rehearsal, even the Tier 1 prerequisite, may be executed under this
-runbook.
+Once the Approval A addendum (§10.1 / §10.3) is signed, a Tier 1 re-attempt may bring up only the
+ephemeral Docker containers, networks, and named volumes the disposable `docker/docker-compose.yml`
++ `docker/docker-compose.interop.yml` harness creates intrinsically for fresh synthetic test
+databases and harness services, torn down by `docker compose … down -v` after every run — nothing
+else. Separate Product Owner approval — the Approval A addendum, then Approval B — is required
+before the DEV rehearsal, even the Tier 1 prerequisite, may be executed under this runbook.
 
 ## 12. Definition of done (for this documentation stage only)
 

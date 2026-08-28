@@ -45,6 +45,10 @@ A Tier 1 re-attempt therefore requires this fresh, narrowly-scoped authorization
 > - the container/PHPUnit interop harness only — `docker/docker-compose.yml` +
 >   `docker/docker-compose.interop.yml`, driven through `bin/docker/*.sh`, with
 >   `docker compose … down -v` before and after every run;
+> - the ephemeral Docker resources that harness creates intrinsically — Docker containers,
+>   networks, and named volumes brought up by `docker/docker-compose.yml` together with
+>   `docker/docker-compose.interop.yml`, solely for fresh synthetic test databases and harness
+>   services, and removed by `docker compose … down -v` after every run;
 > - fresh throwaway repository checkouts at the two pinned SHAs above;
 > - entirely synthetic fixture data created by the rehearsal's own code;
 > - Runs 1, 2, and 3 of runbook v2 §7, including the Run 1 step 11a F1-correction gate and the
@@ -60,7 +64,10 @@ A Tier 1 re-attempt therefore requires this fresh, narrowly-scoped authorization
 >   `pre_http_request` boundary must be confirmed in place before each run;
 > - any real, dedicated, or newly-created Telegram bot, supergroup, or topic;
 > - any real user, operator, or production conversation data in any fixture;
-> - any isolated-instance, container, network, volume, DNS, certificate, or credential creation;
+> - any infrastructure or resource creation beyond the ephemeral harness Docker resources named
+>   above — in particular no DEV VPS instance, WordPress site, Redis service, SWAG configuration,
+>   DNS record, TLS certificate, Telegram resource, credential, host-level persistent service, or
+>   any resource under `/opt/biopentra/dev/*` or `dev.biopentra.eu`;
 > - any production or DEV quiescence window, migration, binding preparation, cohort activation,
 >   deferred-update replay outside the disposable harness, route switch, cutover, soak,
 >   deployment, release, tag, rollback, deletion, or retention change;
@@ -82,16 +89,20 @@ A Tier 1 re-attempt therefore requires this fresh, narrowly-scoped authorization
 
 Fresh throwaway checkouts at the two pinned SHAs; the existing disposable
 `docker/docker-compose.yml` + `docker/docker-compose.interop.yml` harness only, `down -v` before
-and after each run; entirely synthetic fixtures; zero Telegram network traffic; Runs 1–3 of
-runbook v2 on both supported WP/PHP variants.
+and after each run — including the ephemeral Docker containers, networks, and named volumes that
+harness creates intrinsically for fresh synthetic test databases and harness services; entirely
+synthetic fixtures; zero Telegram network traffic; Runs 1–3 of runbook v2 on both supported
+WP/PHP variants.
 
 ## Explicitly not authorized (summary)
 
 Tier 2; any DEV VPS or `dev.biopentra.eu` action; any Telegram bot token, webhook, group, topic,
 or `api.telegram.org` request; any real user data; any `/opt/biopentra/dev/*` checkout; any
-isolated-instance / infrastructure / credential creation; any production or DEV quiescence,
-migration, binding preparation, cohort activation, route switch, cutover, soak, deployment,
-release, tag, rollback, deletion, or retention change; any incident-row acknowledge / overwrite /
+infrastructure or resource creation beyond the ephemeral harness Docker resources named above
+(no DEV VPS instance, WordPress site, Redis service, SWAG configuration, DNS record, TLS
+certificate, Telegram resource, credential, or host-level persistent service); any production or
+DEV quiescence, migration, binding preparation, cohort activation, route switch, cutover, soak,
+deployment, release, tag, rollback, deletion, or retention change; any incident-row acknowledge / overwrite /
 repair to force a pass; any schema, `db_version`, version, Contract, config, CI, or test change.
 
 ## Reference
