@@ -10,7 +10,6 @@ declare( strict_types=1 );
 namespace UniversalTelegram\Administration\Telegram;
 
 use UniversalTelegram\Administration\Hub\HubPage;
-use UniversalTelegram\Conversations\ConversationRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
@@ -41,7 +40,6 @@ final class BotManagementPage {
 	 * @param TelegramFormFields        $forms           Shared bot/destination/op form markup.
 	 * @param BotSetupWizardState       $wizard_state    Derives the setup wizard's current step.
 	 * @param BotSetupWizardRenderer    $wizard_renderer Renders the setup wizard in place of the old static guidance panel.
-	 * @param ConversationRepository    $conversations   Identifies conversation-created destinations to exclude from the manual list (M06.3, ADR-0024).
 	 */
 	public function __construct(
 		private readonly BotProfileRepository $bots,
@@ -50,8 +48,7 @@ final class BotManagementPage {
 		private readonly OutboundMessageRepository $messages,
 		private readonly TelegramFormFields $forms,
 		private readonly BotSetupWizardState $wizard_state,
-		private readonly BotSetupWizardRenderer $wizard_renderer,
-		private readonly ConversationRepository $conversations
+		private readonly BotSetupWizardRenderer $wizard_renderer
 	) {}
 
 	/**
@@ -309,22 +306,7 @@ final class BotManagementPage {
 	 * @param \UniversalTelegram\Telegram\Configuration\BotProfile $bot The bot.
 	 */
 	private function render_destinations( \UniversalTelegram\Telegram\Configuration\BotProfile $bot ): void {
-		// System-created conversation topic destinations never appear as
-		// ordinary manually configured destinations, and never expose a
-		// "Send test message" action — they are surfaced separately,
-		// read-only, below (M06.3, ADR-0024).
-		$conversation_destination_ids = $this->conversations->destination_ids_for_bot( $bot->id() );
-
-		$manual_destinations       = array();
-		$conversation_destinations = array();
-
-		foreach ( $this->destinations->for_bot( $bot->id() ) as $destination ) {
-			if ( in_array( $destination->id(), $conversation_destination_ids, true ) ) {
-				$conversation_destinations[] = $destination;
-			} else {
-				$manual_destinations[] = $destination;
-			}
-		}
+		$manual_destinations = $this->destinations->for_bot( $bot->id() );
 
 		echo '<h3>' . esc_html__( 'Destinations', 'universal-telegram' ) . '</h3>';
 		echo '<table class="widefat striped"><thead><tr><th>' .
@@ -357,39 +339,6 @@ final class BotManagementPage {
 			echo '</tr>';
 		}
 		echo '</tbody></table>';
-
-		if ( array() !== $conversation_destinations ) {
-			echo '<h3>' . esc_html__( 'Conversation topics', 'universal-telegram' ) . '</h3>';
-			echo '<p>' . esc_html__( 'Created automatically by the chat widget. Read-only — not ordinary configured destinations.', 'universal-telegram' ) . '</p>';
-			echo '<table class="widefat striped"><thead><tr><th>' .
-				esc_html__( 'Label', 'universal-telegram' ) . '</th><th>' .
-				esc_html__( 'Kind', 'universal-telegram' ) . '</th><th>' .
-				esc_html__( 'Chat ID', 'universal-telegram' ) . '</th><th>' .
-				esc_html__( 'Conversation', 'universal-telegram' ) . '</th></tr></thead><tbody>';
-
-			foreach ( $conversation_destinations as $destination ) {
-				echo '<tr>';
-				printf( '<td>%s</td>', esc_html( $destination->label() ) );
-				printf( '<td>%s</td>', esc_html( $destination->kind()->value ) );
-				printf( '<td>%s</td>', esc_html( $destination->chat_id() ) );
-				$owned = $this->conversations->find_by_destination_id( $destination->id() );
-				if ( null !== $owned ) {
-					printf(
-						'<td><a href="%s">%s</a></td>',
-						esc_url(
-							admin_url(
-								'admin.php?page=' . HubPage::SLUG . '&tab=operator-inbox&conversation_id=' . $owned->id()
-							)
-						),
-						esc_html__( 'Open conversation', 'universal-telegram' )
-					);
-				} else {
-					echo '<td></td>';
-				}
-				echo '</tr>';
-			}
-			echo '</tbody></table>';
-		}
 
 		$this->forms->create_destination_form( $bot->id() );
 	}

@@ -10,7 +10,7 @@ declare( strict_types=1 );
 namespace UniversalTelegram\SupportChatAdapter\Diagnostics;
 
 use UniversalTelegram\Administration\Shared\BotDestinationPairFields;
-use UniversalTelegram\Automations\Digest\DigestEligibility;
+use UniversalTelegram\Telegram\Configuration\DestinationEligibility;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\SupportChatAdapter\AdapterAvailability;
@@ -35,14 +35,14 @@ final class AdapterStatusPage {
 	 * @param DiscoveryClient          $discovery          Discovery client.
 	 * @param ChannelBindingRepository $bindings           Binding repository.
 	 * @param BotProfileRepository     $bots               Bot listing for dropdowns.
-	 * @param DigestEligibility        $digest_eligibility Eligible parent destinations.
+	 * @param DestinationEligibility $digest_eligibility Eligible parent destinations.
 	 */
 	public function __construct(
 		private readonly Settings $settings,
 		private readonly DiscoveryClient $discovery,
 		private readonly ChannelBindingRepository $bindings,
 		private readonly BotProfileRepository $bots,
-		private readonly DigestEligibility $digest_eligibility
+		private readonly DestinationEligibility $digest_eligibility
 	) {
 		add_action( 'admin_post_' . self::SAVE_ACTION, array( $this, 'handle_save' ) );
 	}

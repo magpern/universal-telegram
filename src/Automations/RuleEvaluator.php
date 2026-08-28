@@ -10,7 +10,6 @@ declare( strict_types=1 );
 namespace UniversalTelegram\Automations;
 
 use Throwable;
-use UniversalTelegram\Automations\Digest\DigestEligibility;
 use UniversalTelegram\Events\EventEnvelope;
 use UniversalTelegram\Events\Registry;
 
@@ -48,14 +47,12 @@ class RuleEvaluator {
 	 * @param Registry                   $registry           Supplies each event type's allowed variable fields.
 	 * @param DispatchLogRepository      $dispatch_log       Records a rejected outcome for a non-matching rule.
 	 * @param NotificationDispatcher     $dispatcher         Executes the full dispatch sequence for a matched rule.
-	 * @param DigestEligibility|null     $digest_eligibility Suppresses digest-eligible visitor event types while active (M11A). Nullable only for pre-M11A test doubles that construct this class directly; production wiring always supplies it.
 	 */
 	public function __construct(
 		private readonly NotificationRuleRepository $rules,
 		private readonly Registry $registry,
 		private readonly DispatchLogRepository $dispatch_log,
-		private readonly NotificationDispatcher $dispatcher,
-		private readonly ?DigestEligibility $digest_eligibility = null
+		private readonly NotificationDispatcher $dispatcher
 	) {}
 
 	/**
@@ -285,14 +282,8 @@ class RuleEvaluator {
 	 * @return bool
 	 */
 	private function is_suppressed_by_digest( string $event_type ): bool {
-		if ( null === $this->digest_eligibility ) {
-			return false;
-		}
+		unset( $event_type );
 
-		if ( ! in_array( $event_type, DigestEligibility::SUPPRESSED_EVENT_TYPES, true ) ) {
-			return false;
-		}
-
-		return $this->digest_eligibility->is_active();
+		return false;
 	}
 }

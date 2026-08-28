@@ -9,7 +9,6 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Administration\Diagnostics;
 
-use UniversalTelegram\Administration\AI\AIDiagnosticsPanel;
 use UniversalTelegram\Administration\Hub\HubPage;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Persistence\SchemaHealth;
@@ -45,7 +44,6 @@ final class DiagnosticsPage {
 	 * @param QueueHealthAlert        $queue_health_alert                  The alert computation for the site-wide banner.
 	 * @param int                     $stale_pending_threshold_seconds      The message-staleness threshold, in seconds.
 	 * @param int                     $stale_registration_threshold_hours   The registration-staleness threshold, in hours.
-	 * @param AIDiagnosticsPanel|null $ai_panel The AI provider panel (M09, docs/adr/0028); null in contexts that do not need it.
 	 */
 	public function __construct(
 		private readonly DiagnosticsReport $report,
@@ -53,8 +51,7 @@ final class DiagnosticsPage {
 		private readonly SelfTest $self_test,
 		private readonly QueueHealthAlert $queue_health_alert,
 		private readonly int $stale_pending_threshold_seconds = 1800,
-		private readonly int $stale_registration_threshold_hours = 24,
-		private readonly ?AIDiagnosticsPanel $ai_panel = null
+		private readonly int $stale_registration_threshold_hours = 24
 	) {}
 
 	/**
@@ -130,7 +127,6 @@ final class DiagnosticsPage {
 
 		$this->render_report();
 		$this->self_test->render_control();
-		$this->ai_panel?->render();
 	}
 
 	/**

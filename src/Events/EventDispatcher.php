@@ -9,7 +9,6 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Events;
 
-use UniversalTelegram\Automations\Digest\VisitorDigestAggregator;
 use UniversalTelegram\Automations\RuleEvaluator;
 
 /**
@@ -35,12 +34,10 @@ class EventDispatcher {
 	 *
 	 * @param EventHistoryRepository       $history_repository Writes the PUBLIC-only history projection.
 	 * @param RuleEvaluator                $rule_evaluator     Evaluates notification rules against the event.
-	 * @param VisitorDigestAggregator|null $digest_aggregator  Increments digest counters (M11A). Nullable only for pre-M11A test doubles that construct this class directly; production wiring always supplies it.
 	 */
 	public function __construct(
 		private readonly EventHistoryRepository $history_repository,
-		private readonly RuleEvaluator $rule_evaluator,
-		private readonly ?VisitorDigestAggregator $digest_aggregator = null
+		private readonly RuleEvaluator $rule_evaluator
 	) {}
 
 	/**
@@ -51,9 +48,5 @@ class EventDispatcher {
 	public function handle( EventEnvelope $event ): void {
 		$this->history_repository->record( $event );
 		$this->rule_evaluator->evaluate( $event );
-
-		if ( null !== $this->digest_aggregator ) {
-			$this->digest_aggregator->record( $event );
-		}
 	}
 }
