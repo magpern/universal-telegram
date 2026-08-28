@@ -29,10 +29,10 @@ final class EventCatalogPageTest extends WP_UnitTestCase {
 
 		$this->assertStringContainsString( 'Plain-language name for this event.', $html );
 		$this->assertStringContainsString( 'Non-sensitive fields stored in the event history log.', $html );
-		$this->assertStringContainsString( 'Visitor viewed a page', $html );
-		$this->assertStringContainsString( '<code>visitor.page_viewed</code>', $html );
-		$this->assertStringContainsString( 'Page path', $html );
-		$this->assertStringContainsString( '<code>subject.path</code>', $html );
+		$this->assertStringContainsString( 'New user registered', $html );
+		$this->assertStringContainsString( '<code>wordpress.user_registered</code>', $html );
+		$this->assertStringContainsString( 'User account ID', $html );
+		$this->assertStringContainsString( '<code>subject.user_id</code>', $html );
 	}
 
 	public function test_every_registered_event_type_has_an_explicit_admin_label(): void {

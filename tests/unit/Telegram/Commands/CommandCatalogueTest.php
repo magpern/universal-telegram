@@ -10,26 +10,18 @@ use UniversalTelegram\Telegram\Commands\CommandCatalogue;
 
 final class CommandCatalogueTest extends TestCase {
 
-	public function test_all_sixteen_commands_are_known(): void {
-		$expected = array(
-			'help',
-			'whoami',
-			'status',
-			'errors',
-			'visitors',
-			'orders',
-			'order',
-			'stock',
-			'sales',
-		);
-
-		$this->assertCount( 9, $expected, 'sanity: 9 distinct command literals after ADR-0044' );
+	public function test_the_nine_transport_only_commands_are_known_and_no_conversation_command_survives(): void {
+		$expected = array( 'help', 'whoami', 'status', 'errors', 'visitors', 'orders', 'order', 'stock', 'sales' );
 
 		foreach ( $expected as $command ) {
 			$this->assertTrue( CommandCatalogue::is_known( $command ), "expected '$command' to be known" );
 		}
 
 		$this->assertCount( 9, CommandCatalogue::all_commands() );
+
+		foreach ( array( 'conversations', 'here', 'presence', 'claim', 'release', 'resolve', 'reopen', 'confirm' ) as $removed ) {
+			$this->assertFalse( CommandCatalogue::is_known( $removed ), "'$removed' must have been removed by ADR-0044" );
+		}
 	}
 
 	public function test_unknown_command_is_not_known(): void {
@@ -38,7 +30,7 @@ final class CommandCatalogueTest extends TestCase {
 		$this->assertFalse( CommandCatalogue::is_known( '' ) );
 	}
 
-	public function test_context_requirements_match_the_frozen_plan(): void {
+	public function test_context_requirements(): void {
 		$this->assertSame( CommandCatalogue::CONTEXT_ANY, CommandCatalogue::context_for( 'help' ) );
 		$this->assertSame( CommandCatalogue::CONTEXT_ANY, CommandCatalogue::context_for( 'whoami' ) );
 		$this->assertSame( CommandCatalogue::CONTEXT_GENERAL, CommandCatalogue::context_for( 'status' ) );
@@ -76,23 +68,14 @@ final class CommandCatalogueTest extends TestCase {
 		$this->assertFalse( CommandCatalogue::is_argument_valid( 'sales', '' ) );
 	}
 
-	public function test_presence_argument_is_one_of_three_fixed_literals(): void {
-		$this->assertTrue( CommandCatalogue::is_argument_valid( 'presence', 'available' ) );
-		$this->assertTrue( CommandCatalogue::is_argument_valid( 'presence', 'busy' ) );
-		$this->assertTrue( CommandCatalogue::is_argument_valid( 'presence', 'offline' ) );
-		$this->assertFalse( CommandCatalogue::is_argument_valid( 'presence', 'away' ) );
-	}
-
-	public function test_commands_valid_in_includes_any_context_commands(): void {
+	public function test_commands_valid_in_general_context_are_the_transport_commands(): void {
 		$general = CommandCatalogue::commands_valid_in( CommandCatalogue::CONTEXT_GENERAL );
+
 		$this->assertContains( 'help', $general );
 		$this->assertContains( 'whoami', $general );
 		$this->assertContains( 'status', $general );
+		$this->assertContains( 'orders', $general );
 		$this->assertNotContains( 'claim', $general );
-
-		$conversation = CommandCatalogue::commands_valid_in( CommandCatalogue::CONTEXT_CONVERSATION );
-		$this->assertContains( 'help', $conversation );
-		$this->assertContains( 'claim', $conversation );
-		$this->assertNotContains( 'status', $conversation );
+		$this->assertNotContains( 'conversations', $general );
 	}
 }
