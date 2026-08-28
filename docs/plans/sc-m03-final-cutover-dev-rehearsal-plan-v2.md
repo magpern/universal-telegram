@@ -76,11 +76,13 @@ universal-support-chat `9144cb1`) — no code, schema, `db_version`, test, confi
 or runtime change occurred after F1, only documentation. **Future documentation merges must not
 alter this authorised execution baseline unless a new Product Owner approval is recorded.**
 
-**F1 is therefore no longer a code blocker.** What remains gated is *acceptance* of Tier 1: a
-Tier 1 re-attempt requires a **separate Approval A addendum**
-([`docs/closure/sc-m03-final-cutover-dev-rehearsal-tier1-approval-addendum.md`](../closure/sc-m03-final-cutover-dev-rehearsal-tier1-approval-addendum.md),
-**proposed, unsigned**) — the original Approval A was consumed by the halted run. Tier 2 remains
-blocked on B1 and B2.
+**F1 is therefore no longer a code blocker.** The Tier 1 re-attempt is gated on a **separate
+Approval A addendum**
+([`docs/closure/sc-m03-final-cutover-dev-rehearsal-tier1-approval-addendum.md`](../closure/sc-m03-final-cutover-dev-rehearsal-tier1-approval-addendum.md))
+— the original Approval A was consumed by the halted run. **That addendum is now RECORDED /
+Product Owner accepted (2026-08-28): it authorizes exactly one (1) Tier 1 re-attempt at the two
+immutable execution baseline SHAs and nothing else.** Tier 2 remains blocked on B1 and B2 and
+pending Approval B.
 
 ## 1. Charter, ADRs, and pinned baselines (revised)
 
@@ -207,7 +209,7 @@ deployment, route switch, soak, or removal of Universal Telegram legacy UI or da
 
 | Tier | What it is | Status under v2 |
 |---|---|---|
-| **Tier 1** | A **required disposable automated operational-sequence / integration validation** in the container/PHPUnit interop harness (`docker/docker-compose.yml` + `docker/docker-compose.interop.yml`, `down -v` before and after), **zero Telegram traffic**. Proves data effects, state-machine sequencing, and CLI-equivalent service ordering of Runs 1, 2, 3. | **Required prerequisite. Unexecuted under v2.** F1 no longer blocks it; a **separate Approval A addendum** (proposed, unsigned) is required before re-attempt. |
+| **Tier 1** | A **required disposable automated operational-sequence / integration validation** in the container/PHPUnit interop harness (`docker/docker-compose.yml` + `docker/docker-compose.interop.yml`, `down -v` before and after), **zero Telegram traffic**. Proves data effects, state-machine sequencing, and CLI-equivalent service ordering of Runs 1, 2, 3. | **Required prerequisite. Unexecuted under v2.** The Approval A addendum is **RECORDED (2026-08-28)** and authorizes **exactly one (1)** Tier 1 re-attempt at the two immutable execution baseline SHAs. |
 | **Tier 2** | The **first actual disposable DEV rehearsal**: an isolated full-WordPress instance plus a **dedicated non-production Telegram bot + test forum supergroup + test topics**. | **Required. Blocked on B1 and B2.** |
 
 **Tier 1 does NOT satisfy the accepted requirement for a disposable DEV rehearsal** — it lacks
@@ -243,7 +245,7 @@ real support group); and the **redaction rules** (§5.6):
 | **B2** | No dedicated non-production Telegram bot / test supergroup / test topics. | Execution of the DEV rehearsal (Tier 2). | Open. Product Owner / infrastructure. |
 | **B3** | `cutover begin` (inserts a `cutover_runs` row) and `cutover activate` (writes binding status) have no dry-run. | Confidence that they can be "previewed." | Documented limitation; `status` + `recover` are the read-only pre-checks. |
 | **B4** | Assumption A3 unresolved — a cohort could pass UT `begin` preflight while its Support Chat map row is not `migrated`. | Trusting `begin` alone as the migration-evidence gate. | Compensated: the rehearsal asserts `status='migrated'` via Support Chat CLI + `wp eval` before `begin` (Run 1 step 11). |
-| **B5 (governance)** | Product Owner has not approved executing any rehearsal under v2. The original Approval A was consumed by the halted first attempt. | The entire rehearsal (both tiers). | Open — see §10 (Approval A addendum, proposed; Approval B, unchanged). |
+| **B5 (governance)** | Product Owner authorization to execute the rehearsal under v2. | Tier 2 (both-tier execution); Tier 1 is now cleared for exactly one re-attempt. | **Tier 1: CLEARED** — Approval A addendum recorded 2026-08-28 (§10), authorizes exactly one (1) Tier 1 re-attempt at the immutable baselines. **Tier 2: still open** — Approval B unchanged, blocked on B1 + B2. |
 | ~~**F1**~~ | ~~The cutover deferred-update handoff cannot resolve a real prepared binding.~~ | ~~Tier 1 and Tier 2.~~ | **CLEARED 2026-08-27** — corrected and merged in both repositories (§0); verified by the real dual-plugin interop suite on both WP/PHP variants. A new pre-`begin` gate (A9, §8.1 precondition 9) asserts the real-cohort handoff resolves in the disposable env before Tier 1 proceeds. |
 
 ## 7. Test matrix and sequencing
@@ -389,7 +391,7 @@ variants via `bin/docker/test-integration-interop.sh`:
 
 ### 8.1 Preconditions that must ALL hold before any mutating rehearsal command (revised)
 
-1. The applicable authorization is signed — the **Approval A addendum** (§10) for a Tier 1 run under v2; **Approval B** (which itself requires B1 + B2 resolved and Tier 1 PASS) for a Tier 2 run. (B5)
+1. The applicable authorization is recorded — the **Approval A addendum** (§10; recorded 2026-08-28, authorizing exactly one Tier 1 re-attempt) for the single Tier 1 run under v2; **Approval B** (which itself requires B1 + B2 resolved and Tier 1 PASS) for a Tier 2 run. (B5)
 2. Both checkouts `git rev-parse HEAD` == the immutable Tier 1 execution baselines (`6eed022…` / `4f833c3…`), those exact commits verified to exist on freshly-fetched origin; `git status` clean; the checkouts are the throwaway pair, never `/opt/biopentra/dev/*`. (A1)
 3. Disposable env verified fresh: no plugin tables before install; after install, schema UT `36` / SC `11`; `cutover status` / `quiescence status` / `legacy-bind status` all report no open run / `idle` / no prepared bindings. (A8)
 4. Both plugins mutually paired; discovery `channel_available:true` with the six cutover ops on the peer allow-list. (A2)
@@ -453,7 +455,7 @@ refusal captures per incident, and the "unchanged at teardown" proof.
 
 A Tier 1 re-run PASSES only if **all** of the following are captured, redacted per §5:
 
-1. **Preconditions** (`00-preconditions/`): the signed Approval A addendum reference;
+1. **Preconditions** (`00-preconditions/`): the recorded Approval A addendum reference (recorded 2026-08-28);
    `git rev-parse HEAD` == `6eed0228286e84b4e56e0119f242b483f138a58e` (UT) and
    `4f833c3344c3cff2adcc0227f93832c0c3a4427a` (SC) — the immutable Tier 1 execution baselines,
    those exact commits verified present on freshly-fetched origin; `git status` clean;
@@ -488,11 +490,13 @@ row.
 
 ## 10. Approval texts
 
-### 10.1 Approval A addendum — Tier 1 re-attempt under runbook v2 (PROPOSED — unsigned)
+### 10.1 Approval A addendum — Tier 1 re-attempt under runbook v2 (RECORDED / accepted 2026-08-28)
 
 The full text is in
 [`docs/closure/sc-m03-final-cutover-dev-rehearsal-tier1-approval-addendum.md`](../closure/sc-m03-final-cutover-dev-rehearsal-tier1-approval-addendum.md)
-(**Status: Proposed — awaiting Product Owner signature**). It authorizes **only** Tier 1's
+(**Status: Accepted / recorded — Product Owner, 2026-08-28**; the "as proposed" text and decision
+history are retained in that file under a clearly-labelled section, with the acceptance recorded
+verbatim below it). It authorizes **exactly one (1)** Tier 1 re-attempt using **only** the
 disposable container/PHPUnit interop harness against synthetic fixtures at the immutable Tier 1
 execution baselines (universal-telegram `6eed0228286e84b4e56e0119f242b483f138a58e` /
 universal-support-chat `4f833c3344c3cff2adcc0227f93832c0c3a4427a` — operators fetch origin,
@@ -513,7 +517,11 @@ passed under this runbook**. Its text (v1 §10 "Approval B") applies verbatim, w
 SHAs updated to the immutable Tier 1 execution baselines
 (`6eed0228286e84b4e56e0119f242b483f138a58e` / `4f833c3344c3cff2adcc0227f93832c0c3a4427a`).
 
-### 10.3 Verbatim Approval A addendum text
+### 10.3 Verbatim Approval A addendum text (accepted / recorded 2026-08-28)
+
+This is the text the Product Owner accepted verbatim on 2026-08-28. The acceptance is recorded in
+`docs/closure/sc-m03-final-cutover-dev-rehearsal-tier1-approval-addendum.md` under
+"Product Owner acceptance — recorded 2026-08-28".
 
 > **Product Owner authorization — SC-M03 final-cutover Tier 1 prerequisite validation, re-attempt under DEV rehearsal runbook v2 (Approval A addendum)**
 >
@@ -599,8 +607,11 @@ the realism-dependent ones — runs only under Approval B.
 
 ## 11. Explicit non-authorizations
 
-This document authorizes nothing. It does not authorize, and its existence must not be read as
-authorizing: execution of Tier 1 or Tier 2; any production or DEV quiescence window, migration,
+This document (the runbook itself) authorizes nothing; execution authority comes only from a
+recorded Product Owner approval. As of 2026-08-28 the **Approval A addendum is recorded** and
+authorizes **exactly one (1)** Tier 1 re-attempt at the two immutable execution baseline SHAs —
+nothing more. This document does not authorize, and its existence must not be read as
+authorizing: any second Tier 1 attempt; execution of Tier 2; any production or DEV quiescence window, migration,
 binding preparation, cohort activation, deferred-update replay, Telegram webhook registration, or
 any operational command against `dev.biopentra.eu` or production; creation of any infrastructure
 — a DEV VPS instance, WordPress site, Redis service, SWAG configuration, DNS record, TLS
@@ -609,21 +620,23 @@ schema, plugin-version, `db_version`, configuration, test, CI-workflow, tag, rel
 deployment change; production cutover, route switch, soak, rollback, retention change, deletion,
 or removal of Universal Telegram legacy UI or data.
 
-Once the Approval A addendum (§10.1 / §10.3) is signed, a Tier 1 re-attempt may bring up only the
-ephemeral Docker containers, networks, and named volumes the disposable `docker/docker-compose.yml`
-+ `docker/docker-compose.interop.yml` harness creates intrinsically for fresh synthetic test
-databases and harness services, torn down by `docker compose … down -v` after every run — nothing
-else. Separate Product Owner approval — the Approval A addendum, then Approval B — is required
-before the DEV rehearsal, even the Tier 1 prerequisite, may be executed under this runbook.
+Under the recorded Approval A addendum (§10.1 / §10.3), the single authorised Tier 1 re-attempt
+may bring up only the ephemeral Docker containers, networks, and named volumes the disposable
+`docker/docker-compose.yml` + `docker/docker-compose.interop.yml` harness creates intrinsically
+for fresh synthetic test databases and harness services, torn down by `docker compose … down -v`
+after every run — nothing else. Approval B (Tier 2) remains a separate, later Product Owner
+approval, blocked on B1 + B2; a second Tier 1 attempt needs a new Product Owner approval.
 
 ## 12. Definition of done (for this documentation stage only)
 
 - This runbook v2, its Support Chat companion v2, and the proposed Approval A addendum are
   committed on documentation-only branches, reviewed, CI-green, and merged (UT first, then SC).
 - v1 is left unedited; its "Amendment A" footer already points here.
-- Registries, plan indexes, and milestone §0d pages are updated **planning-only** — every touched
-  line states that no rehearsal has run under v2 and Product Owner execution approval (the
-  Approval A addendum) is outstanding.
-- **No acceptance record is added.** The Approval A addendum is Proposed and unsigned.
+- Registries, plan indexes, and milestone §0d pages are updated **planning-only**.
+- At the v2-freeze stage no acceptance record was added and the Approval A addendum was Proposed
+  and unsigned. **Subsequently, on 2026-08-28, the Product Owner accepted the Approval A addendum
+  verbatim** (recorded in `docs/closure/sc-m03-final-cutover-dev-rehearsal-tier1-approval-addendum.md`,
+  "Product Owner acceptance — recorded 2026-08-28"); it authorizes exactly one (1) Tier 1
+  re-attempt at the two immutable execution baseline SHAs and nothing else. No rehearsal has run.
 - No code, schema, version, `db_version`, configuration, test, CI-workflow, tag, release,
   deployment, or infrastructure change is made.
