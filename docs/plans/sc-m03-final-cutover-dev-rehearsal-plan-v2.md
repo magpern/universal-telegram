@@ -453,6 +453,16 @@ refusal captures per incident, and the "unchanged at teardown" proof.
 
 ### 9.2 Exact pass/fail evidence for the Tier 1 re-run under v2
 
+> **Clarification (labelled, additive — added with the Tier 2 prerequisites plan, 2026-08-28).**
+> The SHAs pinned in point 1 below — universal-telegram `6eed0228286e84b4e56e0119f242b483f138a58e`
+> and universal-support-chat `4f833c3344c3cff2adcc0227f93832c0c3a4427a` — are the **immutable,
+> Product-Owner-approved Tier 1 execution baselines** (Approval A addendum / Product Owner
+> decision Addendum C), not "the current origin/main HEAD". An earlier revision of this section
+> cited `33b042f…` / `2000eaf…`; this text now carries the correct immutable-baseline SHAs. This
+> note changes no historical execution record, no closure, and no immutable baseline; the Tier 1
+> re-attempt was already executed and PASSED against these exact SHAs
+> ([Tier 1 re-attempt closure](../closure/sc-m03-final-cutover-dev-rehearsal-tier1-reattempt-closure.md)).
+
 A Tier 1 re-run PASSES only if **all** of the following are captured, redacted per §5:
 
 1. **Preconditions** (`00-preconditions/`): the recorded Approval A addendum reference (recorded 2026-08-28);
