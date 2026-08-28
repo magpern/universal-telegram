@@ -2,7 +2,11 @@
 
 ## Status
 
-**Accepted / recorded — Product Owner, 2026-08-28.** This addendum authorizes **exactly one (1)
+**Accepted / recorded — Product Owner, 2026-08-28. Authorised re-attempt EXECUTED and PASSED
+2026-08-28 — one-time authorisation now consumed** (see § "Execution record — 2026-08-28" and the
+[Tier 1 re-attempt closure](sc-m03-final-cutover-dev-rehearsal-tier1-reattempt-closure.md)).
+
+This addendum authorizes **exactly one (1)
 Tier 1 re-attempt** of the SC-M03 final-cutover disposable automated operational-sequence /
 integration validation, at the two immutable execution baseline SHAs below
 (universal-telegram `6eed0228286e84b4e56e0119f242b483f138a58e`, universal-support-chat
@@ -215,14 +219,28 @@ repair to force a pass; any schema, `db_version`, version, Contract, config, CI,
 - Original Approval A: [`sc-m03-final-cutover-dev-rehearsal-tier1-approval.md`](sc-m03-final-cutover-dev-rehearsal-tier1-approval.md).
 - Tier 1 halt closure: [`sc-m03-final-cutover-dev-rehearsal-tier1-closure.md`](sc-m03-final-cutover-dev-rehearsal-tier1-closure.md).
 - F1 implementation closure: [`sc-m03-final-cutover-f1-identity-correction-implementation-closure.md`](sc-m03-final-cutover-f1-identity-correction-implementation-closure.md).
+- Tier 1 re-attempt closure: [`sc-m03-final-cutover-dev-rehearsal-tier1-reattempt-closure.md`](sc-m03-final-cutover-dev-rehearsal-tier1-reattempt-closure.md).
 - Support Chat companion decision record: `https://github.com/magpern/universal-support-chat/blob/main/docs/decisions/sc-m03-final-cutover-dev-rehearsal-po-decisions.md`.
 
-## Next authorised step
+## Execution record — 2026-08-28
 
-**Execute the single disposable Tier 1 re-attempt only** (Runs 1–3) in fresh throwaway checkouts
-of the immutable baseline SHAs and the disposable container/PHPUnit interop harness on both
-supported WP/PHP variants, capture the redacted evidence bundle per runbook v2 §9.1 / §9.2, run
-both repositories' full quality gates, and record a Tier 1 re-attempt closure/evidence document.
-Nothing else is authorised. Approval B (Tier 2) remains a separate, later Product Owner action
-and cannot take effect until this Tier 1 re-attempt passes and B1/B2 are proven resolved; a
-second Tier 1 attempt needs a new Product Owner approval.
+The single authorised Tier 1 re-attempt **was executed on 2026-08-28 and PASSED**, at the
+immutable execution baselines Universal Telegram `6eed0228286e84b4e56e0119f242b483f138a58e` and
+Universal Support Chat `4f833c3344c3cff2adcc0227f93832c0c3a4427a`, on both supported WP/PHP
+variants (WP 6.9 / PHP 8.1 and WP 7.1 / PHP 8.3), from fresh throwaway checkouts and fresh
+disposable databases, `docker compose … down -v` before and after every run, zero Telegram
+network traffic. The dual-plugin interop suite reported `OK (47 tests, 722 assertions)` on both
+variants; the F1-correction gate held with a real `legacy-bind`-prepared binding; the fail-closed
+classifier and every incident path were confirmed blocked-as-designed. Full detail and evidence
+bundle: [`sc-m03-final-cutover-dev-rehearsal-tier1-reattempt-closure.md`](sc-m03-final-cutover-dev-rehearsal-tier1-reattempt-closure.md).
+
+**This addendum's one-time authorisation is now consumed.** No further Tier 1 run is authorised;
+a second Tier 1 attempt, or any change to the immutable baseline SHAs, requires a new Product
+Owner approval.
+
+## Next step
+
+**Tier 1 is complete.** The next possible activity is Tier 2 — the actual disposable DEV
+rehearsal — which remains a separate, later Product Owner action (Approval B) and cannot take
+effect until B1 and B2 are proven resolved. Nothing here authorises Tier 2, any DEV VPS action,
+any Telegram network traffic, or any production or operational cutover action.

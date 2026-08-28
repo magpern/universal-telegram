@@ -1,5 +1,12 @@
 # Closure Record — SC-M03 Final-Cutover Disposable DEV Rehearsal, Tier 1
 
+> **Addendum 2026-08-28 (does not alter this record).** F1 was corrected and merged in both
+> repositories; DEV rehearsal runbook v2 supersedes v1; and the single Product-Owner-authorised
+> Tier 1 re-attempt under v2 **was executed on 2026-08-28 and PASSED** on both supported WP/PHP
+> variants. See [`sc-m03-final-cutover-dev-rehearsal-tier1-reattempt-closure.md`](sc-m03-final-cutover-dev-rehearsal-tier1-reattempt-closure.md).
+> The run-by-run outcomes and finding detail below are retained unchanged as the historical
+> record of the halted first attempt.
+
 ## Status
 
 **HALTED at the UT→SC deferred-update handoff phase by finding F1** (a production-behaviour gap,
