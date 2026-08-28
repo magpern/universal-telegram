@@ -64,7 +64,7 @@ final class OutboundContractAuthorizationTest extends WP_UnitTestCase {
 		$messages       = new OutboundMessageRepository( $schema, new CredentialVault() );
 		$dispatcher     = new Dispatcher( $schema );
 
-		$ensure   = new EnsureChannelCaseService( $this->bindings, $bots, $destinations, new TelegramApiClient() );
+		$ensure   = new EnsureChannelCaseService( $this->bindings, $bots, $destinations, new \UniversalTelegram\Telegram\Topics\ForumTopicService( $bots, new TelegramApiClient() ) );
 		$deliver  = new DeliverMessageService( $this->bindings, $delivery, $messages, $dispatcher );
 		$notify   = new NotifyOperatorsService( $deliver );
 		$backfill = new BackfillService( $deliver );

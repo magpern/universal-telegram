@@ -29,12 +29,12 @@ final class InboundAdapterBridge {
 	/**
 	 * Constructor.
 	 *
-	 * @param ChannelBindingRepository   $bindings            Binding storage.
-	 * @param DiscoveryClient            $discovery           Contract discovery.
-	 * @param SupportChatContractClient  $sc_client           SC Contract client.
+	 * @param ChannelBindingRepository      $bindings            Binding storage.
+	 * @param DiscoveryClient               $discovery           Contract discovery.
+	 * @param SupportChatContractClient     $sc_client           SC Contract client.
 	 * @param OperatorIdentityMapRepository $operator_identities Operator map.
-	 * @param AuditLogger                $audit               Audit logger.
-	 * @param bool                       $adapter_enabled     Settings flag.
+	 * @param AuditLogger                   $audit               Audit logger.
+	 * @param bool                          $adapter_enabled     Settings flag.
 	 */
 	public function __construct(
 		private readonly ChannelBindingRepository $bindings,

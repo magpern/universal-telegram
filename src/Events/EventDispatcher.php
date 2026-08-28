@@ -32,8 +32,8 @@ class EventDispatcher {
 	/**
 	 * Constructor.
 	 *
-	 * @param EventHistoryRepository       $history_repository Writes the PUBLIC-only history projection.
-	 * @param RuleEvaluator                $rule_evaluator     Evaluates notification rules against the event.
+	 * @param EventHistoryRepository $history_repository Writes the PUBLIC-only history projection.
+	 * @param RuleEvaluator          $rule_evaluator     Evaluates notification rules against the event.
 	 */
 	public function __construct(
 		private readonly EventHistoryRepository $history_repository,

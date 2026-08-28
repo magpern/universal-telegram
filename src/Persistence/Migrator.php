@@ -89,8 +89,6 @@ class Migrator {
 		self::VISITOR_DIGEST_COUNTERS_TABLE,
 		self::VISITOR_DIGEST_STATE_TABLE,
 		self::OPERATIONAL_SUMMARY_RUNS_TABLE,
-		self::INTELLIGENCE_SETTINGS_STATE_TABLE,
-		self::OPERATIONAL_ALERT_STATE_TABLE,
 		self::OPERATIONAL_SUMMARY_AI_DRAFTS_TABLE,
 		self::QUIESCENCE_STATE_TABLE,
 		self::QUIESCENCE_TRANSITIONS_TABLE,
@@ -108,7 +106,6 @@ class Migrator {
 	 */
 	public const LEGACY_OPTIONS = array(
 		'universal_telegram_ai_settings',
-		'universal_telegram_intelligence_settings',
 		'universal_telegram_visitor_tracking_secret',
 		'universal_telegram_conversation_rate_limit_secret',
 		'universal_telegram_visitor_rate_limit_secret',
@@ -241,14 +238,14 @@ class Migrator {
 			23 => $retired,
 			24 => $retired,
 			25 => $retired,
-			26 => $retired,
-			27 => $retired,
+			26 => array( array( $this, 'step_26_create_intelligence_settings_state_table' ), array( $this, 'verify_step_26' ) ),
+			27 => array( array( $this, 'step_27_create_operational_alert_state_table' ), array( $this, 'verify_step_27' ) ),
 			28 => $retired,
 			29 => $retired,
 			30 => array( array( $this, 'step_30_add_notification_rule_match_mode_column' ), array( $this, 'verify_step_30' ) ),
 			31 => array( array( $this, 'step_31_create_support_chat_adapter_tables' ), array( $this, 'verify_step_31' ) ),
 			32 => array( array( $this, 'step_32_create_support_chat_contract_auth_tables' ), array( $this, 'verify_step_32' ) ),
-			33 => array( array( $this, 'step_33_create_quiescence_tables' ), array( $this, 'verify_step_33' ) ),
+			33 => $retired,
 			34 => array( array( $this, 'step_34_add_prepared_binding_status' ), array( $this, 'verify_step_34' ) ),
 			35 => $retired,
 			36 => $retired,
@@ -280,6 +277,97 @@ class Migrator {
 	 */
 	private function verify_retired(): bool {
 		return true;
+	}
+
+	/**
+	 * Step 26 (retained, ADR-0044 §1) — the recurring-sweep concurrency
+	 * claim row shared by the operational-alert sweep.
+	 */
+	private function step_26_create_intelligence_settings_state_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::INTELLIGENCE_SETTINGS_STATE_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				id TINYINT UNSIGNED NOT NULL,
+				claim_token CHAR(36) NULL,
+				claim_expires_at DATETIME NULL,
+				PRIMARY KEY (id)
+			) {$charset_collate}"
+		);
+
+		$wpdb->query( "INSERT IGNORE INTO {$table} (id) VALUES (1)" );
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Postcondition for step 26.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_26(): bool {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::INTELLIGENCE_SETTINGS_STATE_TABLE;
+
+		if ( ! $this->table_has_columns( $table, array( 'id', 'claim_token', 'claim_expires_at' ) ) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return null !== $wpdb->get_var( "SELECT id FROM {$table} WHERE id = 1" );
+	}
+
+	/**
+	 * Step 27 (retained, ADR-0044 §1) — per-alert-type last-fired cooldown
+	 * state for the three generic operational Telegram alerts.
+	 */
+	private function step_27_create_operational_alert_state_table(): void {
+		global $wpdb;
+
+		$table           = $wpdb->prefix . self::OPERATIONAL_ALERT_STATE_TABLE;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"CREATE TABLE IF NOT EXISTS {$table} (
+				alert_type VARCHAR(32) NOT NULL,
+				last_fired_at DATETIME NULL,
+				last_evaluated_at DATETIME NULL,
+				PRIMARY KEY (alert_type)
+			) {$charset_collate}"
+		);
+
+		foreach ( array( 'checkout_failure_count', 'order_failure_spike', 'js_error_spike' ) as $alert_type ) {
+			$wpdb->query(
+				$wpdb->prepare(
+					"INSERT IGNORE INTO {$table} (alert_type) VALUES (%s)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					$alert_type
+				)
+			);
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Postcondition for step 27.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_27(): bool {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::OPERATIONAL_ALERT_STATE_TABLE;
+
+		if ( ! $this->table_has_columns( $table, array( 'alert_type', 'last_fired_at', 'last_evaluated_at' ) ) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return 3 === (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
 	}
 
 	/**
@@ -318,13 +406,14 @@ class Migrator {
 		$legacy_table = $wpdb->prefix . self::OPERATOR_IDENTITIES_TABLE;
 
 		if ( self::table_exists( $legacy_table ) ) {
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 			$wpdb->query(
 				"INSERT IGNORE INTO {$map_table}
 					(wp_user_id, telegram_user_id, telegram_username, created_at, created_by)
 				 SELECT wp_user_id, telegram_user_id, telegram_username, created_at, created_by
 				 FROM {$legacy_table}"
 			);
+			// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 			$report = OperatorIdentityMapMigration::verify_bijection();
 
@@ -388,6 +477,7 @@ class Migrator {
 		global $wpdb;
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange
 		return (string) $wpdb->get_var(
 			$wpdb->prepare( 'SHOW TABLES LIKE %s', $qualified_table )
 		) === $qualified_table;
@@ -586,6 +676,7 @@ class Migrator {
 				possible_duplicate_delivery TINYINT(1) NOT NULL DEFAULT 0,
 				dead_lettered_at DATETIME NULL,
 				telegram_message_id BIGINT NULL,
+				claim_expires_at DATETIME NULL,
 				created_at DATETIME NOT NULL,
 				updated_at DATETIME NOT NULL,
 				sent_at DATETIME NULL,
@@ -622,6 +713,7 @@ class Migrator {
 				'possible_duplicate_delivery',
 				'dead_lettered_at',
 				'telegram_message_id',
+				'claim_expires_at',
 				'created_at',
 				'updated_at',
 				'sent_at',
@@ -1207,5 +1299,4 @@ class Migrator {
 
 		return null !== $column && isset( $column['Type'] ) && str_contains( (string) $column['Type'], "'prepared'" );
 	}
-
 }

@@ -9,15 +9,12 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\Telegram\Outbound;
 
-
 /**
  * A recurring Action Scheduler action, independent of the queue's own
  * job-handler contract: nulls body_ciphertext for terminal (sent) messages
  * once telegram_message_retention_days has elapsed, then permanently
  * deletes the metadata row of any terminal (sent, dead_letter, or already
  * purged) message once telegram_delivery_log_retention_days has elapsed.
- * 
- * folded into this same daily handler, per that ADR's decision.
  */
 final class RetentionCleanupHandler {
 
@@ -27,9 +24,9 @@ final class RetentionCleanupHandler {
 	/**
 	 * Constructor.
 	 *
-	 * @param OutboundMessageRepository     $messages                     Durable outbound message storage.
-	 * @param int                           $message_retention_days       Days a sent message's own body is retained before being nulled.
-	 * @param int                           $delivery_log_retention_days   Days a terminal message's own row is retained before being deleted entirely.
+	 * @param OutboundMessageRepository $messages                     Durable outbound message storage.
+	 * @param int                       $message_retention_days       Days a sent message's own body is retained before being nulled.
+	 * @param int                       $delivery_log_retention_days   Days a terminal message's own row is retained before being deleted entirely.
 	 */
 	public function __construct(
 		private readonly OutboundMessageRepository $messages,

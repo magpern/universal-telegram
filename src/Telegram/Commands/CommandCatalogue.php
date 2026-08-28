@@ -48,23 +48,15 @@ final class CommandCatalogue {
 	 */
 	private static function definitions(): array {
 		return array(
-			'help'          => array( self::CONTEXT_ANY, self::ARGUMENT_NONE, array() ),
-			'whoami'        => array( self::CONTEXT_ANY, self::ARGUMENT_NONE, array() ),
-			'status'        => array( self::CONTEXT_GENERAL, self::ARGUMENT_NONE, array() ),
-			'errors'        => array( self::CONTEXT_GENERAL, self::ARGUMENT_NONE, array() ),
-			'visitors'      => array( self::CONTEXT_GENERAL, self::ARGUMENT_NONE, array() ),
-			'orders'        => array( self::CONTEXT_GENERAL, self::ARGUMENT_NONE, array() ),
-			'order'         => array( self::CONTEXT_GENERAL, self::ARGUMENT_NUMERIC_ID, array() ),
-			'stock'         => array( self::CONTEXT_GENERAL, self::ARGUMENT_TOKEN, array() ),
-			'sales'         => array( self::CONTEXT_GENERAL, self::ARGUMENT_LITERAL, array( 'today', 'week', 'month' ) ),
-			'conversations' => array( self::CONTEXT_GENERAL, self::ARGUMENT_NONE, array() ),
-			'here'          => array( self::CONTEXT_CONVERSATION, self::ARGUMENT_NONE, array() ),
-			'presence'      => array( self::CONTEXT_GENERAL, self::ARGUMENT_LITERAL, array( 'available', 'busy', 'offline' ) ),
-			'claim'         => array( self::CONTEXT_CONVERSATION, self::ARGUMENT_NONE, array() ),
-			'release'       => array( self::CONTEXT_CONVERSATION, self::ARGUMENT_NONE, array() ),
-			'resolve'       => array( self::CONTEXT_CONVERSATION, self::ARGUMENT_NONE, array() ),
-			'reopen'        => array( self::CONTEXT_CONVERSATION, self::ARGUMENT_NONE, array() ),
-			'confirm'       => array( self::CONTEXT_CONVERSATION, self::ARGUMENT_NONE, array() ),
+			'help'     => array( self::CONTEXT_ANY, self::ARGUMENT_NONE, array() ),
+			'whoami'   => array( self::CONTEXT_ANY, self::ARGUMENT_NONE, array() ),
+			'status'   => array( self::CONTEXT_GENERAL, self::ARGUMENT_NONE, array() ),
+			'errors'   => array( self::CONTEXT_GENERAL, self::ARGUMENT_NONE, array() ),
+			'visitors' => array( self::CONTEXT_GENERAL, self::ARGUMENT_NONE, array() ),
+			'orders'   => array( self::CONTEXT_GENERAL, self::ARGUMENT_NONE, array() ),
+			'order'    => array( self::CONTEXT_GENERAL, self::ARGUMENT_NUMERIC_ID, array() ),
+			'stock'    => array( self::CONTEXT_GENERAL, self::ARGUMENT_TOKEN, array() ),
+			'sales'    => array( self::CONTEXT_GENERAL, self::ARGUMENT_LITERAL, array( 'today', 'week', 'month' ) ),
 		);
 	}
 

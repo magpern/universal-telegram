@@ -35,7 +35,7 @@ final class AdapterStatusPage {
 	 * @param DiscoveryClient          $discovery          Discovery client.
 	 * @param ChannelBindingRepository $bindings           Binding repository.
 	 * @param BotProfileRepository     $bots               Bot listing for dropdowns.
-	 * @param DestinationEligibility $digest_eligibility Eligible parent destinations.
+	 * @param DestinationEligibility   $digest_eligibility Eligible parent destinations.
 	 */
 	public function __construct(
 		private readonly Settings $settings,

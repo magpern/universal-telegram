@@ -10,17 +10,11 @@ declare( strict_types=1 );
 namespace UniversalTelegram\Administration\Diagnostics;
 
 use UniversalTelegram\Audit\AuditLogRepository;
-use UniversalTelegram\Automations\Digest\DigestEligibility;
-use UniversalTelegram\Automations\Digest\VisitorDigestCounterRepository;
-use UniversalTelegram\Automations\Digest\VisitorDigestStateRepository;
 use UniversalTelegram\Automations\DispatchLogRepository;
 use UniversalTelegram\Automations\Intelligence\AlertRepository;
 use UniversalTelegram\Automations\Intelligence\IntelligenceSettings;
-use UniversalTelegram\Automations\Intelligence\OperationalSummaryRepository;
-use UniversalTelegram\Automations\Intelligence\SummaryAiRepository;
 use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Automations\RuleEvaluator;
-use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Events\EventHistoryRepository;
 use UniversalTelegram\Events\EventSource;
 use UniversalTelegram\Events\RetentionCleanup;
@@ -43,26 +37,20 @@ final class DiagnosticsReport {
 	/**
 	 * Constructor.
 	 *
-	 * @param QueueHealth                       $queue_health              Pending/failed action counts.
-	 * @param AuditLogRepository                $audit_log_repository      The recent-entries read path.
-	 * @param WooCommerceSupport                $woocommerce_support        WooCommerce-presence detection.
-	 * @param SchemaHealth                      $schema_health              The current schema-availability state.
-	 * @param BotProfileRepository              $bots                       Telegram bot counts.
-	 * @param DestinationRepository             $destinations               Telegram destination counts.
-	 * @param QueueHealthAlert                  $queue_health_alert          The Telegram queue-health alert's own details.
-	 * @param EventHistoryRepository            $event_history       Event-history counts.
-	 * @param NotificationRuleRepository        $notification_rules  Rule counts.
-	 * @param DispatchLogRepository             $dispatch_log        Dispatch-log failure/stuck-claim counts.
-	 * @param Settings                          $settings            Reads the current visitor tracking configuration.
-	 * @param DigestEligibility                 $digest_eligibility     The M11A visitor digest shared active/eligibility gate.
-	 * @param VisitorDigestCounterRepository    $digest_counters        The M11A visitor digest counter persistence.
-	 * @param VisitorDigestStateRepository      $digest_state           The M11A visitor digest state/checkpoint persistence.
-	 * @param int                               $stale_pending_threshold_seconds The message-staleness threshold, in seconds.
-	 * @param int                               $stale_registration_threshold_hours The registration-staleness threshold, in hours.
-	 * @param IntelligenceSettings|null         $intelligence_settings Typed M11B intelligence settings reader.
-	 * @param OperationalSummaryRepository|null $operational_summary_repository Operational summary runs.
-	 * @param AlertRepository|null              $alert_repository       Threshold alert state.
-	 * @param SummaryAiRepository|null          $summary_ai_repository  Summary AI drafts.
+	 * @param QueueHealth                $queue_health              Pending/failed action counts.
+	 * @param AuditLogRepository         $audit_log_repository      The recent-entries read path.
+	 * @param WooCommerceSupport         $woocommerce_support        WooCommerce-presence detection.
+	 * @param SchemaHealth               $schema_health              The current schema-availability state.
+	 * @param BotProfileRepository       $bots                       Telegram bot counts.
+	 * @param DestinationRepository      $destinations               Telegram destination counts.
+	 * @param QueueHealthAlert           $queue_health_alert          The Telegram queue-health alert's own details.
+	 * @param EventHistoryRepository     $event_history       Event-history counts.
+	 * @param NotificationRuleRepository $notification_rules  Rule counts.
+	 * @param DispatchLogRepository      $dispatch_log        Dispatch-log failure/stuck-claim counts.
+	 * @param int                        $stale_pending_threshold_seconds The message-staleness threshold, in seconds.
+	 * @param int                        $stale_registration_threshold_hours The registration-staleness threshold, in hours.
+	 * @param IntelligenceSettings|null  $intelligence_settings Typed M11B intelligence settings reader.
+	 * @param AlertRepository|null       $alert_repository       Threshold alert state.
 	 */
 	public function __construct(
 		private readonly QueueHealth $queue_health,
@@ -75,67 +63,16 @@ final class DiagnosticsReport {
 		private readonly EventHistoryRepository $event_history,
 		private readonly NotificationRuleRepository $notification_rules,
 		private readonly DispatchLogRepository $dispatch_log,
-		private readonly Settings $settings,
-		private readonly DigestEligibility $digest_eligibility,
-		private readonly VisitorDigestCounterRepository $digest_counters,
-		private readonly VisitorDigestStateRepository $digest_state,
 		private readonly int $stale_pending_threshold_seconds = 1800,
 		private readonly int $stale_registration_threshold_hours = 24,
 		private readonly ?IntelligenceSettings $intelligence_settings = null,
-		private readonly ?OperationalSummaryRepository $operational_summary_repository = null,
-		private readonly ?AlertRepository $alert_repository = null,
-		private readonly ?SummaryAiRepository $summary_ai_repository = null
+		private readonly ?AlertRepository $alert_repository = null
 	) {}
 
 	/**
-	 * Generates the report data.
+	 * The full diagnostics key/value map rendered by DiagnosticsPage.
 	 *
-	 * @return array{
-	 *     plugin_version: string,
-	 *     php_version: string,
-	 *     wp_version: string,
-	 *     woocommerce_active: bool,
-	 *     woocommerce_hpos_enabled: bool,
-	 *     woocommerce_event_emitters_registered: bool,
-	 *     queue_pending: int,
-	 *     queue_failed: int,
-	 *     queue_oldest_pending_age_seconds: int,
-	 *     queue_expedited_dispatch_declined_concurrency_24h: int,
-	 *     queue_expedited_dispatch_unavailable_24h: int,
-	 *     telegram_bot_count: int,
-	 *     telegram_destination_count: int,
-	 *     telegram_dead_letter_count: int,
-	 *     telegram_any_circuit_breaker_open: bool,
-	 *     telegram_stale_pending_count: int,
-	 *     telegram_stale_unresolved_registrations_count: int,
-	 *     telegram_queue_health_alert_active: bool,
-	 *     automations_event_count_24h: int,
-	 *     automations_rule_count: int,
-	 *     automations_enabled_rule_count: int,
-	 *     automations_dispatch_failed_count_24h: int,
-	 *     automations_stuck_claim_count: int,
-	 *     automations_stale_fatal_markers_dropped_count: int,
-	 *     automations_last_evaluation_error_code: string,
-	 *     visitor_tracking_enabled: bool,
-	 *     visitor_tracker_asset_available: bool,
-	 *     visitor_events_recorded_24h: int,
-	 *     visitor_events_rejected_24h: int,
-	 *     visitor_events_rate_limited_24h: int,
-	 *     visitor_events_bot_filtered_24h: int,
-	 *     bot_commands_active: bool,
-	 *     bot_commands_rejected_unauthorized_24h: int,
-	 *     bot_commands_rejected_wrong_context_24h: int,
-	 *     visitor_digest_enabled: bool,
-	 *     visitor_digest_target_valid: bool,
-	 *     visitor_digest_active: bool,
-	 *     visitor_digest_paused_invalid_target: bool,
-	 *     visitor_digest_pending_event_count: int,
-	 *     visitor_digest_oldest_pending_age_seconds: int|null,
-	 *     visitor_digest_last_sent_at: string|null,
-	 *     visitor_digest_last_status: string,
-	 *     visitor_digest_currently_suppressed_rules_count: int,
-	 *     recent_audit_entries: array<int, array<string, mixed>>
-	 * }
+	 * @return array<string, mixed>
 	 */
 	public function generate(): array {
 		$bots              = $this->schema_health->is_available() ? $this->bots->all() : array();
@@ -191,8 +128,6 @@ final class DiagnosticsReport {
 			'automations_stuck_claim_count'            => $this->schema_health->is_available() ? $this->dispatch_log->stuck_claim_count() : 0,
 			'automations_stale_fatal_markers_dropped_count' => (int) get_option( RetentionCleanup::STALE_FATAL_MARKERS_DROPPED_OPTION, 0 ),
 			'automations_last_evaluation_error_code'   => (string) get_option( RuleEvaluator::LAST_EVALUATION_ERROR_CODE_OPTION, 'none' ),
-			'visitor_tracking_enabled'                 => (bool) $this->settings->get()['visitor_tracking_enabled'],
-			'visitor_tracker_asset_available'          => defined( 'UNIVERSAL_TELEGRAM_PLUGIN_FILE' ) && file_exists( dirname( UNIVERSAL_TELEGRAM_PLUGIN_FILE ) . '/assets/js/visitor-tracker.js' ),
 			'visitor_events_recorded_24h'              => $this->schema_health->is_available() ? $this->event_history->count_24h_by_source( EventSource::VISITOR->value ) : 0,
 			'visitor_events_rejected_24h'              => $this->audit_log_repository->count_by_action_24h( 'visitor_events.rejected' ),
 			'visitor_events_rate_limited_24h'          => $this->audit_log_repository->count_by_action_24h( 'visitor_events.rate_limited' ),
@@ -207,7 +142,7 @@ final class DiagnosticsReport {
 			'bot_commands_rejected_unauthorized_24h'   => $this->audit_log_repository->count_by_action_24h( 'bot_command.rejected_unauthorized' ),
 			'bot_commands_rejected_wrong_context_24h'  => $this->audit_log_repository->count_by_action_24h( 'bot_command.rejected_wrong_context' ),
 			'recent_audit_entries'                     => $this->audit_log_repository->recent( 20 ),
-		) + $this->visitor_digest_diagnostics() + $this->intelligence_diagnostics();
+		) + $this->intelligence_diagnostics();
 	}
 
 	/**
@@ -220,82 +155,18 @@ final class DiagnosticsReport {
 	 * @return array<string, mixed>
 	 */
 	private function intelligence_diagnostics(): array {
-		if ( null === $this->intelligence_settings || null === $this->operational_summary_repository || null === $this->alert_repository || null === $this->summary_ai_repository ) {
+		if ( null === $this->intelligence_settings || null === $this->alert_repository ) {
 			return array();
 		}
 
-		$most_recent_summary = $this->schema_health->is_available() ? $this->operational_summary_repository->most_recent() : null;
-
-		$keys = array(
-			'operational_summary_enabled'      => $this->intelligence_settings->operational_summary_enabled(),
-			'operational_summary_last_status'  => null !== $most_recent_summary ? ( $most_recent_summary['send_status'] ?? 'never_run' ) : 'never_run',
-			'operational_summary_last_sent_at' => null !== $most_recent_summary ? $most_recent_summary['sent_at'] : null,
-		);
+		$keys = array();
 
 		foreach ( IntelligenceSettings::ALERT_TYPES as $alert_type ) {
 			$keys[ 'alert_' . $alert_type . '_enabled' ]       = $this->intelligence_settings->alert_enabled( $alert_type );
 			$keys[ 'alert_' . $alert_type . '_last_fired_at' ] = $this->schema_health->is_available() ? $this->alert_repository->last_fired_at( $alert_type ) : null;
 		}
 
-		$most_recent_ai_draft = null !== $most_recent_summary && $this->schema_health->is_available()
-			? $this->summary_ai_repository->find_by_summary_run_id( (int) $most_recent_summary['id'] )
-			: null;
-
-		$keys['ai_summary_last_status'] = null !== $most_recent_ai_draft ? $most_recent_ai_draft->status() : 'never_run';
-
 		return $keys;
-	}
-
-	/**
-	 * The M11A visitor digest diagnostics keys
-	 * (docs/plans/m11a-visitor-activity-digests-plan-v1.md §7).
-	 *
-	 * @return array{
-	 *     visitor_digest_enabled: bool,
-	 *     visitor_digest_target_valid: bool,
-	 *     visitor_digest_active: bool,
-	 *     visitor_digest_paused_invalid_target: bool,
-	 *     visitor_digest_pending_event_count: int,
-	 *     visitor_digest_oldest_pending_age_seconds: int|null,
-	 *     visitor_digest_last_sent_at: string|null,
-	 *     visitor_digest_last_status: string,
-	 *     visitor_digest_currently_suppressed_rules_count: int
-	 * }
-	 */
-	private function visitor_digest_diagnostics(): array {
-		$active              = $this->digest_eligibility->is_active();
-		$window_started_at   = $this->schema_health->is_available() ? $this->digest_state->current_window_started_at() : null;
-		$pending_event_count = null !== $window_started_at && $this->schema_health->is_available()
-			? $this->digest_counters->sum_for_window( $window_started_at )
-			: 0;
-		$oldest_pending_age  = null;
-
-		if ( null !== $window_started_at ) {
-			$started = strtotime( $window_started_at . ' UTC' );
-			if ( false !== $started ) {
-				$oldest_pending_age = max( 0, time() - $started );
-			}
-		}
-
-		$suppressed_rules_count = 0;
-
-		if ( $active && $this->schema_health->is_available() ) {
-			foreach ( DigestEligibility::SUPPRESSED_EVENT_TYPES as $event_type ) {
-				$suppressed_rules_count += count( $this->notification_rules->for_event_type( $event_type, true ) );
-			}
-		}
-
-		return array(
-			'visitor_digest_enabled'                    => $this->digest_eligibility->enabled(),
-			'visitor_digest_target_valid'               => $this->digest_eligibility->target_valid(),
-			'visitor_digest_active'                     => $active,
-			'visitor_digest_paused_invalid_target'      => $this->digest_eligibility->paused_for_invalid_target(),
-			'visitor_digest_pending_event_count'        => $pending_event_count,
-			'visitor_digest_oldest_pending_age_seconds' => $oldest_pending_age,
-			'visitor_digest_last_sent_at'               => $this->schema_health->is_available() ? $this->digest_state->last_digest_sent_at() : null,
-			'visitor_digest_last_status'                => $this->schema_health->is_available() ? ( $this->digest_state->last_digest_status() ?? 'never_run' ) : 'never_run',
-			'visitor_digest_currently_suppressed_rules_count' => $suppressed_rules_count,
-		);
 	}
 
 	/**

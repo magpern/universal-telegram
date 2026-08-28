@@ -21,23 +21,15 @@ final class CommandCatalogueTest extends TestCase {
 			'order',
 			'stock',
 			'sales',
-			'conversations',
-			'here',
-			'presence',
-			'claim',
-			'release',
-			'resolve',
-			'reopen',
-			'confirm',
 		);
 
-		$this->assertCount( 17, $expected, 'sanity: 17 distinct command literals (the plan\'s "sixteen commands" plus /confirm)' );
+		$this->assertCount( 9, $expected, 'sanity: 9 distinct command literals after ADR-0044' );
 
 		foreach ( $expected as $command ) {
 			$this->assertTrue( CommandCatalogue::is_known( $command ), "expected '$command' to be known" );
 		}
 
-		$this->assertCount( 17, CommandCatalogue::all_commands() );
+		$this->assertCount( 9, CommandCatalogue::all_commands() );
 	}
 
 	public function test_unknown_command_is_not_known(): void {
@@ -50,15 +42,12 @@ final class CommandCatalogueTest extends TestCase {
 		$this->assertSame( CommandCatalogue::CONTEXT_ANY, CommandCatalogue::context_for( 'help' ) );
 		$this->assertSame( CommandCatalogue::CONTEXT_ANY, CommandCatalogue::context_for( 'whoami' ) );
 		$this->assertSame( CommandCatalogue::CONTEXT_GENERAL, CommandCatalogue::context_for( 'status' ) );
-		$this->assertSame( CommandCatalogue::CONTEXT_GENERAL, CommandCatalogue::context_for( 'presence' ) );
-		$this->assertSame( CommandCatalogue::CONTEXT_CONVERSATION, CommandCatalogue::context_for( 'claim' ) );
-		$this->assertSame( CommandCatalogue::CONTEXT_CONVERSATION, CommandCatalogue::context_for( 'confirm' ) );
 		$this->assertNull( CommandCatalogue::context_for( 'nope' ) );
 	}
 
 	public function test_no_argument_commands_reject_any_trailing_text(): void {
-		$this->assertTrue( CommandCatalogue::is_argument_valid( 'claim', '' ) );
-		$this->assertFalse( CommandCatalogue::is_argument_valid( 'claim', 'extra' ) );
+		$this->assertTrue( CommandCatalogue::is_argument_valid( 'status', '' ) );
+		$this->assertFalse( CommandCatalogue::is_argument_valid( 'status', 'extra' ) );
 	}
 
 	public function test_order_argument_is_bounded_numeric(): void {

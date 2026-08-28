@@ -35,8 +35,8 @@ final class OperatorIdentityMapBijectionReport {
 	/**
 	 * Constructor.
 	 *
-	 * @param array<int, string>                                                    $mismatches         Conflict / missing-pair descriptions.
-	 * @param array<int, array{id:int, wp_user_id:int, telegram_user_id:int}>        $unreachable_extras Extra map rows.
+	 * @param array<int, string>                                              $mismatches         Conflict / missing-pair descriptions.
+	 * @param array<int, array{id:int, wp_user_id:int, telegram_user_id:int}> $unreachable_extras Extra map rows.
 	 */
 	public function __construct( array $mismatches, array $unreachable_extras ) {
 		$this->mismatches         = array_values( $mismatches );

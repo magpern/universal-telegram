@@ -34,7 +34,7 @@ final class BotDestinationPairFields {
 	/**
 	 * Constructor.
 	 *
-	 * @param BotProfileRepository $bots               Active-bot listing.
+	 * @param BotProfileRepository   $bots               Active-bot listing.
 	 * @param DestinationEligibility $digest_eligibility Eligible-destination filter.
 	 */
 	public function __construct(

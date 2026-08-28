@@ -52,27 +52,27 @@ final class OperatorIdentityMapMigration {
 		$target = $wpdb->get_results( "SELECT id, wp_user_id, telegram_user_id FROM {$target_table}", ARRAY_A );
 		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
-		$source     = is_array( $source ) ? $source : array();
-		$target     = is_array( $target ) ? $target : array();
+		$source       = is_array( $source ) ? $source : array();
+		$target       = is_array( $target ) ? $target : array();
 		$target_pairs = array();
 		$by_wp        = array();
 		$by_tg        = array();
 
 		foreach ( $target as $row ) {
-			$wp = (int) $row['wp_user_id'];
-			$tg = (int) $row['telegram_user_id'];
+			$wp                              = (int) $row['wp_user_id'];
+			$tg                              = (int) $row['telegram_user_id'];
 			$target_pairs[ $wp . ':' . $tg ] = true;
-			$by_wp[ $wp ]                     = $tg;
-			$by_tg[ $tg ]                     = $wp;
+			$by_wp[ $wp ]                    = $tg;
+			$by_tg[ $tg ]                    = $wp;
 		}
 
-		$mismatches      = array();
-		$source_wp       = array();
-		$source_tg       = array();
+		$mismatches = array();
+		$source_wp  = array();
+		$source_tg  = array();
 
 		foreach ( $source as $row ) {
-			$wp             = (int) $row['wp_user_id'];
-			$tg             = (int) $row['telegram_user_id'];
+			$wp               = (int) $row['wp_user_id'];
+			$tg               = (int) $row['telegram_user_id'];
 			$source_wp[ $wp ] = true;
 			$source_tg[ $tg ] = true;
 

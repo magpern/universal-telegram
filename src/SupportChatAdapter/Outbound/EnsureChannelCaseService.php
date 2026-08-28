@@ -9,9 +9,8 @@ declare( strict_types=1 );
 
 namespace UniversalTelegram\SupportChatAdapter\Outbound;
 
-use UniversalTelegram\Core\Security\CredentialState;
 use UniversalTelegram\SupportChatAdapter\ChannelBindingRepository;
-use UniversalTelegram\Telegram\Client\TelegramApiClient;
+use UniversalTelegram\Telegram\Topics\ForumTopicService;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\Destination;
 use UniversalTelegram\Telegram\Configuration\DestinationKind;
@@ -29,13 +28,13 @@ final class EnsureChannelCaseService {
 	 * @param ChannelBindingRepository $bindings     Binding storage.
 	 * @param BotProfileRepository     $bots         Bot profiles.
 	 * @param DestinationRepository    $destinations Destination CRUD.
-	 * @param TelegramApiClient        $client       Telegram API.
+	 * @param ForumTopicService        $topics       Forum-topic create/delete.
 	 */
 	public function __construct(
 		private readonly ChannelBindingRepository $bindings,
 		private readonly BotProfileRepository $bots,
 		private readonly DestinationRepository $destinations,
-		private readonly TelegramApiClient $client
+		private readonly ForumTopicService $topics
 	) {}
 
 	/**
@@ -80,31 +79,8 @@ final class EnsureChannelCaseService {
 			);
 		}
 
-		$token_result = $this->bots->decrypt_token( $bot );
-		if ( CredentialState::AVAILABLE !== $token_result->state() || null === $token_result->plaintext() ) {
-			return array(
-				'channel_case_ref' => '',
-				'status'           => 'unavailable',
-			);
-		}
-
-		$topic_name = $this->topic_name( $conversation_uuid, $summary_meta );
-		$result     = $this->client->create_forum_topic(
-			$token_result->plaintext(),
-			$parent_destination->chat_id(),
-			$topic_name
-		);
-
-		if ( ! $result->ok() ) {
-			return array(
-				'channel_case_ref' => '',
-				'status'           => 'unavailable',
-			);
-		}
-
-		$telegram_topic_id = isset( $result->result()['message_thread_id'] ) && is_int( $result->result()['message_thread_id'] )
-			? $result->result()['message_thread_id']
-			: null;
+		$topic_name        = $this->topic_name( $conversation_uuid, $summary_meta );
+		$telegram_topic_id = $this->topics->create( $bot, $parent_destination->chat_id(), $topic_name );
 
 		if ( null === $telegram_topic_id ) {
 			return array(
@@ -130,6 +106,8 @@ final class EnsureChannelCaseService {
 		);
 
 		if ( null === $destination ) {
+			$this->topics->try_delete( $bot, $parent_destination->chat_id(), $telegram_topic_id );
+
 			return array(
 				'channel_case_ref' => '',
 				'status'           => 'unavailable',
