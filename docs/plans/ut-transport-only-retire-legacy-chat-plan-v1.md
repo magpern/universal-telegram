@@ -343,7 +343,7 @@ rows.
    binding-status-compatibility decisions.
 2. Every tranche committed on `feature/ut-transport-only-retire-legacy-chat` with CI green
    (phpcs, static-analysis, unit ×3, integration-wp-only ×2, integration-wc-present,
-   js-behavioural, build, package-acceptance ×3).
+   build, package-acceptance ×3). The `js-behavioural` job is removed — see §11.
 3. `Migrator::target_version() === 37`, monotonic; retired steps present as no-ops; step 37
    forward-only; `Migrator::LEGACY_TABLES`/`LEGACY_OPTIONS` manifest present; the §6.6 migration
    lifecycle tests pass for both fresh-install and seeded-v36-upgrade.
@@ -363,3 +363,46 @@ rows.
    removed/preserved manifest, schema before/after, migration-lifecycle walk-through, purge and
    uninstall behaviour, and the full test + dual-plugin evidence.
 9. PR #62 open for review, not merged.
+
+## 11. Deviations recorded during implementation
+
+The following are deviations from this plan as written, made during tranches 2–8 and accepted
+as within the ADR-0044 intent (transport/adapter only; SC owns chat). None changes the
+monotonic-v37 lifecycle, the active-only creation rule, or the retained binding-status
+compatibility column.
+
+1. **Operational-alert engine retained (PO decision, tranche 7).** `AlertEvaluator`,
+   `AlertRepository`, `IntelligenceSettings`, `IntelligenceStateRepository`, the
+   `operational_alert_state` table (schema step 27) and `intelligence_settings_state` (step 26),
+   the settings/UI section, and a new `Automations\Intelligence\AlertSweep` are **kept** — the
+   checkout-failure / order-failure-spike / JS-error-spike alerts are generic transport
+   functionality. Only the *operational-summary* and all AI-summary functionality was removed.
+   Consequently steps 26 and 27 are **not** retired no-ops and their tables are **not** in
+   `Migrator::LEGACY_TABLES`. The event-count helper the summary repository used was extracted
+   as `Automations\EventCountAggregator`.
+2. **JS-error-spike alert config is retained but inert.** With visitor tracking retired, nothing
+   emits `visitor.javascript_error`, so `EventCountAggregator::count_error_category_since()`
+   normally returns 0. The alert config/threshold/UI stay (deviation 1); the alert simply does
+   not fire unless another source records that event type.
+3. **Visitor-tracking event surface fully retired.** `EventFamilyCatalog` loses the
+   `visitor_activity` family; `PresetCatalog` loses the two `visitor.*` presets;
+   `FieldTypeCatalog` / `EventCatalogLabels` lose the seven now-orphan visitor-only field paths;
+   `Integrations/WooCommerce/Visitor/VisitorCommerceEventCatalog` is deleted.
+4. **All browser JS is legacy chat.** `assets/js/{chat-widget,visitor-tracker}.js`,
+   `assets/css/chat-widget-*.css`, `tests/js/`, `bin/docker/test-js.sh`, and the CI
+   `js-behavioural` job are removed. Nothing in `src/` enqueued them after the Plugin.php
+   rewrite.
+5. **`support-chat-bindings import` CLI removed.** It was SC-M03 migration machinery reading the
+   legacy `conversations` table; ADR-0044 retires the migration track, so the command has no
+   remaining role.
+6. **Topic lifecycle reduced to two neutral services.** The async topic-lifecycle handlers were
+   deleted; `Conversations\ForumTopicRemoteDeleter` moved to `Telegram\Topics\ForumTopicRemoteDeleter`
+   and a new `Telegram\Topics\ForumTopicService` carries the forum-topic create/delete
+   idempotency, failure, and cleanup behaviour that `EnsureChannelCaseService` needs.
+7. **Retired step 14's `claim_expires_at` folded into step 4.** The transport `outbound_messages`
+   table's `claim_expires_at` column was added by (now-retired) step 14; its `CREATE TABLE` in
+   step 4 and `verify_step_4` now include it so a fresh v37 install still has the column.
+8. **`Administration\Hub\` retained.** It is the ADR-0020 generic navigation shell and carries no
+   legacy-chat dependency; the hub simply registers fewer tabs
+   (`overview, bots, notifications-activity, settings, diagnostics, support-chat-adapter,
+   support-chat-pairing`).
