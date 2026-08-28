@@ -11,10 +11,7 @@ namespace UniversalTelegram\Administration\Automations;
 
 /**
  * Grouping only, derived from the existing event_type list — no Registry
- * change (M08.1 plan "Friendly labels"). `visitor.click` is deliberately
- * excluded from every family (task requirement); it keeps its
- * EventCatalogLabels entry for other read paths (Events tab, history)
- * unaffected. Relocated verbatim out of RuleBuilderPage's own private
+ * change (M08.1 plan "Friendly labels"). Relocated verbatim out of RuleBuilderPage's own private
  * const (M08.2 plan §4) so the friendly event picker's grouping is a
  * single source of truth shared by the rule builder and the notification
  * tester, rather than duplicated data.
@@ -76,20 +73,6 @@ final class EventFamilyCatalog {
 				'wordpress.rest_request_failed',
 				'wordpress.email_sending_failed',
 				'wordpress.fatal_error',
-			),
-		),
-		'visitor_activity'   => array(
-			'label'                => 'Visitor activity',
-			'requires_woocommerce' => false,
-			'event_types'          => array(
-				'visitor.session_started',
-				'visitor.page_viewed',
-				'visitor.navigation',
-				'visitor.search_performed',
-				'visitor.javascript_error',
-				'visitor.product_viewed',
-				'visitor.add_to_cart_intent',
-				'visitor.checkout_started_intent',
 			),
 		),
 	);

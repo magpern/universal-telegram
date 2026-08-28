@@ -320,41 +320,6 @@ final class FieldTypeCatalog {
 				'block'   => 'Block checkout',
 			),
 		),
-		'subject.path'               => array(
-			'type'          => self::TYPE_TEXT,
-			'operators'     => self::TEXT_OPERATORS,
-			'preview_value' => '/shop/',
-		),
-		'subject.page_type'          => array(
-			'type'          => self::TYPE_TEXT,
-			'operators'     => self::TEXT_OPERATORS,
-			'preview_value' => 'product',
-		),
-		'subject.from_path'          => array(
-			'type'          => self::TYPE_TEXT,
-			'operators'     => self::TEXT_OPERATORS,
-			'preview_value' => '/cart/',
-		),
-		'subject.to_path'            => array(
-			'type'          => self::TYPE_TEXT,
-			'operators'     => self::TEXT_OPERATORS,
-			'preview_value' => '/checkout/',
-		),
-		'payload.result_count'       => array(
-			'type'          => self::TYPE_NUMBER,
-			'operators'     => self::NUMERIC_OPERATORS,
-			'preview_value' => '5',
-		),
-		'subject.target_key'         => array(
-			'type'          => self::TYPE_TEXT,
-			'operators'     => self::TEXT_OPERATORS,
-			'preview_value' => 'newsletter_signup',
-		),
-		'payload.error_category'     => array(
-			'type'          => self::TYPE_TEXT,
-			'operators'     => self::TEXT_OPERATORS,
-			'preview_value' => 'network',
-		),
 	);
 
 	/**

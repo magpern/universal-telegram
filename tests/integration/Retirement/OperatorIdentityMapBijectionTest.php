@@ -34,7 +34,7 @@ final class OperatorIdentityMapBijectionTest extends WP_UnitTestCase {
 	}
 
 	private string $source = '';
-	private string $map     = '';
+	private string $map    = '';
 
 	private function seed_source( int $wp, int $tg ): void {
 		global $wpdb;

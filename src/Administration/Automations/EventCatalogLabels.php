@@ -49,15 +49,6 @@ final class EventCatalogLabels {
 		'woocommerce.coupon_applied'             => 'Coupon applied',
 		'woocommerce.coupon_rejected'            => 'Coupon rejected',
 		'woocommerce.checkout_validation_failed' => 'Checkout validation failed',
-		'visitor.session_started'                => 'Visitor started a browsing session',
-		'visitor.page_viewed'                    => 'Visitor viewed a page',
-		'visitor.navigation'                     => 'Visitor navigated to another page',
-		'visitor.search_performed'               => 'Visitor used site search',
-		'visitor.click'                          => 'Visitor clicked a tracked action',
-		'visitor.javascript_error'               => 'Visitor browser error',
-		'visitor.product_viewed'                 => 'Visitor viewed a product',
-		'visitor.add_to_cart_intent'             => 'Visitor intended to add a product to cart',
-		'visitor.checkout_started_intent'        => 'Visitor opened checkout',
 	);
 
 	/**
@@ -115,13 +106,6 @@ final class EventCatalogLabels {
 		'subject.coupon_code'        => 'Coupon code',
 		'payload.error_codes_csv'    => 'Checkout error codes',
 		'context.checkout_type'      => 'Checkout type',
-		'subject.path'               => 'Page path',
-		'subject.page_type'          => 'Page type',
-		'subject.from_path'          => 'Previous page path',
-		'subject.to_path'            => 'Destination page path',
-		'payload.result_count'       => 'Number of search results',
-		'subject.target_key'         => 'Tracked action',
-		'payload.error_category'     => 'Browser error category',
 	);
 
 	/**

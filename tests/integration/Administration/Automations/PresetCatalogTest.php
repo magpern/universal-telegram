@@ -73,18 +73,14 @@ final class PresetCatalogTest extends WP_UnitTestCase {
 		}
 	}
 
-	public function test_woocommerce_gated_presets_reference_woocommerce_or_visitor_commerce_event_types(): void {
+	public function test_woocommerce_gated_presets_reference_woocommerce_event_types(): void {
 		foreach ( PresetCatalog::all() as $preset ) {
 			if ( ! $preset['requires_woocommerce'] ) {
 				continue;
 			}
 
 			$this->assertTrue(
-				str_starts_with( $preset['event_type'], 'woocommerce.' ) || in_array(
-					$preset['event_type'],
-					array( 'visitor.product_viewed', 'visitor.add_to_cart_intent', 'visitor.checkout_started_intent' ),
-					true
-				),
+				str_starts_with( $preset['event_type'], 'woocommerce.' ),
 				sprintf( 'Preset "%s" is flagged WooCommerce-required but its event type "%s" is not WooCommerce-scoped.', $preset['key'], $preset['event_type'] )
 			);
 		}

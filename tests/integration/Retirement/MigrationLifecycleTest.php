@@ -32,11 +32,13 @@ final class MigrationLifecycleTest extends WP_UnitTestCase {
 	}
 
 	public function test_target_version_is_37_and_monotonic(): void {
-		self::assertSame( 37, ( new class( new MigrationLock() ) extends Migrator {
+		$probe = new class( new MigrationLock() ) extends Migrator {
 			public function target(): int {
 				return $this->target_version();
 			}
-		} )->target() );
+		};
+
+		self::assertSame( 37, $probe->target() );
 	}
 
 	public function test_fresh_install_creates_only_retained_schema_and_never_a_legacy_table(): void {

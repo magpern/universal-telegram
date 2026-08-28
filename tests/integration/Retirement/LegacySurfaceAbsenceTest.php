@@ -20,7 +20,7 @@ use WP_UnitTestCase;
 final class LegacySurfaceAbsenceTest extends WP_UnitTestCase {
 
 	public function test_no_legacy_conversation_rest_route_is_registered(): void {
-		do_action( 'rest_api_init' );
+		do_action( 'rest_api_init' ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound, WooCommerce.Commenting.CommentHooks.MissingHookComment -- firing a WordPress core hook in a test.
 
 		$routes = array_keys( rest_get_server()->get_routes() );
 
@@ -38,7 +38,7 @@ final class LegacySurfaceAbsenceTest extends WP_UnitTestCase {
 	}
 
 	public function test_no_chat_widget_or_visitor_tracker_asset_is_enqueued_on_the_front_end(): void {
-		do_action( 'wp_enqueue_scripts' );
+		do_action( 'wp_enqueue_scripts' ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound, WooCommerce.Commenting.CommentHooks.MissingHookComment -- firing a WordPress core hook in a test.
 
 		global $wp_scripts, $wp_styles;
 
