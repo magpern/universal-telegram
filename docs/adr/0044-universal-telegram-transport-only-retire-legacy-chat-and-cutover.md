@@ -143,11 +143,27 @@ operator **availability**, **assignment/claim workflow**, and the **Hub inbox** 
   the retired step 17.
 - **Step 37 establishes the data path:** on an existing install it copies every row from the
   obsolete `..._operator_identities` table into `..._operator_identity_map` (idempotent
-  `INSERT … ON DUPLICATE KEY UPDATE` / `INSERT IGNORE`) and verifies the row count matches; it
-  does **not** drop `..._operator_identities`.
-- **Before `legacy-chat purge` drops `..._operator_identities`** it re-runs that copy
-  idempotently and verifies the postcondition (every source mapping is present in
-  `..._operator_identity_map`); only then does it drop the obsolete table.
+  `INSERT IGNORE`) and then runs the **bijection verification** below. It does **not** drop
+  `..._operator_identities`.
+- **Bijection verification (`verify_operator_identity_map()`)** — not a count comparison:
+  - For **every** source `..._operator_identities` row, `..._operator_identity_map` must contain a
+    row with the **same `(wp_user_id, telegram_user_id)` pair**.
+  - A target row that matches the source on **`wp_user_id`** but has a different `telegram_user_id`,
+    or matches on **`telegram_user_id`** but has a different `wp_user_id`, is a **conflict** →
+    verification fails.
+  - A source pair with **no** matching target row is a **failure**.
+  - A target row **not reachable** through either source key (extra map row with a `wp_user_id`
+    and a `telegram_user_id` that appear in no source row) is **permitted**. Expected occurrence:
+    **only** map rows created directly by the retired build's own adapter admin after the upgrade
+    — on a straight upgrade there should be none. The verification **reports** every such row
+    (id + keys) but does not fail on it.
+  - Verification **fails closed**: on any conflict or missing pair, `step_37` aborts, writes no
+    marker, advances no version, and leaves every legacy table — `..._operator_identities`
+    included — **intact and untouched**.
+- **`legacy-chat purge` repeats the exact same bijection verification immediately before it drops
+  `..._operator_identities`.** Any conflict or missing pair aborts the purge **before any table
+  or option is removed** (no partial destruction). Only when the bijection holds does purge drop
+  the obsolete table.
 - The mapping must remain **sufficient for a Telegram operator reply in a bound topic to be
   attributed to the correct WordPress user** when `InboundAdapterBridge` forwards it to Support
   Chat with provenance.
@@ -169,12 +185,14 @@ operator **availability**, **assignment/claim workflow**, and the **Hub inbox** 
 `step_37_retire_legacy_chat()` — runs exactly once per install to reach `target_version() = 37`:
 
 1. Creates `..._operator_identity_map` (idempotent `CREATE TABLE IF NOT EXISTS`).
-2. If the obsolete `..._operator_identities` table exists (an upgrade from ≤ 36), copies its
-   mappings into `..._operator_identity_map` and verifies the count (§4).
+2. If the obsolete `..._operator_identities` table exists (an upgrade from ≤ 36): `INSERT IGNORE`
+   its mapping rows into `..._operator_identity_map`, then run the **bijection verification** (§4).
+   **On any conflict or missing pair the step fails closed** — it throws, writes no marker,
+   advances no `db_version`, and leaves `..._operator_identities` and every legacy table intact.
 3. Writes the retirement marker option `universal_telegram_legacy_chat_retired_at` (a timestamp)
-   **only if** any obsolete legacy table is still present — so an upgraded-but-not-yet-purged
-   install is distinguishable from a clean install, and the admin "run purge" notice is shown
-   only while that marker is set and obsolete tables remain.
+   **only if** the bijection held and any obsolete legacy table is still present — so an
+   upgraded-but-not-yet-purged install is distinguishable from a clean install, and the admin
+   "run purge" notice is shown only while that marker is set and obsolete tables remain.
 4. Does **not** drop, rename, or truncate any obsolete table. All destructive removal is deferred
    to the guarded `legacy-chat purge` command (or uninstall, per the data-removal setting).
 
@@ -194,9 +212,9 @@ wp universal-telegram legacy-chat purge --assume-legacy-chat-removal-authority [
   obsolete legacy-chat and migration/cutover tables named in the migrator's legacy manifest
   (former steps 11–30, 33, 35, 36) and deletes **only** the chat/visitor/AI/digest/summary/
   quiescence/cutover options and the retirement marker.
-- **Before dropping `..._operator_identities`** it re-runs the §4 mapping copy idempotently and
-  verifies the postcondition (every source mapping present in `..._operator_identity_map`); it
-  aborts without dropping anything if that check fails.
+- **Before dropping `..._operator_identities`** it re-runs the §4 `INSERT IGNORE` copy and the
+  full **bijection verification**. Any conflict or missing pair **aborts the purge before any
+  table or option is removed** — no partial destruction.
 - **Preserves** `..._bots` (encrypted bot credentials — a hard invariant, checked in the
   postcondition), `..._destinations`, `..._outbound_messages`, `..._inbound_updates`,
   `..._audit_log`, `..._event_history`, `..._fatal_error_markers`, `..._circuit_breaker_state`,

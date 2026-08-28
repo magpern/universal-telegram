@@ -122,9 +122,18 @@ deleted.**
      `operator_identities`).
   2. If `{prefix}universal_telegram_operator_identities` exists: `INSERT IGNORE INTO
      ..._operator_identity_map (wp_user_id, telegram_user_id, telegram_username, created_at,
-     created_by) SELECT wp_user_id, telegram_user_id, telegram_username, created_at, created_by
-     FROM ..._operator_identities` and assert `COUNT(*)` parity.
-  3. If any legacy-manifest table still exists, `update_option(
+     created_by) SELECT ... FROM ..._operator_identities`, then run
+     **`OperatorIdentityMapMigration::verify_bijection()`** (shared by step 37 and purge):
+     - every source `(wp_user_id, telegram_user_id)` pair MUST exist as a target row;
+     - a target row sharing exactly one key with a source row but differing on the other key is a
+       **conflict** → fail;
+     - a source pair absent from the target is a **failure**;
+     - a target row whose `wp_user_id` and `telegram_user_id` both appear in **no** source row is
+       **permitted and reported** (id + keys logged); expected count on a straight upgrade is 0.
+     On any conflict/failure the method throws `OperatorIdentityMapMismatch` — **step 37 fails
+     closed**: no marker, no `db_version` advance, `..._operator_identities` and every legacy
+     table left intact.
+  3. If the bijection held and any legacy-manifest table still exists, `update_option(
      'universal_telegram_legacy_chat_retired_at', gmdate('c') )`.
   4. Drops nothing.
   - `verify_step_37()`: `..._operator_identity_map` has the six columns; if `..._operator_identities`
@@ -162,7 +171,7 @@ removed keys (idempotent).
 - Add `src/Administration/Cli/LegacyChatPurgeCommand.php` — `wp universal-telegram legacy-chat
   purge --assume-legacy-chat-removal-authority [--dry-run]` per ADR-0044 §5: iterates the
   `Migrator::LEGACY_TABLES` / `LEGACY_OPTIONS` manifest; **before** dropping
-  `..._operator_identities` re-runs the step-37 mapping copy + parity assert; drops the manifest
+  `..._operator_identities` re-runs the step-37 `INSERT IGNORE` copy + the full bijection verification (`OperatorIdentityMapMigration::verify_bijection()`); on any conflict/failure it aborts before removing any table or option; only when the bijection holds does it drop the manifest
   tables; deletes the manifest options + the retirement marker; sets `universal_telegram_db_version`
   to `target_version()`; postcondition asserts (a) no manifest table/option remains, (b) every
   preserved table exists, (c) `..._bots` still holds its ciphertext row(s), (d) every
@@ -230,6 +239,32 @@ legacy content is gone and bot credentials are intact.
      legacy path;
   9. **Binding status:** `ensure_channel_case` creates a `status='active'` binding; no test or
      code path produces a `prepared` binding; the `status` column and step 34 are unchanged.
+  10. **Operator-identity bijection regression tests**
+      (`tests/integration/Retirement/OperatorIdentityMapMigrationTest.php`), each seeding
+      `..._operator_identities` + a v36 `db_version` and then running step 37 and/or
+      `legacy-chat purge`:
+      - **(a) clean copy** — N distinct source rows → all N `(wp_user_id, telegram_user_id)`
+        pairs present in `..._operator_identity_map`; 0 unreachable extras reported; marker set;
+        `db_version` → 37; legacy tables still present.
+      - **(b) idempotent rerun** — run step 37 twice (and `purge --dry-run` twice); second run
+        adds/changes/removes nothing; bijection still holds; no duplicate map rows.
+      - **(c) same WP user, conflicting Telegram user** — source `(7, 100)`, pre-seeded target
+        `(7, 999)` → conflict on `wp_user_id`; step 37 **throws `OperatorIdentityMapMismatch`**,
+        writes no marker, does not advance `db_version`, leaves `..._operator_identities` and all
+        legacy tables intact.
+      - **(d) same Telegram user, conflicting WP user** — source `(7, 100)`, pre-seeded target
+        `(42, 100)` → conflict on `telegram_user_id`; same fail-closed outcome as (c).
+      - **(e) missing target pair** — target table exists but a source pair was never copied
+        (simulated by deleting one map row after an `INSERT IGNORE` that a fault blocked) →
+        `verify_bijection()` fails; step 37 and `purge` both abort fail-closed.
+      - **(f) purge abort — no destructive side effect** — with a conflict present (case c or d),
+        `legacy-chat purge --assume-legacy-chat-removal-authority` aborts; assert **every**
+        `LEGACY_TABLES` table still exists, **every** `LEGACY_OPTIONS` option still set, the
+        marker still set, `..._bots` untouched, and `db_version` unchanged.
+      - **unreachable-extra path** — pre-seed a target row whose `wp_user_id` and
+        `telegram_user_id` appear in no source row; assert the bijection **passes**, the extra
+        row is **reported** (id + keys in the returned report / logged), and it is **not**
+        deleted.
 - **New dual-plugin interop** (`tests/integration/Interop/`), kept/rewritten so **no** case
   depends on legacy conversations or cutover:
   - pairing + discovery `channel_available:true`;
@@ -252,7 +287,7 @@ legacy content is gone and bot credentials are intact.
 | `Core/Plugin.php` rewire misses a dependency → fatal on boot | phpstan (level in `phpstan.neon.dist`) + the full integration bootstrap test must pass before each tranche is committed |
 | A preserved component secretly needs a removed class | the §2 coupling table is the checklist; phpstan `identifier not found` is the backstop |
 | `remove_data_on_uninstall` / purge drops a preserved table or the bot ciphertext | purge & uninstall both iterate the single `Migrator::LEGACY_TABLES`/`LEGACY_OPTIONS` manifest; postcondition tests §6.7/§6.8 assert `..._bots` and every `..._support_chat_*` table survive |
-| operator mappings lost when `..._operator_identities` is dropped | step 37 copies them forward on upgrade; purge re-copies + parity-checks and **aborts without dropping** if the check fails (§6.7); test §6.6 covers the upgrade copy |
+| operator mappings lost or mis-attributed when `..._operator_identities` is dropped | step 37 copies them forward and runs an exact `(wp_user_id, telegram_user_id)` **bijection** check; purge repeats the identical check immediately before the drop and **aborts before removing anything** on any conflict/missing pair; regression tests §6.10 cover clean copy, idempotent rerun, WP-user conflict, Telegram-user conflict, missing pair, and purge-abort-no-side-effect |
 | non-monotonic `db_version` breaks an upgraded install | `target_version()` only ever rises (36 → 37); retired steps become no-ops, not deletions; history not renumbered; test §6.6 asserts monotonicity |
 | Event catalog prune breaks non-chat notification rules | keep every non-chat event family; a notification-engine regression test covers order/checkout/JS-error rules |
 | binding-status handling regresses | step 34, the `status` column, and `ChannelBindingRepository` status handling are untouched; only cutover *activation* code is removed; `ensure_channel_case` sets `active` explicitly (test §6.9) |
@@ -312,8 +347,9 @@ rows.
 3. `Migrator::target_version() === 37`, monotonic; retired steps present as no-ops; step 37
    forward-only; `Migrator::LEGACY_TABLES`/`LEGACY_OPTIONS` manifest present; the §6.6 migration
    lifecycle tests pass for both fresh-install and seeded-v36-upgrade.
-4. `legacy-chat purge` (with `--dry-run` and real) behaves per §6.7 including the abort-on-parity
-   -failure path; `uninstall.php` behaves per §6.8 for `remove_data_on_uninstall` on/off; bot
+4. `legacy-chat purge` (with `--dry-run` and real) behaves per §6.7 including the abort-on-
+   bijection-mismatch path with **zero destructive side effect**; `uninstall.php` behaves per
+   §6.8 for `remove_data_on_uninstall` on/off; bot
    credentials never dropped by the legacy path.
 5. No legacy conversation REST route, widget, AI, operator inbox, or legacy chat admin/settings
    surface is registered on a fresh install or after upgrade (§6.1–§6.4).
