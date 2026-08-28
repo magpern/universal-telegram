@@ -97,13 +97,19 @@ Removed from the plugin (code, schema, CLI, settings, assets, tests, and documen
   `/universal-telegram/v1/conversations*` REST routes; the chat widget, visitor, AI, digest,
   summary, and Hub admin pages, menu entries, and assets; the chat/visitor/AI/digest/summary
   settings; the conversation-retention, AI-draft-lease, and summary-AI-lease cron jobs.
-- **SC-M03 migration/cutover track:** all of `src/Migration/`;
+- **SC-M03 migration/cutover track (code and CLI):** all of `src/Migration/`;
   `src/SupportChatAdapter/Migration/`; the `wp universal-telegram cutover` and `wp
-  universal-telegram quiescence` CLI commands; schema steps 33 (quiescence tables), 35 (cutover
-  tables), 36 (deferred-update handoff incident columns).
-- **Schema:** migration steps 11–30 and 33/35/36 are deleted from the migrator. `target_version()`
-  is renumbered to the count of remaining steps (transport steps 1–10 + adapter steps 31, 32, 34
-  → 13). The removed steps are not renumbered in place and are not retained as no-ops.
+  universal-telegram quiescence` CLI commands. The **cohort/cutover activation** services and CLI
+  are removed; the Support Chat binding-status column and its schema step are **kept** as
+  compatibility state (§4a).
+- **Schema — forward-only, monotonic (§4b):** `Migrator::target_version()` is **raised from 36 to
+  37**, never reduced. A new forward-only **step 37** performs the retirement. The obsolete legacy
+  step methods (former 11–30, 33, 35, 36) are **kept in the migrator as inert no-ops** — they
+  create nothing on a fresh install — and the migrator retains a **legacy-table/option manifest**
+  (names only, no DDL) so the guarded purge command can recognise and drop the obsolete objects.
+  Migration history is **not renumbered or deleted**; an upgraded database (which still has the
+  obsolete tables and a retirement marker option until purge) remains distinguishable from a
+  clean install.
 - **Documentation:** ADR-0040/0042/0043 → Superseded by ADR-0044; ADR-0039/0041 → Superseded by
   ADR-0044 (Status-field only). SC-M03 plans and rehearsal/closure documents are marked
   **CLOSED — superseded by ADR-0044 (legacy chat retired, not migrated)**; they are retained
@@ -113,7 +119,7 @@ Removed from the plugin (code, schema, CLI, settings, assets, tests, and documen
 There is **no** disabled-but-present legacy controller, **no** compatibility shim, and **no**
 unreachable migration code left in the tree.
 
-### 3. Reclassify — forum-topic lifecycle and operator identity
+### 3. Reclassify — forum-topic lifecycle
 
 - Forum-topic lifecycle components currently under `src/Conversations/`
   (`TopicCreationDispatcher`, `TopicCreationHandler`, `TopicDeletionDispatcher`,
@@ -125,15 +131,56 @@ unreachable migration code left in the tree.
 
 ### 4. Telegram-user → WordPress-operator identity mapping is retained
 
-`OperatorIdentity` and `OperatorIdentityRepository` are **kept** and moved out of
-`src/Conversations/` into a narrowly named adapter/transport component
-(`src/SupportChatAdapter/Identity/` — proposed `OperatorIdentityMap` /
-`OperatorIdentityMapRepository`). Its schema table (currently created by step 17) is preserved
-under a new, dedicated migration step in the transport range. It must remain **sufficient for a
-Telegram operator reply to be attributed to the correct WordPress user when the inbound bridge
-forwards that reply to Support Chat** (`InboundAdapterBridge` provenance). The legacy
-operator **availability**, **assignment/claim workflow**, and **Hub inbox** are removed — only
-the identity *mapping* survives.
+`OperatorIdentity` / `OperatorIdentityRepository` are **kept** and moved out of
+`src/Conversations/` into a narrowly named adapter component
+`src/SupportChatAdapter/Identity/` as `OperatorIdentityMap` / `OperatorIdentityMapRepository`.
+Only the mapping survives (`find_by_telegram_user_id() → wp_user_id`, `create`,
+`find_by_wp_user_id`, `all`, `delete_for_wp_user`, and an account-deleted cleanup); legacy
+operator **availability**, **assignment/claim workflow**, and the **Hub inbox** are removed.
+
+- **New table** `..._operator_identity_map` (`id`, `wp_user_id` UNIQUE, `telegram_user_id`
+  UNIQUE, `telegram_username` NULL, `created_at`, `created_by`) — created by **step 37**, not by
+  the retired step 17.
+- **Step 37 establishes the data path:** on an existing install it copies every row from the
+  obsolete `..._operator_identities` table into `..._operator_identity_map` (idempotent
+  `INSERT … ON DUPLICATE KEY UPDATE` / `INSERT IGNORE`) and verifies the row count matches; it
+  does **not** drop `..._operator_identities`.
+- **Before `legacy-chat purge` drops `..._operator_identities`** it re-runs that copy
+  idempotently and verifies the postcondition (every source mapping is present in
+  `..._operator_identity_map`); only then does it drop the obsolete table.
+- The mapping must remain **sufficient for a Telegram operator reply in a bound topic to be
+  attributed to the correct WordPress user** when `InboundAdapterBridge` forwards it to Support
+  Chat with provenance.
+
+### 4a. Support Chat binding status remains compatibility state
+
+- The Support Chat binding **status column and its schema step (former step 34) are kept**, along
+  with the existing status compatibility handling.
+- The **cutover / cohort-activation** services and CLI are removed
+  (`CutoverActivationService`, `CutoverRun*`, `Cli/CutoverCommand`, cohort-file handling).
+- Normal live `EnsureChannelCaseService::ensure_channel_case()` creates an **`active` binding
+  directly**. No code path creates a new `prepared` binding.
+- This task does **not** add a schema simplification, does **not** collapse the status vocabulary,
+  and does **not** auto-promote any existing `prepared` row. Existing `prepared` rows (there are
+  none in production; DEV data is discarded) are left as-is; a later task may address them.
+
+### 4b. Forward-only retirement migration (step 37)
+
+`step_37_retire_legacy_chat()` — runs exactly once per install to reach `target_version() = 37`:
+
+1. Creates `..._operator_identity_map` (idempotent `CREATE TABLE IF NOT EXISTS`).
+2. If the obsolete `..._operator_identities` table exists (an upgrade from ≤ 36), copies its
+   mappings into `..._operator_identity_map` and verifies the count (§4).
+3. Writes the retirement marker option `universal_telegram_legacy_chat_retired_at` (a timestamp)
+   **only if** any obsolete legacy table is still present — so an upgraded-but-not-yet-purged
+   install is distinguishable from a clean install, and the admin "run purge" notice is shown
+   only while that marker is set and obsolete tables remain.
+4. Does **not** drop, rename, or truncate any obsolete table. All destructive removal is deferred
+   to the guarded `legacy-chat purge` command (or uninstall, per the data-removal setting).
+
+On a **fresh install** the migrator runs steps 1–10, 31, 32, 34, and 37; the inert no-op methods
+for the retired steps create nothing, so no legacy-chat or cutover table is ever created, the
+marker option is never written, and no legacy route/widget/admin/CLI is registered.
 
 ### 5. Guarded legacy-chat cleanup path
 
@@ -143,29 +190,44 @@ A new, explicit, guarded WP-CLI command removes obsolete legacy-chat data on an 
 wp universal-telegram legacy-chat purge --assume-legacy-chat-removal-authority [--dry-run]
 ```
 
-- Drops **only** the legacy-chat and migration/cutover tables (former steps 11–30, 33, 35, 36)
-  and deletes **only** the chat/visitor/AI/digest/summary/quiescence/cutover options.
-- **Preserves** `..._bots` (encrypted bot credentials), `..._destinations`, `..._outbound_messages`,
-  `..._inbound_updates`, `..._audit_log`, `..._event_history`, `..._fatal_error_markers`,
-  `..._circuit_breaker_state`, `..._rate_limit_state`, `..._notification_rules`,
-  `..._notification_dispatch_log`, the operator-identity-map table, and every `..._support_chat_*`
-  table.
-- `--dry-run` (default off; the mutating run requires the authority flag) lists exactly what
-  would be dropped/deleted and touches nothing.
-- Has a postcondition check: after a real run, no legacy table or option remains and every
-  preserved table/option is intact.
-- The `uninstall.php` path drops the legacy tables unconditionally and the transport/adapter
-  tables only when `remove_data_on_uninstall` is set (unchanged semantics for the preserved set).
+- **The `legacy-chat purge` command is the supported destructive path.** It drops **only** the
+  obsolete legacy-chat and migration/cutover tables named in the migrator's legacy manifest
+  (former steps 11–30, 33, 35, 36) and deletes **only** the chat/visitor/AI/digest/summary/
+  quiescence/cutover options and the retirement marker.
+- **Before dropping `..._operator_identities`** it re-runs the §4 mapping copy idempotently and
+  verifies the postcondition (every source mapping present in `..._operator_identity_map`); it
+  aborts without dropping anything if that check fails.
+- **Preserves** `..._bots` (encrypted bot credentials — a hard invariant, checked in the
+  postcondition), `..._destinations`, `..._outbound_messages`, `..._inbound_updates`,
+  `..._audit_log`, `..._event_history`, `..._fatal_error_markers`, `..._circuit_breaker_state`,
+  `..._rate_limit_state`, `..._notification_rules`, `..._notification_dispatch_log`,
+  `..._operator_identity_map`, and every `..._support_chat_*` table.
+- `--dry-run` (the mutating run requires `--assume-legacy-chat-removal-authority`) lists exactly
+  what would be dropped/deleted and touches nothing.
+- After a real run: sets `universal_telegram_db_version` to the current `target_version()` (37),
+  clears the retirement marker, and its postcondition asserts no manifest table/option remains
+  and every preserved table/option (bot ciphertext row included) is intact.
+- **Uninstall (`uninstall.php`) preserves the project's normal uninstall-data semantics.** It
+  removes the obsolete legacy tables/options **only when the existing `remove_data_on_uninstall`
+  setting authorizes data removal** — exactly as it treats every other plugin table. It never
+  silently deletes retired legacy data when that setting is off, and it never drops
+  `..._bots`/credentials.
 
 ### 6. Upgrade and fresh-install behaviour
 
-- **Existing upgrade:** on activation/upgrade, before any drop, the plugin **stops registering**
-  the chat widget, the `/conversations*` routes, the Hub/AI/visitor admin pages and menu entries,
-  and the chat/AI cron jobs — legacy chat is *inert* immediately. The obsolete tables are left in
-  place until the operator runs `legacy-chat purge` (or uninstalls). A one-time admin notice
-  points to the purge command.
-- **Fresh install:** the removed migration steps do not exist, so the legacy tables are **never
-  created** and no legacy route, widget, admin page, or CLI command is ever registered.
+- **Existing upgrade (was at version ≤ 36):** the retired build simply **does not register** the
+  chat widget, the `/conversations*` and visitor-ingest routes, the Hub/AI/visitor/digest/summary
+  admin pages and menu entries, or the chat/AI cron jobs — legacy chat is inert the moment the
+  new build loads, independent of the schema. Migrator step 37 then runs once (creates
+  `..._operator_identity_map`, copies the operator mappings, writes the retirement marker) and
+  advances `universal_telegram_db_version` to 37. The obsolete tables remain until the operator
+  runs `legacy-chat purge` (or uninstalls with data-removal authorized). A one-time admin notice
+  — shown only while the retirement marker is set and obsolete tables remain — points to the
+  purge command.
+- **Fresh install:** the migrator runs steps 1–10, 31, 32, 34, 37; the retired step methods are
+  inert no-ops, so no legacy-chat or cutover table is ever created, no retirement marker is
+  written, and no legacy route, widget, admin page, or CLI command is registered.
+  `universal_telegram_db_version` is written at 37.
 
 ## Alternatives
 
@@ -237,15 +299,23 @@ wp universal-telegram legacy-chat purge --assume-legacy-chat-removal-authority [
 
 ## Compatibility/Migration Impact
 
-- **Schema:** `Migrator::target_version()` drops from 36 to 13 (transport steps 1–10 + adapter
-  steps 31/32/34, renumbered contiguously as 1–13; the operator-identity-map table gets a
-  dedicated step in that range). A fresh install creates only those tables. An existing install
-  at version 36 is recognised as "ahead" of the new target — the migrator treats `current >=
-  target` as up-to-date and never *drops* tables automatically; the obsolete tables are removed
-  only by the guarded `legacy-chat purge` command or uninstall.
-- **`universal_telegram_db_version`:** on an existing install it stays at its stored value until
-  `legacy-chat purge` runs, which resets it to the new target (13). Fresh installs are written at
-  13.
+- **Schema — monotonic, forward-only.** `Migrator::target_version()` is **raised from 36 to 37**;
+  it is never reduced. The step methods for the retired steps (former 11–30, 33, 35, 36) stay in
+  the migrator as **inert no-ops** — a fresh install iterates 1 → 37 and creates only the
+  retained transport/adapter tables plus `..._operator_identity_map` (new step 37). An existing
+  install at 36 runs **only** the new forward-only **step 37** (§4b): create
+  `..._operator_identity_map`, copy the operator mappings from the obsolete
+  `..._operator_identities` table, write the retirement marker option if obsolete tables remain.
+  Step 37 **never drops, renames, or truncates** an obsolete table. Migration history is not
+  renumbered or deleted; the migrator keeps a **legacy-table/option manifest** (names only) that
+  the guarded purge command uses to recognise and remove the obsolete objects.
+- **`universal_telegram_db_version`:** an existing install advances from 36 to 37 when step 37
+  runs; a fresh install is written at 37 directly. It never decreases. The `legacy-chat purge`
+  command re-asserts it at `target_version()` after a successful purge.
+- **Distinguishability:** an upgraded-but-not-yet-purged database has the obsolete legacy tables
+  present **and** the `universal_telegram_legacy_chat_retired_at` marker option set; a clean
+  install has neither. After a purge (or authorized uninstall data-removal) an upgraded database
+  converges to the clean-install shape, which is the intended end state.
 - **CLI:** `wp universal-telegram cutover` and `wp universal-telegram quiescence` are removed;
   `wp universal-telegram legacy-chat purge` is added. `wp universal-telegram support-chat-bindings`
   is retained.
