@@ -120,77 +120,38 @@ for m02_table in event_history fatal_error_markers notification_rules notificati
 	echo "OK: universal_telegram_${m02_table} table exists."
 done
 
-echo "== Verifying activation created M05's two conversation tables =="
-for m05_table in conversations conversation_messages; do
-	if [ -z "$(m02_table_exists "$m05_table")" ]; then
-		echo "FAIL: universal_telegram_${m05_table} table was not created on activation" >&2
+echo "== Verifying ADR-0044: activation never creates a legacy website-chat table =="
+for legacy_table in conversations conversation_messages conversation_notes operator_identities operator_availability ai_config ai_drafts quiescence_state quiescence_transitions quiescence_deferred_updates cutover_runs cutover_transitions cutover_activation_audit; do
+	if [ -n "$(m02_table_exists "$legacy_table")" ]; then
+		echo "FAIL: ADR-0044 retired table universal_telegram_${legacy_table} was created on a fresh install" >&2
 		exit 1
 	fi
-	echo "OK: universal_telegram_${m05_table} table exists."
 done
+echo "OK: no retired legacy website-chat table exists on a fresh install."
 
-echo "== Verifying M06's idempotency columns exist on the conversation tables =="
-if [ -z "$(m06_column_exists "conversations" "start_idempotency_key")" ]; then
-	echo "FAIL: universal_telegram_conversations.start_idempotency_key column was not created on activation" >&2
-	exit 1
-fi
-echo "OK: universal_telegram_conversations.start_idempotency_key column exists."
-
-if [ -z "$(m06_column_exists "conversation_messages" "idempotency_key")" ]; then
-	echo "FAIL: universal_telegram_conversation_messages.idempotency_key column was not created on activation" >&2
-	exit 1
-fi
-echo "OK: universal_telegram_conversation_messages.idempotency_key column exists."
-
-echo "== Verifying M06.2 v2's claim/lease columns exist (ADR-0023 amendment) =="
+echo "== Verifying M06.2 v2's claim/lease column exists on the transport queue (ADR-0023 amendment) =="
 if [ -z "$(m06_column_exists "outbound_messages" "claim_expires_at")" ]; then
 	echo "FAIL: universal_telegram_outbound_messages.claim_expires_at column was not created on activation" >&2
 	exit 1
 fi
 echo "OK: universal_telegram_outbound_messages.claim_expires_at column exists."
 
-if [ -z "$(m06_column_exists "conversations" "topic_claim_expires_at")" ]; then
-	echo "FAIL: universal_telegram_conversations.topic_claim_expires_at column was not created on activation" >&2
-	exit 1
-fi
-echo "OK: universal_telegram_conversations.topic_claim_expires_at column exists."
-
-echo "== Verifying M06.3's display-name column exists (ADR-0024) =="
-if [ -z "$(m06_column_exists "conversations" "display_name_ciphertext")" ]; then
-	echo "FAIL: universal_telegram_conversations.display_name_ciphertext column was not created on activation" >&2
-	exit 1
-fi
-echo "OK: universal_telegram_conversations.display_name_ciphertext column exists."
-
-echo "== Verifying M06.3.1's ownership columns exist (ADR-0025) =="
-if [ -z "$(m06_column_exists "conversations" "owner_user_id")" ]; then
-	echo "FAIL: universal_telegram_conversations.owner_user_id column was not created on activation" >&2
-	exit 1
-fi
-if [ -z "$(m06_column_exists "conversations" "owner_active_slot")" ]; then
-	echo "FAIL: universal_telegram_conversations.owner_active_slot column was not created on activation" >&2
-	exit 1
-fi
-echo "OK: universal_telegram_conversations.owner_user_id and owner_active_slot columns exist."
-
-echo "== Verifying db_version reached 36 =="
+echo "== Verifying db_version reached 37 (ADR-0044 forward-only step 37) =="
 DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "36" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=36, got ${DB_VERSION}" >&2
+if [ "37" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=37, got ${DB_VERSION}" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 36."
+echo "OK: universal_telegram_db_version is 37."
 
-echo "== Verifying SC-M03 WP2 quiescence tables exist (ADR-0040) =="
-for TABLE in quiescence_state quiescence_transitions quiescence_deferred_updates; do
-	if [ -z "$(m02_table_exists "$TABLE")" ]; then
-		echo "FAIL: expected table universal_telegram_${TABLE} to exist" >&2
-		exit 1
-	fi
-done
-echo "OK: quiescence_state, quiescence_transitions, and quiescence_deferred_updates tables exist."
+echo "== Verifying ADR-0044: the retained adapter operator-identity map table exists =="
+if [ -z "$(m02_table_exists "operator_identity_map")" ]; then
+	echo "FAIL: universal_telegram_operator_identity_map table was not created on activation" >&2
+	exit 1
+fi
+echo "OK: universal_telegram_operator_identity_map table exists."
 
-echo "== Verifying UT Adapter M1 Support Chat binding tables exist =="
+echo "== Verifying UT Support Chat adapter binding tables exist =="
 for TABLE in support_chat_bindings support_chat_delivery_keys; do
 	if [ -z "$(m02_table_exists "$TABLE")" ]; then
 		echo "FAIL: expected table universal_telegram_${TABLE} to exist" >&2
@@ -199,107 +160,13 @@ for TABLE in support_chat_bindings support_chat_delivery_keys; do
 done
 echo "OK: universal_telegram_support_chat_bindings and universal_telegram_support_chat_delivery_keys tables exist."
 
-echo "== Verifying SC-M03 WP5 prepared binding status exists (ADR-0041) =="
+echo "== Verifying the binding status compatibility column is retained (ADR-0044 §4a) =="
 BINDING_STATUS_TYPE="$(wp db query "SHOW COLUMNS FROM ${TABLE_PREFIX}universal_telegram_support_chat_bindings LIKE 'status'" --path="$WP_DIR" --allow-root --skip-column-names)"
 if [ -z "$(echo "$BINDING_STATUS_TYPE" | grep -o 'prepared')" ]; then
-	echo "FAIL: expected universal_telegram_support_chat_bindings.status ENUM to include 'prepared'" >&2
+	echo "FAIL: expected universal_telegram_support_chat_bindings.status ENUM to still include 'prepared'" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_support_chat_bindings.status ENUM includes 'prepared'."
-
-echo "== Verifying SC-M03 final-cutover tables exist (ADR-0042) =="
-for TABLE in cutover_runs cutover_transitions cutover_activation_audit; do
-	if [ -z "$(m02_table_exists "$TABLE")" ]; then
-		echo "FAIL: expected table universal_telegram_${TABLE} to exist" >&2
-		exit 1
-	fi
-done
-echo "OK: cutover_runs, cutover_transitions, and cutover_activation_audit tables exist."
-
-echo "== Verifying SC-M03 final-cutover handoff/incident columns exist (ADR-0042) =="
-for COLUMN in handed_off_at incident_reason incident_recorded_at incident_resolved_at incident_resolution incident_po_decision_ref; do
-	if [ -z "$(m06_column_exists "quiescence_deferred_updates" "$COLUMN")" ]; then
-		echo "FAIL: expected universal_telegram_quiescence_deferred_updates.${COLUMN} column to exist" >&2
-		exit 1
-	fi
-done
-echo "OK: quiescence_deferred_updates handoff/incident columns exist."
-
-echo "== Verifying M07.1 topic lifecycle columns exist =="
-if [ -z "$(m06_column_exists conversations topic_lifecycle_state)" ]; then
-	echo "FAIL: expected universal_telegram_conversations.topic_lifecycle_state column to exist" >&2
-	exit 1
-fi
-if [ -z "$(m06_column_exists conversations topic_lifecycle_code)" ]; then
-	echo "FAIL: expected universal_telegram_conversations.topic_lifecycle_code column to exist" >&2
-	exit 1
-fi
-if [ -z "$(m06_column_exists conversations topic_delete_claim_expires_at)" ]; then
-	echo "FAIL: expected universal_telegram_conversations.topic_delete_claim_expires_at column to exist" >&2
-	exit 1
-fi
-echo "OK: M07.1 topic lifecycle columns exist."
-
-echo "== Verifying M07 operator-workflow tables and columns exist =="
-for TABLE in operator_identities conversation_notes operator_availability; do
-	if [ -z "$(m02_table_exists "$TABLE")" ]; then
-		echo "FAIL: expected table universal_telegram_${TABLE} to exist" >&2
-		exit 1
-	fi
-done
-echo "OK: universal_telegram_operator_identities, universal_telegram_conversation_notes, and universal_telegram_operator_availability tables exist."
-
-if [ -z "$(m06_column_exists conversations assignee_last_seen_message_id)" ]; then
-	echo "FAIL: expected universal_telegram_conversations.assignee_last_seen_message_id column to exist" >&2
-	exit 1
-fi
-if [ -z "$(m06_column_exists conversation_messages telegram_sender_user_id)" ]; then
-	echo "FAIL: expected universal_telegram_conversation_messages.telegram_sender_user_id column to exist" >&2
-	exit 1
-fi
-echo "OK: universal_telegram_conversations.assignee_last_seen_message_id and universal_telegram_conversation_messages.telegram_sender_user_id columns exist."
-
-echo "== Verifying M09 AI draft assistant tables and columns exist (docs/adr/0028) =="
-for TABLE in ai_config ai_drafts; do
-	if [ -z "$(m02_table_exists "$TABLE")" ]; then
-		echo "FAIL: expected table universal_telegram_${TABLE} to exist" >&2
-		exit 1
-	fi
-done
-echo "OK: universal_telegram_ai_config and universal_telegram_ai_drafts tables exist."
-
-AI_CONFIG_ROW_COUNT="$(wp db query "SELECT COUNT(*) FROM ${TABLE_PREFIX}universal_telegram_ai_config WHERE id = 1" --path="$WP_DIR" --allow-root --skip-column-names)"
-if [ "1" != "$AI_CONFIG_ROW_COUNT" ]; then
-	echo "FAIL: expected exactly one seeded universal_telegram_ai_config row (id=1), got ${AI_CONFIG_ROW_COUNT}" >&2
-	exit 1
-fi
-AI_CONFIG_ENABLED="$(wp db query "SELECT enabled FROM ${TABLE_PREFIX}universal_telegram_ai_config WHERE id = 1" --path="$WP_DIR" --allow-root --skip-column-names)"
-if [ "0" != "$AI_CONFIG_ENABLED" ]; then
-	echo "FAIL: expected AI to be disabled by default (enabled=0), got enabled=${AI_CONFIG_ENABLED}" >&2
-	exit 1
-fi
-echo "OK: universal_telegram_ai_config singleton row is seeded and disabled by default."
-
-if [ -z "$(m06_column_exists conversations ai_ack_policy_version)" ]; then
-	echo "FAIL: expected universal_telegram_conversations.ai_ack_policy_version column to exist" >&2
-	exit 1
-fi
-echo "OK: universal_telegram_conversations.ai_ack_policy_version column exists."
-
-for COLUMN in lease_token generation_lease_expires_at claimed_at attempt_count; do
-	if [ -z "$(m06_column_exists ai_drafts "$COLUMN")" ]; then
-		echo "FAIL: expected universal_telegram_ai_drafts.${COLUMN} column to exist" >&2
-		exit 1
-	fi
-done
-echo "OK: universal_telegram_ai_drafts lease/claim columns exist."
-
-REQUESTER_NULLABLE="$(wp db query "SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${TABLE_PREFIX}universal_telegram_ai_drafts' AND COLUMN_NAME = 'requested_by_user_id'" --path="$WP_DIR" --allow-root --skip-column-names)"
-if [ "YES" != "$REQUESTER_NULLABLE" ]; then
-	echo "FAIL: expected universal_telegram_ai_drafts.requested_by_user_id to be nullable (account-deletion anonymization), got IS_NULLABLE=${REQUESTER_NULLABLE}" >&2
-	exit 1
-fi
-echo "OK: universal_telegram_ai_drafts.requested_by_user_id is nullable."
+echo "OK: universal_telegram_support_chat_bindings.status ENUM still includes 'prepared'."
 
 echo "== Verifying M02 event emission projects only PUBLIC fields into event_history =="
 wp eval '
@@ -528,7 +395,7 @@ wp eval '
 
 echo "== Verifying the administration hub registers exactly the expected grouped top-level areas, in order =="
 wp eval '
-	$expected_tabs = array( "overview", "bots", "notifications-activity", "conversations", "ai-hub", "settings", "diagnostics", "support-chat-adapter", "support-chat-pairing" );
+	$expected_tabs = array( "overview", "bots", "notifications-activity", "settings", "diagnostics", "support-chat-adapter", "support-chat-pairing" );
 
 	$plugin   = UniversalTelegram\Core\Plugin::instance();
 	$registry = $plugin->hub_tab_registry();
@@ -647,31 +514,13 @@ for m02_table in event_history fatal_error_markers notification_rules notificati
 		exit 1
 	fi
 done
-for m05_table in conversations conversation_messages; do
-	if [ -z "$(m02_table_exists "$m05_table")" ]; then
-		echo "FAIL: default-retention uninstall removed universal_telegram_${m05_table} despite remove_data_on_uninstall defaulting to false" >&2
-		exit 1
-	fi
-done
-for m07_table in operator_identities conversation_notes operator_availability; do
-	if [ -z "$(m02_table_exists "$m07_table")" ]; then
-		echo "FAIL: default-retention uninstall removed universal_telegram_${m07_table} despite remove_data_on_uninstall defaulting to false" >&2
-		exit 1
-	fi
-done
-for m09_table in ai_config ai_drafts; do
-	if [ -z "$(m02_table_exists "$m09_table")" ]; then
-		echo "FAIL: default-retention uninstall removed universal_telegram_${m09_table} despite remove_data_on_uninstall defaulting to false" >&2
-		exit 1
-	fi
-done
-for adapter_table in support_chat_bindings support_chat_delivery_keys; do
+for adapter_table in operator_identity_map support_chat_bindings support_chat_delivery_keys; do
 	if [ -z "$(m02_table_exists "$adapter_table")" ]; then
 		echo "FAIL: default-retention uninstall removed universal_telegram_${adapter_table} despite remove_data_on_uninstall defaulting to false" >&2
 		exit 1
 	fi
 done
-echo "OK: default-retention uninstall kept the plugin's own data, including the bots table, all four M02 tables, both M05 tables, all three M07 tables, both M09 tables, and Adapter M1 tables."
+echo "OK: default-retention uninstall kept the plugin's own data, including the bots table, all four M02 tables, and the transport/adapter tables."
 
 echo "== Reinstalling to verify uninstall with retention explicitly enabled removes data =="
 wp plugin install "$ZIP_PATH" --activate --path="$WP_DIR" --allow-root
@@ -700,36 +549,12 @@ for m02_table in event_history fatal_error_markers notification_rules notificati
 		exit 1
 	fi
 done
-for m05_table in conversations conversation_messages; do
-	if [ -n "$(m02_table_exists "$m05_table")" ]; then
-		echo "FAIL: opt-in uninstall did not remove universal_telegram_${m05_table}" >&2
-		exit 1
-	fi
-done
-for m07_table in operator_identities conversation_notes operator_availability; do
-	if [ -n "$(m02_table_exists "$m07_table")" ]; then
-		echo "FAIL: opt-in uninstall did not remove universal_telegram_${m07_table}" >&2
-		exit 1
-	fi
-done
-for m09_table in ai_config ai_drafts; do
-	if [ -n "$(m02_table_exists "$m09_table")" ]; then
-		echo "FAIL: opt-in uninstall did not remove universal_telegram_${m09_table}" >&2
-		exit 1
-	fi
-done
-for adapter_table in support_chat_bindings support_chat_delivery_keys; do
+for adapter_table in operator_identity_map support_chat_bindings support_chat_delivery_keys; do
 	if [ -n "$(m02_table_exists "$adapter_table")" ]; then
 		echo "FAIL: opt-in uninstall did not remove universal_telegram_${adapter_table}" >&2
 		exit 1
 	fi
 done
-for quiescence_table in quiescence_state quiescence_transitions quiescence_deferred_updates; do
-	if [ -n "$(m02_table_exists "$quiescence_table")" ]; then
-		echo "FAIL: opt-in uninstall did not remove universal_telegram_${quiescence_table}" >&2
-		exit 1
-	fi
-done
-echo "OK: opt-in uninstall removed the plugin's own data, including all six M01 tables, all four M02 tables, both M05 tables, all three M07 tables, both M09 tables, Adapter M1 tables, and SC-M03 WP2 quiescence tables."
+echo "OK: opt-in uninstall removed the plugin's own data, including all six M01 tables, all four M02 tables, and the transport/adapter tables."
 
 echo "== PACKAGE TEST PASSED for WordPress ${WP_VERSION}${WC_VERSION:+, WooCommerce ${WC_VERSION}} =="
