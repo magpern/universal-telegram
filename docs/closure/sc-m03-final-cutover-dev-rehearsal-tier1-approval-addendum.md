@@ -14,12 +14,21 @@ dual-plugin interop suite on both supported WP/PHP variants — see
 [`sc-m03-final-cutover-f1-identity-correction-implementation-closure.md`](sc-m03-final-cutover-f1-identity-correction-implementation-closure.md).
 A Tier 1 re-attempt therefore requires this fresh, narrowly-scoped authorization.
 
-## Baselines (freshly fetched `origin/main`, both HEAD — include the F1 correction and its closure)
+## Baselines (the current `origin/main` HEAD of each repository, freshly fetched)
 
 | Repository | Pinned SHA |
 |---|---|
-| `magpern/universal-telegram` | `32f17ea904a33cdd1f9b0225ba9638f95a09d883` |
-| `magpern/universal-support-chat` | `5d81b5b7795ee50f3a79e535a483d7677b36d1c0` |
+| `magpern/universal-telegram` | `33b042ff98a3d78e9d6b2ac1c9eb6aa78bfb23b7` |
+| `magpern/universal-support-chat` | `2000eaf88fd223025e323d249496f7944a2db3e9` |
+
+These contain the F1 correction (universal-telegram `7d4cc4f`, universal-support-chat
+`9144cb1`), its closure, and DEV rehearsal runbook v2 with this corrected Approval A addendum.
+**Between the F1 closure commits (`32f17ea904a33cdd1f9b0225ba9638f95a09d883` /
+`5d81b5b7795ee50f3a79e535a483d7677b36d1c0`) and these heads, only files under `docs/` were added
+or amended** — the runbook v2, this addendum, the Support Chat decision record, and registry /
+milestone pointers. The `src/`, `tests/`, configuration, and CI-workflow trees are byte-for-byte
+those of the F1 correction; **no code, schema, `db_version`, test, configuration, workflow, or
+runtime change occurred after F1.**
 
 ## Verbatim authorization text (to be signed)
 
@@ -32,14 +41,22 @@ A Tier 1 re-attempt therefore requires this fresh, narrowly-scoped authorization
 > `32f17ea904a33cdd1f9b0225ba9638f95a09d883`; universal-support-chat #26 →
 > `9144cb1e2362c2be8d4c74f1461bba7ffe236575`, closure #27 →
 > `5d81b5b7795ee50f3a79e535a483d7677b36d1c0`) and verified green by the real dual-plugin interop
-> suite on both supported WP/PHP variants.
+> suite on both supported WP/PHP variants. The current `origin/main` heads are universal-telegram
+> `33b042ff98a3d78e9d6b2ac1c9eb6aa78bfb23b7` and universal-support-chat
+> `2000eaf88fd223025e323d249496f7944a2db3e9`; between the F1 closure commits
+> (`32f17ea904a33cdd1f9b0225ba9638f95a09d883` / `5d81b5b7795ee50f3a79e535a483d7677b36d1c0`) and
+> these heads **only documentation was added or amended** — DEV rehearsal runbook v2 and this
+> corrected Approval A addendum. The `src/`, `tests/`, configuration, and CI-workflow trees are
+> byte-for-byte those of the F1 correction; no code, schema, `db_version`, test, configuration,
+> workflow, or runtime change occurred after F1.
 >
 > I authorize a **single Tier 1 re-attempt** of the SC-M03 final-cutover disposable automated
 > operational-sequence / integration validation, exactly as described in DEV rehearsal runbook
 > **v2** (`docs/plans/sc-m03-final-cutover-dev-rehearsal-plan-v2.md`) and its Support Chat
-> companion, pinned to universal-telegram `32f17ea904a33cdd1f9b0225ba9638f95a09d883` and
-> universal-support-chat `5d81b5b7795ee50f3a79e535a483d7677b36d1c0` (freshly fetched
-> `origin/main`, both HEAD).
+> companion, pinned to universal-telegram `33b042ff98a3d78e9d6b2ac1c9eb6aa78bfb23b7` and
+> universal-support-chat `2000eaf88fd223025e323d249496f7944a2db3e9` — the current `origin/main`
+> HEAD of each repository, freshly fetched, each of which contains DEV rehearsal runbook v2
+> (`docs/plans/sc-m03-final-cutover-dev-rehearsal-plan-v2.md`) and this Approval A addendum.
 >
 > This authorization is limited to:
 > - the container/PHPUnit interop harness only — `docker/docker-compose.yml` +
@@ -49,7 +66,9 @@ A Tier 1 re-attempt therefore requires this fresh, narrowly-scoped authorization
 >   networks, and named volumes brought up by `docker/docker-compose.yml` together with
 >   `docker/docker-compose.interop.yml`, solely for fresh synthetic test databases and harness
 >   services, and removed by `docker compose … down -v` after every run;
-> - fresh throwaway repository checkouts at the two pinned SHAs above;
+> - fresh throwaway repository checkouts at the two current pinned SHAs above — each contains DEV
+>   rehearsal runbook v2 and this Approval A addendum, and its `src/` / `tests/` / configuration /
+>   CI-workflow trees are unchanged from the F1 correction;
 > - entirely synthetic fixture data created by the rehearsal's own code;
 > - Runs 1, 2, and 3 of runbook v2 §7, including the Run 1 step 11a F1-correction gate and the
 >   Run 3 `unresolved_case_reference` / `handoff_rejected` incident scenarios;

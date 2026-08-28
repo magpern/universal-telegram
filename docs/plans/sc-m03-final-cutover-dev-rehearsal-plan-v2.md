@@ -66,6 +66,16 @@ distinct-`binding_uuid` bindings throughout), and the new
 `test_deterministic_sc_refusal_becomes_handoff_rejected_incident`, and
 `test_wire_channel_case_ref_is_the_conversation_uuid_never_the_binding_uuid`.
 
+The current `origin/main` heads — universal-telegram `33b042ff98a3d78e9d6b2ac1c9eb6aa78bfb23b7`
+and universal-support-chat `2000eaf88fd223025e323d249496f7944a2db3e9` — are what this runbook
+pins (§1). Between the F1 closure commits (`32f17ea904a33cdd1f9b0225ba9638f95a09d883` /
+`5d81b5b7795ee50f3a79e535a483d7677b36d1c0`) and these heads, **only files under `docs/` were
+added or amended** — DEV rehearsal runbook v2, its Approval A addendum, the Support Chat decision
+record, and registry / milestone pointers. The `src/`, `tests/`, configuration, and CI-workflow
+trees are byte-for-byte those of the F1 correction (universal-telegram `7d4cc4f`,
+universal-support-chat `9144cb1`); **no code, schema, `db_version`, test, configuration, workflow,
+or runtime change occurred after F1.**
+
 **F1 is therefore no longer a code blocker.** What remains gated is *acceptance* of Tier 1: a
 Tier 1 re-attempt requires a **separate Approval A addendum**
 ([`docs/closure/sc-m03-final-cutover-dev-rehearsal-tier1-approval-addendum.md`](../closure/sc-m03-final-cutover-dev-rehearsal-tier1-approval-addendum.md),
@@ -80,13 +90,14 @@ blocked on B1 and B2.
 - Support Chat: ADR-0010 + ADR-0011 and their Product Owner decision records.
 - Companion (Support Chat): [`sc-m03-final-cutover-dev-rehearsal-plan-v2.md`](https://github.com/magpern/universal-support-chat/blob/main/docs/plans/sc-m03-final-cutover-dev-rehearsal-plan-v2.md) and [`sc-m03-final-cutover-dev-rehearsal-po-decisions.md`](https://github.com/magpern/universal-support-chat/blob/main/docs/decisions/sc-m03-final-cutover-dev-rehearsal-po-decisions.md).
 
-**Baselines this runbook pins (freshly fetched `origin/main`, both HEAD — these include the F1
-correction and its closure):**
+**Baselines this runbook pins (the current `origin/main` HEAD of each repository, freshly
+fetched — these contain the F1 correction, its closure, and this DEV rehearsal runbook v2 with
+its corrected Approval A addendum; documentation only was added since the F1 closure):**
 
 | Repository | Pinned SHA | Notes |
 |---|---|---|
-| `magpern/universal-telegram` | `32f17ea904a33cdd1f9b0225ba9638f95a09d883` | Plugin version `0.19.0`; schema `target_version()` `36` (unchanged by F1). Contains the F1 runtime correction (`7d4cc4f`) and its closure. |
-| `magpern/universal-support-chat` | `5d81b5b7795ee50f3a79e535a483d7677b36d1c0` | Plugin version `0.6.0`; `universal_support_chat_db_version` `11` (unchanged by F1). Contains the F1 comment corrections (`9144cb1`) and its closure. |
+| `magpern/universal-telegram` | `33b042ff98a3d78e9d6b2ac1c9eb6aa78bfb23b7` | Plugin version `0.19.0`; schema `target_version()` `36` (unchanged by F1). `src/` + `tests/` tree identical to the F1 runtime correction (`7d4cc4f`); only `docs/` added/amended since the F1 closure (`32f17ea`). |
+| `magpern/universal-support-chat` | `2000eaf88fd223025e323d249496f7944a2db3e9` | Plugin version `0.6.0`; `universal_support_chat_db_version` `11` (unchanged by F1). `src/` + `tests/` tree identical to the F1 comment corrections (`9144cb1`); only `docs/` added/amended since the F1 closure (`5d81b5b`). |
 
 The Contract v1 pins (`src/SupportChatAdapter/ContractConstants.php`:
 `CONTRACT_VERSION_ID='support-channel-contract/v1'`,
@@ -171,8 +182,8 @@ v1 §3 assumptions **A1, A2, A5–A8 remain unchanged.** Revised:
 
 | # | Assumption | Verify (in the disposable env, before it is relied on) |
 |---|---|---|
-| A1 | The rehearsal env's checked-out plugin SHAs equal the **v2** baselines (`32f17ea…` / `5d81b5b…`) and running schema is UT `36` / SC `11`. | `git rev-parse HEAD`; `wp eval` on `Migrator::target_version()` / `get_option('universal_support_chat_db_version')`. |
-| A3 | Whether `cutover begin` preflight enforces "mapping-complete on Support Chat's side" and "no blocking incident," or only the local `prepared` binding. UT `CutoverActivationService::preflight()` checks only for a `prepared`-status binding per candidate. | Read `CutoverActivationService::preflight()` at `32f17ea…`; drive a candidate whose SC map row is not `migrated` and observe whether `begin` refuses it. |
+| A1 | The rehearsal env's checked-out plugin SHAs equal the **v2** baselines (`33b042f…` / `2000eaf…`) and running schema is UT `36` / SC `11`. | `git rev-parse HEAD`; `wp eval` on `Migrator::target_version()` / `get_option('universal_support_chat_db_version')`. |
+| A3 | Whether `cutover begin` preflight enforces "mapping-complete on Support Chat's side" and "no blocking incident," or only the local `prepared` binding. UT `CutoverActivationService::preflight()` checks only for a `prepared`-status binding per candidate. | Read `CutoverActivationService::preflight()` at `33b042f…` (identical to `7d4cc4f` — the F1-correction code tree); drive a candidate whose SC map row is not `migrated` and observe whether `begin` refuses it. |
 | A4 | The exact Support Chat CLI used to confirm `status='migrated'` is `wp universal-support-chat legacy-migrate status` / `validate`. | Confirm against the pinned CLI; cross-check a known map row via `wp eval`. |
 | **A9 (new)** | A real `legacy-bind`-prepared binding (independent `binding_uuid`) is now handed off successfully by `replay-deferred-updates` — i.e. F1's correction holds end-to-end in the disposable harness, not only in the committed interop suite. | Run 1 step 11a: activate one real `legacy-bind` binding, buffer one operator reply, run one `replay-deferred-updates` pass, assert `OUTCOME_HANDED_OFF` + one `legacy_handoff_map` row whose `channel_case_ref` = the conversation UUID ≠ `binding_uuid`. **A hard gate before `cutover begin` (§8.1 precondition 9).** |
 | A6 | Synthetic deferred-update payloads injected via `DeferredUpdateRepository::buffer(...)` decrypt and drive `process_update()` / `CutoverReplayDispatcher` identically to a real webhook arrival. | Compare an injected-row replay against the interop suite's own fixtures (Tier 1) or a real authenticated webhook arrival (Tier 2). |
@@ -378,7 +389,7 @@ variants via `bin/docker/test-integration-interop.sh`:
 ### 8.1 Preconditions that must ALL hold before any mutating rehearsal command (revised)
 
 1. The applicable authorization is signed — the **Approval A addendum** (§10) for a Tier 1 run under v2; **Approval B** (which itself requires B1 + B2 resolved and Tier 1 PASS) for a Tier 2 run. (B5)
-2. Both checkouts `git rev-parse HEAD` == the **v2** baselines (`32f17ea…` / `5d81b5b…`); `git status` clean; the checkouts are the throwaway pair, never `/opt/biopentra/dev/*`. (A1)
+2. Both checkouts `git rev-parse HEAD` == the **v2** baselines (`33b042f…` / `2000eaf…`); `git status` clean; the checkouts are the throwaway pair, never `/opt/biopentra/dev/*`. (A1)
 3. Disposable env verified fresh: no plugin tables before install; after install, schema UT `36` / SC `11`; `cutover status` / `quiescence status` / `legacy-bind status` all report no open run / `idle` / no prepared bindings. (A8)
 4. Both plugins mutually paired; discovery `channel_available:true` with the six cutover ops on the peer allow-list. (A2)
 5. `docker volume ls` snapshot captured; `docker compose config` reviewed; for Tier 2, isolation of the instance and bot demonstrated. (A7)
@@ -442,8 +453,8 @@ refusal captures per incident, and the "unchanged at teardown" proof.
 A Tier 1 re-run PASSES only if **all** of the following are captured, redacted per §5:
 
 1. **Preconditions** (`00-preconditions/`): the signed Approval A addendum reference;
-   `git rev-parse HEAD` == `32f17ea904a33cdd1f9b0225ba9638f95a09d883` (UT) and
-   `5d81b5b7795ee50f3a79e535a483d7677b36d1c0` (SC), `git status` clean; `docker compose config`;
+   `git rev-parse HEAD` == `33b042ff98a3d78e9d6b2ac1c9eb6aa78bfb23b7` (UT) and
+   `2000eaf88fd223025e323d249496f7944a2db3e9` (SC), `git status` clean; `docker compose config`;
    `docker volume ls` before; `SHOW TABLES` empty of plugin tables before install; post-install
    `wp eval` schema assertion UT `36` / SC `11`; real two-way pairing + discovery
    `channel_available:true`.
@@ -493,8 +504,8 @@ operational cutover action. Verbatim text reproduced in §10.3 below.
 
 Approval B is unchanged and **cannot be signed until B1 and B2 are resolved and Tier 1 has
 passed under this runbook**. Its text (v1 §10 "Approval B") applies verbatim, with the pinned
-SHAs updated to the v2 baselines (`32f17ea904a33cdd1f9b0225ba9638f95a09d883` /
-`5d81b5b7795ee50f3a79e535a483d7677b36d1c0`).
+SHAs updated to the v2 baselines (`33b042ff98a3d78e9d6b2ac1c9eb6aa78bfb23b7` /
+`2000eaf88fd223025e323d249496f7944a2db3e9`).
 
 ### 10.3 Verbatim Approval A addendum text
 
@@ -507,14 +518,22 @@ SHAs updated to the v2 baselines (`32f17ea904a33cdd1f9b0225ba9638f95a09d883` /
 > `32f17ea904a33cdd1f9b0225ba9638f95a09d883`; universal-support-chat #26 →
 > `9144cb1e2362c2be8d4c74f1461bba7ffe236575`, closure #27 →
 > `5d81b5b7795ee50f3a79e535a483d7677b36d1c0`) and verified green by the real dual-plugin interop
-> suite on both supported WP/PHP variants.
+> suite on both supported WP/PHP variants. The current `origin/main` heads are universal-telegram
+> `33b042ff98a3d78e9d6b2ac1c9eb6aa78bfb23b7` and universal-support-chat
+> `2000eaf88fd223025e323d249496f7944a2db3e9`; between the F1 closure commits
+> (`32f17ea904a33cdd1f9b0225ba9638f95a09d883` / `5d81b5b7795ee50f3a79e535a483d7677b36d1c0`) and
+> these heads **only documentation was added or amended** — DEV rehearsal runbook v2 and this
+> corrected Approval A addendum. The `src/`, `tests/`, configuration, and CI-workflow trees are
+> byte-for-byte those of the F1 correction; no code, schema, `db_version`, test, configuration,
+> workflow, or runtime change occurred after F1.
 >
 > I authorize a **single Tier 1 re-attempt** of the SC-M03 final-cutover disposable automated
 > operational-sequence / integration validation, exactly as described in DEV rehearsal runbook
 > **v2** (`docs/plans/sc-m03-final-cutover-dev-rehearsal-plan-v2.md`) and its Support Chat
-> companion, pinned to universal-telegram `32f17ea904a33cdd1f9b0225ba9638f95a09d883` and
-> universal-support-chat `5d81b5b7795ee50f3a79e535a483d7677b36d1c0` (freshly fetched
-> `origin/main`, both HEAD).
+> companion, pinned to universal-telegram `33b042ff98a3d78e9d6b2ac1c9eb6aa78bfb23b7` and
+> universal-support-chat `2000eaf88fd223025e323d249496f7944a2db3e9` — the current `origin/main`
+> HEAD of each repository, freshly fetched, each of which contains DEV rehearsal runbook v2
+> (`docs/plans/sc-m03-final-cutover-dev-rehearsal-plan-v2.md`) and this Approval A addendum.
 >
 > This authorization is limited to:
 > - the container/PHPUnit interop harness only — `docker/docker-compose.yml` +
@@ -524,7 +543,9 @@ SHAs updated to the v2 baselines (`32f17ea904a33cdd1f9b0225ba9638f95a09d883` /
 >   networks, and named volumes brought up by `docker/docker-compose.yml` together with
 >   `docker/docker-compose.interop.yml`, solely for fresh synthetic test databases and harness
 >   services, and removed by `docker compose … down -v` after every run;
-> - fresh throwaway repository checkouts at the two pinned SHAs above;
+> - fresh throwaway repository checkouts at the two current pinned SHAs above — each contains DEV
+>   rehearsal runbook v2 and this Approval A addendum, and its `src/` / `tests/` / configuration /
+>   CI-workflow trees are unchanged from the F1 correction;
 > - entirely synthetic fixture data created by the rehearsal's own code;
 > - Runs 1, 2, and 3 of runbook v2 §7, including the Run 1 step 11a F1-correction gate and the
 >   Run 3 `unresolved_case_reference` / `handoff_rejected` incident scenarios;
