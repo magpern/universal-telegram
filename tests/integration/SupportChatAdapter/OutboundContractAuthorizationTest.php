@@ -489,7 +489,7 @@ final class OutboundContractAuthorizationTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * docs/adr/0045 §2: a signed `deliver_message` may carry an optional
+	 * ADR-0045 §2: a signed `deliver_message` may carry an optional
 	 * `delivery_class`. Absent and `interactive_chat` both pass validation
 	 * (reaching the business layer); an unknown value fails closed with
 	 * `400 invalid_delivery_class` — never coerced, never guessed — and the
@@ -497,7 +497,7 @@ final class OutboundContractAuthorizationTest extends WP_UnitTestCase {
 	 *
 	 * @dataProvider delivery_class_cases
 	 *
-	 * @param mixed $class          The `delivery_class` body value (or null to omit).
+	 * @param mixed $candidate      The `delivery_class` body value (or null to omit).
 	 * @param bool  $omit           Whether to omit the field entirely.
 	 * @param bool  $expect_invalid Whether a `400 invalid_delivery_class` is expected.
 	 */
