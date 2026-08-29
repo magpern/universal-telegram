@@ -195,3 +195,41 @@ still ships on normal cadence. `standard` sends do not fire it (unchanged).
   rate limiting, circuit breaking, retry policy, or audit controls.
 - No visitor-facing or operator-facing priority selector; no new settings page; no removal or
   reclassification of existing diagnostics or alerts (they stay `standard`).
+
+---
+
+## Amendment 1 — the Support Chat counterpart is fully asynchronous (2026-08-29, review correction)
+
+**Status: Accepted.** No Universal Telegram runtime change. Clarifies the interaction with
+Support Chat ADR-0014, whose own Amendment 1 removed its in-request "bounded immediate delivery
+attempt".
+
+### Context
+
+Support Chat ADR-0014's first draft ran a synchronous delivery attempt inside the visitor / Hub
+request. For a new conversation that attempt reached this plugin's `ensure_channel_case` →
+`EnsureChannelCaseService::ensure()` → `ForumTopicService::create()` →
+`TelegramApiClient::create_forum_topic()`, i.e. a **synchronous** `createForumTopic` Bot API
+call on the website's request thread. Support Chat has removed that in-request attempt.
+
+### What this means here
+
+- Every Contract v1 call this plugin receives from Support Chat — `ensure_channel_case`,
+  `notify_operators`, `deliver_transcript_backfill`, `deliver_message` — is now made **only**
+  from Support Chat's own asynchronous WP-Cron dispatch worker, never from a visitor / Hub HTTP
+  request. This plugin already treated those calls as ordinary signed Contract requests and
+  imposes no new constraint.
+- `EnsureChannelCaseService::ensure()` making a synchronous `createForumTopic` call is
+  **unchanged and acceptable**: it now only ever runs inside Support Chat's async worker
+  request, exactly as it does on Support Chat's recurring sweep.
+- `deliver_message` remains asynchronous here (encrypted row + Action Scheduler enqueue, no Bot
+  API call in the handler). The `interactive_chat` class still places that job ahead of
+  `standard` work (§3) and still fires the ADR-0023 `ExpeditedDispatchTrigger` (§4) — the
+  expedited path is entirely asynchronous on both sides.
+- No change to the schema (`db_version` 38), the `delivery_class` vocabulary, validation, queue
+  placement, `ExpeditedDispatchTrigger` wiring, or any reliability control.
+
+### Companion plan
+
+`docs/plans/ut-interactive-chat-delivery-priority-plan-v2.md` records this clarification; the
+v1 plan is retained unchanged.
