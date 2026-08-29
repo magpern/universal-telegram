@@ -119,8 +119,8 @@ final class LegacyChatPurge {
 		}
 
 		delete_option( Migrator::LEGACY_CHAT_RETIRED_OPTION );
-		update_option( self::DB_VERSION_OPTION, 37 );
-		$lines[] = 'cleared retirement marker; db_version set to 37';
+		update_option( self::DB_VERSION_OPTION, 38 );
+		$lines[] = 'cleared retirement marker; db_version set to 38';
 
 		// Postcondition.
 		$violations = array();

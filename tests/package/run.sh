@@ -136,13 +136,20 @@ if [ -z "$(m06_column_exists "outbound_messages" "claim_expires_at")" ]; then
 fi
 echo "OK: universal_telegram_outbound_messages.claim_expires_at column exists."
 
-echo "== Verifying db_version reached 37 (ADR-0044 forward-only step 37) =="
-DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "37" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=37, got ${DB_VERSION}" >&2
+echo "== Verifying ADR-0045's transport delivery_class column exists on the queue =="
+if [ -z "$(m06_column_exists "outbound_messages" "delivery_class")" ]; then
+	echo "FAIL: universal_telegram_outbound_messages.delivery_class column was not created on activation" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 37."
+echo "OK: universal_telegram_outbound_messages.delivery_class column exists."
+
+echo "== Verifying db_version reached 38 (ADR-0045 delivery_class step 38) =="
+DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
+if [ "38" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=38, got ${DB_VERSION}" >&2
+	exit 1
+fi
+echo "OK: universal_telegram_db_version is 38."
 
 echo "== Verifying ADR-0044: the retained adapter operator-identity map table exists =="
 if [ -z "$(m02_table_exists "operator_identity_map")" ]; then

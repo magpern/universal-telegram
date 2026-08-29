@@ -36,6 +36,7 @@ final class OutboundMessage {
 	 * @param string                $updated_at                     Last-modified timestamp.
 	 * @param string|null           $sent_at                        When this message was confirmed sent.
 	 * @param string|null           $claim_expires_at                When the currently held sending claim/lease expires, or null if unclaimed (M06.2 corrective plan v2, ADR-0023 amendment).
+	 * @param string                $delivery_class                  Fixed transport priority class (docs/adr/0045); `standard` or `interactive_chat`, never content.
 	 */
 	public function __construct(
 		private readonly int $id,
@@ -53,8 +54,20 @@ final class OutboundMessage {
 		private readonly string $created_at,
 		private readonly string $updated_at,
 		private readonly ?string $sent_at,
-		private readonly ?string $claim_expires_at = null
+		private readonly ?string $claim_expires_at = null,
+		private readonly string $delivery_class = 'standard'
 	) {}
+
+	/**
+	 * The fixed transport priority class (docs/adr/0045). `standard` for
+	 * every ordinary send; `interactive_chat` only for a Support Chat
+	 * website-chat message. Never message content.
+	 *
+	 * @return string
+	 */
+	public function delivery_class(): string {
+		return $this->delivery_class;
+	}
 
 	/**
 	 * Primary key.

@@ -69,7 +69,7 @@ final class LegacyChatPurgeTest extends WP_UnitTestCase {
 		}
 		self::assertNull( get_option( 'universal_telegram_ai_settings', null ) );
 		self::assertNull( get_option( Migrator::LEGACY_CHAT_RETIRED_OPTION, null ) );
-		self::assertSame( '37', (string) get_option( 'universal_telegram_db_version' ) );
+		self::assertSame( '38', (string) get_option( 'universal_telegram_db_version' ) );
 
 		self::assertTrue( Migrator::table_exists( $bots ) );
 		self::assertSame( 'CIPHER', (string) $wpdb->get_var( "SELECT token_ciphertext FROM {$bots} LIMIT 1" ) ); // phpcs:ignore

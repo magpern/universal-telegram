@@ -11,6 +11,7 @@ namespace UniversalTelegram\SupportChatAdapter\Outbound;
 
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
+use UniversalTelegram\Queue\DeliveryClass;
 use UniversalTelegram\SupportChatAdapter\AdapterAvailability;
 use UniversalTelegram\SupportChatAdapter\Auth\PeerRepository;
 use UniversalTelegram\SupportChatAdapter\Auth\SignatureVerifier;
@@ -423,7 +424,22 @@ final class OutboundContractController {
 			return new WP_REST_Response( array( 'ok' => false ), 400 );
 		}
 
-		$result = $this->deliver->deliver( $ref, $key, $body, $attr );
+		// docs/adr/0045 §2: optional, fixed-vocabulary transport priority
+		// class. Absent ⇒ `standard` (unchanged behaviour). A present value
+		// that is not a string in the fixed set is rejected — never
+		// coerced, never guessed.
+		$delivery_class = DeliveryClass::from_wire( $params['delivery_class'] ?? null );
+		if ( null === $delivery_class ) {
+			return new WP_REST_Response(
+				array(
+					'ok'     => false,
+					'reason' => 'invalid_delivery_class',
+				),
+				400
+			);
+		}
+
+		$result = $this->deliver->deliver( $ref, $key, $body, $attr, $delivery_class );
 
 		return new WP_REST_Response(
 			array(

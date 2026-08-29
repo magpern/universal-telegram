@@ -11,6 +11,7 @@ namespace UniversalTelegram\Telegram\Outbound;
 
 use UniversalTelegram\Core\Security\CredentialResult;
 use UniversalTelegram\Core\Security\CredentialVault;
+use UniversalTelegram\Queue\DeliveryClass;
 use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
 
@@ -42,10 +43,11 @@ final class OutboundMessageRepository {
 	 * @param int         $destination_id  The target destination's primary key.
 	 * @param string      $body_plaintext  The message text.
 	 * @param string|null $parse_mode      Telegram's own parse_mode parameter.
+	 * @param string      $delivery_class  Fixed transport priority class (docs/adr/0045); defaults to `standard`.
 	 *
 	 * @return OutboundMessage|null Null if the schema is unavailable or the insert failed.
 	 */
-	public function create( int $bot_id, int $destination_id, string $body_plaintext, ?string $parse_mode ): ?OutboundMessage {
+	public function create( int $bot_id, int $destination_id, string $body_plaintext, ?string $parse_mode, string $delivery_class = DeliveryClass::STANDARD ): ?OutboundMessage {
 		if ( ! $this->schema_health->is_available() ) {
 			return null;
 		}
@@ -65,10 +67,11 @@ final class OutboundMessageRepository {
 				'body_ciphertext' => $this->credential_vault->encrypt( $body_plaintext, self::CONTEXT_PREFIX . $message_uuid ),
 				'parse_mode'      => $parse_mode,
 				'status'          => OutboundMessageStatus::PENDING->value,
+				'delivery_class'  => DeliveryClass::from_storage( $delivery_class ),
 				'created_at'      => $now,
 				'updated_at'      => $now,
 			),
-			array( '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s' )
+			array( '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s' )
 		);
 
 		if ( false === $inserted ) {
@@ -565,7 +568,8 @@ final class OutboundMessageRepository {
 			(string) $row['created_at'],
 			(string) $row['updated_at'],
 			null === $row['sent_at'] ? null : (string) $row['sent_at'],
-			null === $row['claim_expires_at'] ? null : (string) $row['claim_expires_at']
+			null === $row['claim_expires_at'] ? null : (string) $row['claim_expires_at'],
+			DeliveryClass::from_storage( $row['delivery_class'] ?? null )
 		);
 	}
 }
