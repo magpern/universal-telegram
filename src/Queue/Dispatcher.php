@@ -25,6 +25,18 @@ use UniversalTelegram\Persistence\SchemaHealth;
 class Dispatcher {
 
 	/**
+	 * How far in the past an `interactive_chat` action is scheduled so
+	 * Action Scheduler — which claims due actions in `scheduled_date ASC,
+	 * action_id ASC` order — runs it ahead of freshly-enqueued `standard`
+	 * work, while `scheduled_date` monotonicity keeps FIFO within the
+	 * interactive class (docs/adr/0045 §3). Deliberately far larger than
+	 * any healthy queue's oldest pending `standard` action.
+	 *
+	 * @var int
+	 */
+	private const INTERACTIVE_PRIORITY_LEAD_SECONDS = 86400;
+
+	/**
 	 * Checked before ever calling Action Scheduler.
 	 *
 	 * @var SchemaHealth
@@ -52,8 +64,17 @@ class Dispatcher {
 			return DispatchResult::schema_unavailable();
 		}
 
+		$args = array( $envelope->to_action_args() );
+
+		$payload        = $envelope->payload();
+		$delivery_class = isset( $payload['delivery_class'] ) && is_string( $payload['delivery_class'] )
+			? $payload['delivery_class']
+			: DeliveryClass::STANDARD;
+
 		try {
-			$action_id = $this->schedule_action( array( $envelope->to_action_args() ) );
+			$action_id = DeliveryClass::INTERACTIVE_CHAT === $delivery_class
+				? $this->schedule_interactive_action( $args )
+				: $this->schedule_action( $args );
 		} catch ( Throwable $exception ) {
 			return DispatchResult::failed( FailureCode::DISPATCH_EXCEPTION );
 		}
@@ -75,5 +96,24 @@ class Dispatcher {
 	 */
 	protected function schedule_action( array $args ) {
 		return as_enqueue_async_action( WorkerRunner::HOOK, $args, WorkerRunner::GROUP );
+	}
+
+	/**
+	 * Schedules an `interactive_chat` job with an earlier `scheduled_date`
+	 * so Action Scheduler claims it ahead of ordinary work (docs/adr/0045
+	 * §3). Same hook, same group, same handler — only queue position
+	 * changes. Overridable by tests; production code never overrides it.
+	 *
+	 * @param array<int, mixed> $args The Action Scheduler action arguments.
+	 *
+	 * @return int|bool
+	 */
+	protected function schedule_interactive_action( array $args ) {
+		return as_schedule_single_action(
+			time() - self::INTERACTIVE_PRIORITY_LEAD_SECONDS,
+			WorkerRunner::HOOK,
+			$args,
+			WorkerRunner::GROUP
+		);
 	}
 }

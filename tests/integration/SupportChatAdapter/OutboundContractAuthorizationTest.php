@@ -487,4 +487,64 @@ final class OutboundContractAuthorizationTest extends WP_UnitTestCase {
 		$this->assertFalse( $first_response->is_error() );
 		$this->assertTrue( $second_response->is_error() || $second_response->get_status() >= 400 );
 	}
+
+	/**
+	 * ADR-0045 §2: a signed `deliver_message` may carry an optional
+	 * `delivery_class`. Absent and `interactive_chat` both pass validation
+	 * (reaching the business layer); an unknown value fails closed with
+	 * `400 invalid_delivery_class` — never coerced, never guessed — and the
+	 * signature gate still runs first.
+	 *
+	 * @dataProvider delivery_class_cases
+	 *
+	 * @param mixed $candidate      The `delivery_class` body value (or null to omit).
+	 * @param bool  $omit           Whether to omit the field entirely.
+	 * @param bool  $expect_invalid Whether a `400 invalid_delivery_class` is expected.
+	 */
+	public function test_deliver_message_delivery_class_is_validated_and_fail_closed( $candidate, bool $omit, bool $expect_invalid ): void {
+		wp_set_current_user( 0 );
+		$this->pair_peer(
+			array( 'ensure_channel_case', 'notify_operators', 'deliver_transcript_backfill', 'deliver_message' )
+		);
+
+		$body = array(
+			'channel_case_ref' => 'b7777777-7777-7777-7777-777777777777',
+			'idempotency_key'  => 'deliver-class-' . md5( (string) wp_json_encode( array( $candidate, $omit ) ) ),
+			'body'             => 'hello',
+		);
+		if ( ! $omit ) {
+			$body['delivery_class'] = $candidate;
+		}
+
+		$route    = '/' . ContractConstants::UT_REST_NAMESPACE . ContractConstants::UT_REST_PREFIX . '/deliver_message';
+		$response = rest_do_request( $this->build_signed_request( 'deliver_message', $route, $body ) );
+
+		$status = $response->get_status();
+		$this->assertNotSame( 401, $status, 'signature gate must run first' );
+		$this->assertNotSame( 403, $status );
+
+		if ( $expect_invalid ) {
+			$this->assertSame( 400, $status );
+			$this->assertSame( 'invalid_delivery_class', $response->get_data()['reason'] ?? null );
+		} else {
+			// Valid class ⇒ validation passed; the business layer then
+			// fails on the fixture's missing binding (503 ok:false), which
+			// is NOT a `400 invalid_delivery_class`.
+			$this->assertNotSame( 400, $status );
+		}
+	}
+
+	/**
+	 * @return array<string, array{0: mixed, 1: bool, 2: bool}>
+	 */
+	public static function delivery_class_cases(): array {
+		return array(
+			'absent'            => array( null, true, false ),
+			'explicit standard' => array( 'standard', false, false ),
+			'interactive_chat'  => array( 'interactive_chat', false, false ),
+			'unknown token'     => array( 'urgent', false, true ),
+			'empty string'      => array( '', false, true ),
+			'non-string'        => array( array( 'interactive_chat' ), false, true ),
+		);
+	}
 }

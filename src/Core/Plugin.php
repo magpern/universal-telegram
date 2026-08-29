@@ -76,6 +76,7 @@ use UniversalTelegram\Persistence\Migrator;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
 use UniversalTelegram\Queue\Dispatcher;
+use UniversalTelegram\Queue\ExpeditedDispatchTrigger;
 use UniversalTelegram\Queue\HandlerRegistry;
 use UniversalTelegram\Queue\QueueHealth;
 use UniversalTelegram\Queue\RetryPolicy;
@@ -626,7 +627,8 @@ final class Plugin {
 			$adapter_bindings,
 			$adapter_delivery_keys,
 			$this->outbound_message_repository,
-			$this->dispatcher
+			$this->dispatcher,
+			new ExpeditedDispatchTrigger( $this->audit_logger )
 		);
 		$adapter_notify        = new NotifyOperatorsService( $adapter_deliver );
 		$adapter_backfill      = new BackfillService( $adapter_deliver );

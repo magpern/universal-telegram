@@ -136,7 +136,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 37;
+		return 38;
 	}
 
 	/**
@@ -250,6 +250,7 @@ class Migrator {
 			35 => $retired,
 			36 => $retired,
 			37 => array( array( $this, 'step_37_retire_legacy_chat' ), array( $this, 'verify_step_37' ) ),
+			38 => array( array( $this, 'step_38_add_outbound_message_delivery_class' ), array( $this, 'verify_step_38' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -447,6 +448,46 @@ class Migrator {
 		$legacy_table = $wpdb->prefix . self::OPERATOR_IDENTITIES_TABLE;
 
 		return ! self::table_exists( $legacy_table ) || OperatorIdentityMapMigration::verify_bijection()->holds();
+	}
+
+	/**
+	 * Adds `outbound_messages.delivery_class` — the fixed transport
+	 * priority class (docs/adr/0045 §1). Additive, `NOT NULL DEFAULT
+	 * 'standard'`, so every existing row and every existing caller is
+	 * `standard` with no backfill. Same `SHOW COLUMNS ... LIKE` /
+	 * `ALTER TABLE ... ADD COLUMN` idiom as `step_34_add_prepared_binding_status`.
+	 */
+	private function step_38_add_outbound_message_delivery_class(): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::OUTBOUND_MESSAGES_TABLE;
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// SHOW COLUMNS (this connection), not INFORMATION_SCHEMA — same
+		// stale-cache reasoning as step_29's column checks.
+		$column = $wpdb->get_row( "SHOW COLUMNS FROM {$table} LIKE 'delivery_class'", ARRAY_A );
+
+		if ( null === $column ) {
+			$wpdb->query(
+				"ALTER TABLE {$table}
+					ADD COLUMN delivery_class VARCHAR(32) NOT NULL DEFAULT 'standard' AFTER status"
+			);
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Postcondition for step 38: the additive column exists.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_38(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::OUTBOUND_MESSAGES_TABLE,
+			array( 'delivery_class' )
+		);
 	}
 
 	/**
@@ -671,6 +712,7 @@ class Migrator {
 				body_ciphertext LONGTEXT NULL,
 				parse_mode VARCHAR(16) NULL,
 				status VARCHAR(16) NOT NULL DEFAULT 'pending',
+				delivery_class VARCHAR(32) NOT NULL DEFAULT 'standard',
 				attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
 				last_failure_code VARCHAR(64) NULL,
 				possible_duplicate_delivery TINYINT(1) NOT NULL DEFAULT 0,
@@ -708,6 +750,7 @@ class Migrator {
 				'body_ciphertext',
 				'parse_mode',
 				'status',
+				'delivery_class',
 				'attempt_count',
 				'last_failure_code',
 				'possible_duplicate_delivery',

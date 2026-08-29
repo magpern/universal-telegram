@@ -1,6 +1,6 @@
 <?php
 /**
- * ADR-0044 forward-only v37 migration lifecycle.
+ * ADR-0044 forward-only migration lifecycle (v37 retirement + v38 delivery_class, ADR-0045).
  *
  * @package UniversalTelegram
  */
@@ -31,14 +31,14 @@ final class MigrationLifecycleTest extends WP_UnitTestCase {
 		delete_option( Migrator::LEGACY_CHAT_RETIRED_OPTION );
 	}
 
-	public function test_target_version_is_37_and_monotonic(): void {
+	public function test_target_version_is_38_and_monotonic(): void {
 		$probe = new class( new MigrationLock() ) extends Migrator {
 			public function target(): int {
 				return $this->target_version();
 			}
 		};
 
-		self::assertSame( 37, $probe->target() );
+		self::assertSame( 38, $probe->target() );
 	}
 
 	public function test_fresh_install_creates_only_retained_schema_and_never_a_legacy_table(): void {
@@ -46,7 +46,7 @@ final class MigrationLifecycleTest extends WP_UnitTestCase {
 
 		( new Migrator( new MigrationLock() ) )->maybe_migrate();
 
-		self::assertSame( '37', (string) get_option( 'universal_telegram_db_version' ) );
+		self::assertSame( '38', (string) get_option( 'universal_telegram_db_version' ) );
 		self::assertTrue( Migrator::table_exists( $wpdb->prefix . Migrator::OPERATOR_IDENTITY_MAP_TABLE ) );
 		self::assertTrue( Migrator::table_exists( $wpdb->prefix . Migrator::SUPPORT_CHAT_BINDINGS_TABLE ) );
 		self::assertTrue( Migrator::table_exists( $wpdb->prefix . Migrator::OPERATIONAL_ALERT_STATE_TABLE ) );
@@ -79,7 +79,7 @@ final class MigrationLifecycleTest extends WP_UnitTestCase {
 
 		( new Migrator( new MigrationLock() ) )->maybe_migrate();
 
-		self::assertSame( '37', (string) get_option( 'universal_telegram_db_version' ) );
+		self::assertSame( '38', (string) get_option( 'universal_telegram_db_version' ) );
 
 		$map = $wpdb->prefix . Migrator::OPERATOR_IDENTITY_MAP_TABLE;
 		self::assertTrue( Migrator::table_exists( $map ) );
