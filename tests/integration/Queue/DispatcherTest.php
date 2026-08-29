@@ -115,33 +115,45 @@ final class DispatcherTest extends WP_UnitTestCase {
 		);
 
 		// Enqueue order: standard #1, interactive #1, standard #2, interactive #2.
-		$dispatcher->enqueue( $make( 's1', DeliveryClass::STANDARD ) );
-		$dispatcher->enqueue( $make( 'i1', DeliveryClass::INTERACTIVE_CHAT ) );
-		$dispatcher->enqueue( $make( 's2', DeliveryClass::STANDARD ) );
-		$dispatcher->enqueue( $make( 'i2', DeliveryClass::INTERACTIVE_CHAT ) );
+		$s1 = (int) $dispatcher->enqueue( $make( 's1', DeliveryClass::STANDARD ) )->action_id();
+		$i1 = (int) $dispatcher->enqueue( $make( 'i1', DeliveryClass::INTERACTIVE_CHAT ) )->action_id();
+		$s2 = (int) $dispatcher->enqueue( $make( 's2', DeliveryClass::STANDARD ) )->action_id();
+		$i2 = (int) $dispatcher->enqueue( $make( 'i2', DeliveryClass::INTERACTIVE_CHAT ) )->action_id();
 
 		$store = \ActionScheduler::store();
-		$ids   = $store->query_actions(
-			array(
-				'hook'     => \UniversalTelegram\Queue\WorkerRunner::HOOK,
-				'group'    => \UniversalTelegram\Queue\WorkerRunner::GROUP,
-				'status'   => \ActionScheduler_Store::STATUS_PENDING,
-				'orderby'  => 'date',
-				'order'    => 'ASC',
-				'per_page' => 50,
-			)
-		);
+		$at    = static function ( int $action_id ) use ( $store ): int {
+			$date = $store->fetch_action( $action_id )->get_schedule()->get_date();
 
-		$order = array();
-		foreach ( $ids as $action_id ) {
-			$order[] = $store->fetch_action( $action_id )->get_args()[0]['job_id'];
-		}
+			// An `as_enqueue_async_action` job has no scheduled date (it runs
+			// ASAP, effectively "now"); an interactive job is deliberately
+			// past-dated.
+			return null === $date ? time() : $date->getTimestamp();
+		};
 
-		$order = array_values( array_intersect( $order, array( 'order-s1', 'order-i1', 'order-s2', 'order-i2' ) ) );
+		$now = time();
 
-		// Both interactive actions are claimed before either standard one,
-		// and FIFO holds within each class.
-		$this->assertSame( array( 'order-i1', 'order-i2', 'order-s1', 'order-s2' ), $order );
+		// The mechanism (docs/adr/0045 §3): interactive actions are dated far
+		// in the past so Action Scheduler — which claims `scheduled_date ASC,
+		// action_id ASC` — takes them ahead of ordinary work.
+		$this->assertLessThan( $now - 3600, $at( $i1 ), 'interactive is past-dated for priority' );
+		$this->assertLessThan( $now - 3600, $at( $i2 ) );
+
+		// Standard actions are never past-dated for priority.
+		$this->assertGreaterThanOrEqual( $now - 60, $at( $s1 ) );
+		$this->assertGreaterThanOrEqual( $now - 60, $at( $s2 ) );
+
+		// So every interactive action sorts before every standard one.
+		$this->assertLessThan( $at( $s1 ), $at( $i1 ) );
+		$this->assertLessThan( $at( $s2 ), $at( $i2 ) );
+
+		// FIFO within the interactive class: same-second dates, so the
+		// earlier-enqueued action carries the lower action_id — the exact
+		// tiebreak Action Scheduler's claim query uses.
+		$this->assertLessThanOrEqual( $at( $i2 ), $at( $i1 ) );
+		$this->assertLessThan( $i2, $i1 );
+
+		// FIFO within the standard class, unchanged.
+		$this->assertLessThan( $s2, $s1 );
 	}
 
 	public function test_schema_unavailable_refuses_dispatch_without_calling_action_scheduler(): void {
