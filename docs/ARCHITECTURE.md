@@ -87,7 +87,20 @@ Versioning follows Semantic Versioning: while the plugin remains below `1.0.0`, 
 
 The database schema version is an entirely independent, monotonically increasing integer, unrelated to the plugin's own Semantic Versioning string, stored in its own dedicated option (`universal_telegram_db_version`), starting at `1` for M00's own single migration step, moving to `7` at M01 (six additional Telegram tables), to `10` at M02 (three additional migration steps: `event_history` and `fatal_error_markers` at step 8, `notification_rules` at step 9, `notification_dispatch_log` at step 10), to `12` at M05 (two additional migration steps: `universal_telegram_conversations` at step 11, `universal_telegram_conversation_messages` at step 12), and to `13` at M06 core (one additional migration step, `step_13_add_conversation_idempotency_columns`, altering — not adding — those same two M05 tables with nullable, uniquely-indexed idempotency columns), and to `14` at M06.2's own corrective pass (v2, ADR-0023 amendment; one additional migration step, `step_14_add_claim_lease_columns`, adding nullable `claim_expires_at`/`topic_claim_expires_at` lease columns to the outbound messages and conversations tables, powering the claim-protected delivery protocol), and to `18` at M07 (two additional migration steps: `universal_telegram_operator_identities`, `universal_telegram_conversation_notes`, and `universal_telegram_operator_availability` at step 17, and `assignee_last_seen_message_id`/`telegram_sender_user_id` columns added to the conversations/conversation-messages tables at step 18), and to `22` at M09 (ADR-0028; `universal_telegram_ai_config` at step 19, `universal_telegram_ai_drafts` at step 20, a nullable `ai_ack_policy_version` column added to conversations at step 21, and a corrective step 22 widening `ai_drafts.requested_by_user_id` to nullable), and to `24` at M11A (ADR-0029; two additional migration steps: `universal_telegram_visitor_digest_counters` at step 23 and the seeded singleton `universal_telegram_visitor_digest_state` at step 24), and to `28` at M11B (ADR-0030; four additional migration steps: `universal_telegram_operational_summary_runs` at step 25, the seeded singleton `universal_telegram_intelligence_settings_state` at step 26, `universal_telegram_operational_alert_state` seeded with its three fixed alert-type rows at step 27, and `universal_telegram_operational_summary_ai_drafts` at step 28), and to `29` at M07.1 (ADR-0031; one additional migration step: topic lifecycle columns plus UNIQUE `conversations.destination_id` after duplicate-nulling repair), and to `30` at M08.1 (ADR-0032; one additional migration step, `step_30_add_notification_rule_match_mode_column`, adding the per-rule `match_mode` column). M08.2 adds no migration step; `db_version` stays `30`.
 
-A future Git tag, whenever one is first created by whichever milestone first produces a public release, follows the format `vX.Y.Z`. A built distributable package is named `universal-telegram-{version}.zip`, built via `bin/docker/build-zip.sh`. No Git tag and no GitHub Release exist as of M02.
+Release tags follow the format `vX.Y.Z` (a `-rc.N` / `-beta.N` suffix marks a
+prerelease). The canonical version source is the `Version:` header and the
+`UNIVERSAL_TELEGRAM_VERSION` constant in `universal-telegram.php`, together with
+the `Stable tag` in `readme.txt`; these must agree. (`CHANGELOG.md` is not
+currently kept in sync with the plugin version and is not treated as an
+authoritative version source.) The distributable package
+`universal-telegram-{version}.zip` (plus `universal-telegram-{version}.zip.sha256`)
+is built by `scripts/build-release-package.sh` — run locally via the Docker
+wrapper `bin/docker/build-release-package.sh`, and in CI by the packaging
+validation job in `ci.yml` and by `.github/workflows/release.yml`. Pushing a
+`vX.Y.Z` tag on `main` triggers `release.yml`, which runs the quality gates,
+verifies the packaged version equals the tag, and publishes a GitHub Release
+with the ZIP and checksum attached. Generated artifacts are CI outputs and are
+never committed. Full procedure: [`docs/RELEASE.md`](RELEASE.md).
 
 ## Where to look
 

@@ -64,14 +64,29 @@ jobs:
       - name: Integration tests (WordPress 7.1, WooCommerce 11.0.1)
         run: bin/docker/test-integration-wc-present.sh --wp-version=7.1 --wc-version=11.0.1
 
-  build:
+  package:
+    name: Release package (build validation, no publish)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Install dependencies
-        run: bin/docker/composer.sh install --no-interaction
-      - name: Build ZIP
-        run: bin/docker/build-zip.sh
+      - name: Build the release package (Docker php service)
+        run: bin/docker/build-release-package.sh
+      - name: Inspect the artifact
+        run: |
+          set -euo pipefail
+          zip="$(ls dist/universal-telegram-*.zip)"
+          sum="$(ls dist/universal-telegram-*.zip.sha256)"
+          test -s "$zip"
+          test -s "$sum"
+          echo "== ZIP contents =="
+          unzip -l "$zip"
+          ( cd dist && sha256sum -c "$(basename "$sum")" )
+          names="$(unzip -Z1 "$zip")"
+          test "$(printf '%s\n' "$names" | cut -d/ -f1 | sort -u)" = "universal-telegram"
+          printf '%s\n' "$names" | grep -qx 'universal-telegram/universal-telegram.php'
+          printf '%s\n' "$names" | grep -qx 'universal-telegram/vendor/autoload.php'
+          printf '%s\n' "$names" | grep -qx 'universal-telegram/vendor/woocommerce/action-scheduler/action-scheduler.php'
+          ! printf '%s\n' "$names" | grep -qE '/(\.git|\.github|\.claude|tests|docs|docker|bin|scripts)/'
 
   package-acceptance:
     runs-on: ubuntu-latest

@@ -19,7 +19,7 @@ DB_PASS="${WP_TESTS_DB_PASSWORD:-root}"
 TABLE_PREFIX="wp_"
 
 echo "== Building the distributable ZIP =="
-bash "${REPO_ROOT}/bin/build-zip.sh"
+bash "${REPO_ROOT}/scripts/build-release-package.sh"
 
 VERSION="$(
 	php -r '
