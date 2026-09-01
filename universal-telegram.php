@@ -3,7 +3,7 @@
  * Plugin Name:       Telegram Operations Hub for WordPress
  * Plugin URI:        https://github.com/magpern/universal-telegram
  * Description:       Bidirectional Telegram bot connectivity: multiple bot profiles, destinations, outbound queue, authenticated inbound webhook, retry, rate limiting, circuit breaking, dead-letter handling, and diagnostics.
- * Version:           0.19.0
+ * Version:           0.19.1
  * Requires at least: 6.9
  * Requires PHP:      8.1
  * Author:            Magnus Pernemark
@@ -18,12 +18,25 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'UNIVERSAL_TELEGRAM_VERSION', '0.19.0' );
+define( 'UNIVERSAL_TELEGRAM_VERSION', '0.19.1' );
 define( 'UNIVERSAL_TELEGRAM_PLUGIN_FILE', __FILE__ );
 
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/vendor/woocommerce/action-scheduler/action-scheduler.php';
 require_once __DIR__ . '/universal-telegram-functions.php';
+
+/**
+ * Automatic updates via the private update server. Define PRIVATE_UPDATE_SERVER
+ * (scheme + host, no trailing slash) in wp-config.php to enable; when it is not
+ * defined the plugin does not check for updates.
+ */
+if ( defined( 'PRIVATE_UPDATE_SERVER' ) && PRIVATE_UPDATE_SERVER && class_exists( \YahnisElsts\PluginUpdateChecker\v5\PucFactory::class ) ) {
+	\YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+		rtrim( (string) PRIVATE_UPDATE_SERVER, '/' ) . '/?action=get_metadata&slug=universal-telegram',
+		UNIVERSAL_TELEGRAM_PLUGIN_FILE,
+		'universal-telegram'
+	);
+}
 
 add_action(
 	'before_woocommerce_init',
