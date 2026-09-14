@@ -116,7 +116,9 @@ final class BotCommandDispatcherReplyRoutingTest extends WP_UnitTestCase {
 		$destinations = new DestinationRepository( $schema_health );
 		$messages     = new OutboundMessageRepository( $schema_health, $vault );
 
-		$bot               = $bots->create( 'Bot', 'token' );
+		$bot = $bots->create( 'Bot', 'token' );
+		$bots->update_telegram_identity( $bot->id(), 123456, 'TestBot' );
+		$bot               = $bots->find( $bot->id() );
 		$group_destination = $destinations->create( $bot->id(), DestinationKind::SUPERGROUP, '-1001', null, 'Group' );
 
 		$send_handler = new SendMessageHandler(
@@ -210,9 +212,13 @@ final class BotCommandDispatcherReplyRoutingTest extends WP_UnitTestCase {
 		$this->assertSame( (string) $group_destination->id(), (string) $rows[1]['destination_id'], 'the second row is the group breadcrumb' );
 		$this->assertSame( 'sent', $rows[1]['status'] );
 
-		$breadcrumb = $messages->decrypt_body( $messages->find_by_uuid( $rows[1]['message_uuid'] ) );
+		$breadcrumb_message = $messages->find_by_uuid( $rows[1]['message_uuid'] );
+		$breadcrumb         = $messages->decrypt_body( $breadcrumb_message );
 		$this->assertNotNull( $breadcrumb );
 		$this->assertSame( CommandAcknowledgements::REPLIED_PRIVATELY, $breadcrumb->plaintext() );
+
+		$keyboard = $messages->decrypt_reply_markup( $breadcrumb_message );
+		$this->assertSame( 'https://t.me/TestBot', $keyboard['inline_keyboard'][0][0]['url'], 'the breadcrumb carries an Open chat button straight to the bots DM' );
 	}
 
 	public function test_whoami_falls_back_to_a_neutral_group_prompt_when_the_operator_has_never_dmed_the_bot(): void {
@@ -243,9 +249,13 @@ final class BotCommandDispatcherReplyRoutingTest extends WP_UnitTestCase {
 		);
 		$this->assertCount( 1, $group_rows, 'exactly one message went to the group destination' );
 
-		$decrypted = $messages->decrypt_body( $messages->find_by_uuid( $this->uuid_for( $group_rows[0], $table ) ) );
+		$fallback_message = $messages->find_by_uuid( $this->uuid_for( $group_rows[0], $table ) );
+		$decrypted        = $messages->decrypt_body( $fallback_message );
 		$this->assertNotNull( $decrypted );
 		$this->assertSame( CommandAcknowledgements::DM_REQUIRED, $decrypted->plaintext(), 'the group message is the neutral prompt, never the actual whoami answer' );
+
+		$keyboard = $messages->decrypt_reply_markup( $fallback_message );
+		$this->assertSame( 'https://t.me/TestBot', $keyboard['inline_keyboard'][0][0]['url'], 'the fallback prompt carries the same Open chat button, pointing at the chat the operator needs to open' );
 	}
 
 	/**

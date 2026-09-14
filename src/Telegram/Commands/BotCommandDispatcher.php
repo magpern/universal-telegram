@@ -52,6 +52,18 @@ final class BotCommandDispatcher {
 	private ?int $current_sender_telegram_user_id = null;
 
 	/**
+	 * The current inbound command's own receiving bot username, set once at
+	 * the top of handle() alongside current_sender_telegram_user_id, for
+	 * the same reason: building the "open private chat" link button on a
+	 * successful-private-delivery breadcrumb without changing reply()'s own
+	 * signature (and therefore every one of the nine existing handle_*
+	 * call sites).
+	 *
+	 * @var string|null
+	 */
+	private ?string $current_bot_username = null;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param OperatorIdentityMapRepository  $operator_identities Resolves the inbound sender's mapped WordPress operator.
@@ -95,6 +107,7 @@ final class BotCommandDispatcher {
 		}
 
 		$this->current_sender_telegram_user_id = $sender_telegram_user_id;
+		$this->current_bot_username            = $bot->telegram_username();
 
 		$mapped_identity = $this->operator_identities->find_by_telegram_user_id( $sender_telegram_user_id );
 
@@ -488,12 +501,39 @@ final class BotCommandDispatcher {
 		}
 
 		if ( AttemptOutcome::DELIVERED === $outcome ) {
-			$this->message_dispatcher->send( $bot_id, $destination_id, CommandAcknowledgements::REPLIED_PRIVATELY, null, null, true );
+			$this->message_dispatcher->send( $bot_id, $destination_id, CommandAcknowledgements::REPLIED_PRIVATELY, null, $this->open_dm_keyboard(), true );
 
 			return;
 		}
 
-		$this->message_dispatcher->send( $bot_id, $destination_id, CommandAcknowledgements::DM_REQUIRED, null, null, true );
+		$this->message_dispatcher->send( $bot_id, $destination_id, CommandAcknowledgements::DM_REQUIRED, null, $this->open_dm_keyboard(), true );
+	}
+
+	/**
+	 * A one-button "Open chat" link straight to the bot's own private chat
+	 * (a plain `t.me` URL button -- no API call, no special permission),
+	 * attached to both the success breadcrumb (skip hunting for the DM)
+	 * and the DM-required fallback (the exact chat the operator needs to
+	 * open). Null when the bot's own username is unknown (should not
+	 * happen for a real Telegram bot, but every bot has one in practice).
+	 *
+	 * @return array{inline_keyboard: array<int, array<int, array{text:string,url:string}>>}|null
+	 */
+	private function open_dm_keyboard(): ?array {
+		if ( null === $this->current_bot_username ) {
+			return null;
+		}
+
+		return array(
+			'inline_keyboard' => array(
+				array(
+					array(
+						'text' => 'Open chat',
+						'url'  => 'https://t.me/' . $this->current_bot_username,
+					),
+				),
+			),
+		);
 	}
 
 	/**

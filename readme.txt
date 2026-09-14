@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.20.2
+Stable tag: 0.20.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,9 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.20.3 =
+* Both the "Replied privately." breadcrumb and the "open a DM with me" fallback prompt now carry an "Open chat" button that links straight to the bot's own private chat, so finding the actual reply never means manually searching for the bot. No schema change.
 
 = 0.20.2 =
 * Bot-command/button replies (/whoami, /stock, /orders, etc.) are now delivered privately, via DM to the operator who asked, instead of into the shared group topic — a command's answer belongs to whoever asked, not to everyone watching the chat. Every reply attempts a private DM first; if the operator has never opened a DM with the bot (Telegram refuses a cold DM), a neutral prompt appears in the group asking them to start one, never the reply's own content. A short "📬 Replied privately." breadcrumb appears in the group on a successful private delivery, so the chat never looks like the bot did nothing. `/stock`'s button-driven menu/drill-down naturally stays private throughout, since each subsequent tap replies in the same chat the previous step landed in. No schema change.
