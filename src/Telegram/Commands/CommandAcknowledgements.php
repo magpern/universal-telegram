@@ -34,4 +34,8 @@ final class CommandAcknowledgements {
 	public const TOO_MANY_ORDERS = 'Too many matching orders — use the Hub.';
 
 	public const NO_PENDING_CONFIRMATION = 'No pending confirmation, or it expired — resend the original command.';
+
+	public const REPLIED_PRIVATELY = '📬 Replied privately.';
+
+	public const DM_REQUIRED = "I can't message you privately yet — open a DM with me first (search this bot, tap Start), then resend your command.";
 }

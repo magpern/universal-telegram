@@ -16,6 +16,7 @@ use UniversalTelegram\Events\EventSource;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceCommandQueryService;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Privacy\Classification;
+use UniversalTelegram\Queue\AttemptOutcome;
 use UniversalTelegram\Queue\QueueHealth;
 use UniversalTelegram\SupportChatAdapter\Identity\OperatorIdentityMap;
 use UniversalTelegram\SupportChatAdapter\Identity\OperatorIdentityMapRepository;
@@ -38,6 +39,17 @@ use UniversalTelegram\Telegram\Outbound\MessageDispatcher;
  * (`/orders`, `/order`, `/stock`, `/sales`), plus `/help` and `/whoami`.
  */
 final class BotCommandDispatcher {
+
+	/**
+	 * The current inbound command's own sender, set once at the top of
+	 * handle() and read only by reply() for the remainder of that same
+	 * call. Safe as request-scoped state: WordPress builds a fresh Plugin
+	 * (and therefore a fresh BotCommandDispatcher) per request, and handle()
+	 * is never reentrant within one.
+	 *
+	 * @var int|null
+	 */
+	private ?int $current_sender_telegram_user_id = null;
 
 	/**
 	 * Constructor.
@@ -81,6 +93,8 @@ final class BotCommandDispatcher {
 		if ( null === $sender_telegram_user_id ) {
 			return;
 		}
+
+		$this->current_sender_telegram_user_id = $sender_telegram_user_id;
 
 		$mapped_identity = $this->operator_identities->find_by_telegram_user_id( $sender_telegram_user_id );
 
@@ -434,23 +448,52 @@ final class BotCommandDispatcher {
 	}
 
 	/**
-	 * Sends one acknowledgement through the existing outbound pipeline.
-	 * Opts into MessageDispatcher's immediate-delivery attempt (M09): a
-	 * command reply is genuinely interactive traffic (ADR-0023 amendment's
-	 * own scope), so this is where that mechanism belongs — never a
-	 * notification/event send triggered from an unrelated request.
+	 * A command's answer belongs to whoever asked, not to everyone in the
+	 * chat that happened to be watching -- so every reply is attempted as a
+	 * private DM to the requesting operator first (M09), never the shared
+	 * group topic by default. Falls back to the group only in two cases:
+	 * the private attempt didn't complete (most commonly, the operator has
+	 * never opened a DM with the bot -- Telegram refuses a cold DM), where
+	 * the group gets a neutral prompt to open one and retry, never the
+	 * reply's own content; or there is no sender to reply to at all (this
+	 * method's own defensive fallback if ever called before handle() has
+	 * set current_sender_telegram_user_id, which should not happen in
+	 * practice). A short breadcrumb is posted to the group on a successful
+	 * private delivery, so the chat never looks like the bot did nothing --
+	 * exactly the confusion an earlier, real deployment surfaced.
 	 *
 	 * @param int                       $bot_id         The bot's primary key.
-	 * @param int|null                  $destination_id The destination row to send through.
+	 * @param int|null                  $destination_id The group destination to fall back to (or post a breadcrumb in), if any.
 	 * @param string                    $text           One of CommandAcknowledgements' fixed strings, or a StockMenu-rendered body.
 	 * @param array<string, mixed>|null $reply_markup    Telegram's own `reply_markup` payload (currently only `inline_keyboard`), or null for none.
 	 */
 	private function reply( int $bot_id, ?int $destination_id, string $text, ?array $reply_markup = null ): void {
+		if ( null === $this->current_sender_telegram_user_id ) {
+			if ( null !== $destination_id ) {
+				$this->message_dispatcher->send( $bot_id, $destination_id, $text, null, $reply_markup, true );
+			}
+
+			return;
+		}
+
+		$outcome = $this->message_dispatcher->send_private(
+			$bot_id,
+			(string) $this->current_sender_telegram_user_id,
+			$text,
+			$reply_markup
+		);
+
 		if ( null === $destination_id ) {
 			return;
 		}
 
-		$this->message_dispatcher->send( $bot_id, $destination_id, $text, null, $reply_markup, true );
+		if ( AttemptOutcome::DELIVERED === $outcome ) {
+			$this->message_dispatcher->send( $bot_id, $destination_id, CommandAcknowledgements::REPLIED_PRIVATELY, null, null, true );
+
+			return;
+		}
+
+		$this->message_dispatcher->send( $bot_id, $destination_id, CommandAcknowledgements::DM_REQUIRED, null, null, true );
 	}
 
 	/**

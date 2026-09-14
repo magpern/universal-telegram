@@ -10,11 +10,14 @@ declare( strict_types=1 );
 namespace UniversalTelegram\Telegram\Outbound;
 
 use UniversalTelegram\Privacy\Classification;
+use UniversalTelegram\Queue\AttemptOutcome;
 use UniversalTelegram\Queue\DeliveryClass;
 use UniversalTelegram\Queue\Dispatcher;
 use UniversalTelegram\Queue\DispatchResult;
 use UniversalTelegram\Queue\JobEnvelope;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
+use UniversalTelegram\Telegram\Configuration\Destination;
+use UniversalTelegram\Telegram\Configuration\DestinationKind;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 
 /**
@@ -87,38 +90,120 @@ final class MessageDispatcher {
 	}
 
 	/**
+	 * Stores a message addressed to one Telegram user's own private chat
+	 * (Telegram's own convention: a private chat's id equals the user's
+	 * numeric id), enqueues it durably exactly like send(), and always
+	 * attempts immediate delivery — private replies exist specifically to
+	 * be interactive (M09).
+	 *
+	 * Telegram will only accept this if the recipient has already opened a
+	 * private chat with the bot at least once; the caller's own outcome
+	 * check is what should drive any user-facing fallback (this method
+	 * itself never falls back to a group destination — it has no group
+	 * context to fall back to).
+	 *
+	 * @param int                       $bot_id             The owning bot's primary key.
+	 * @param string                    $telegram_user_id    The recipient's own numeric Telegram id, as a string (Destination's own chat_id type).
+	 * @param string                    $text               The message text.
+	 * @param array<string, mixed>|null $reply_markup Telegram's own `reply_markup` payload, or null for none.
+	 *
+	 * @return AttemptOutcome|null Null when the immediate-delivery collaborators were never wired, the destination could not be resolved/created, or the message itself could not be stored.
+	 */
+	public function send_private( int $bot_id, string $telegram_user_id, string $text, ?array $reply_markup = null ): ?AttemptOutcome {
+		if ( null === $this->immediate || null === $this->bots || null === $this->destinations ) {
+			return null;
+		}
+
+		$destination = $this->find_or_create_private_destination( $bot_id, $telegram_user_id );
+
+		if ( null === $destination ) {
+			return null;
+		}
+
+		$message = $this->messages->create( $bot_id, $destination->id(), $text, null, DeliveryClass::STANDARD, $reply_markup );
+
+		if ( null === $message ) {
+			return null;
+		}
+
+		$envelope = new JobEnvelope(
+			self::JOB_TYPE,
+			array(
+				'message_uuid'   => $message->message_uuid(),
+				'bot_id'         => $bot_id,
+				'destination_id' => $destination->id(),
+			),
+			array(
+				'message_uuid'   => Classification::INTERNAL,
+				'bot_id'         => Classification::INTERNAL,
+				'destination_id' => Classification::INTERNAL,
+			)
+		);
+
+		$this->dispatcher->enqueue( $envelope );
+
+		return $this->maybe_attempt_immediate_delivery( $message, $bot_id, $destination->id() );
+	}
+
+	/**
+	 * The bot's own existing private destination for this user, or a newly
+	 * created one — a private destination's (bot_id, chat_id) pair is
+	 * exactly as stable and reusable as a group/supergroup one, just never
+	 * admin-configured up front.
+	 *
+	 * @param int    $bot_id            The owning bot's primary key.
+	 * @param string $telegram_user_id   The recipient's own numeric Telegram id, as a string.
+	 *
+	 * @return Destination|null
+	 */
+	private function find_or_create_private_destination( int $bot_id, string $telegram_user_id ): ?Destination {
+		foreach ( $this->destinations->for_bot( $bot_id ) as $destination ) {
+			if ( DestinationKind::PRIVATE === $destination->kind() && $telegram_user_id === $destination->chat_id() ) {
+				return $destination;
+			}
+		}
+
+		return $this->destinations->create( $bot_id, DestinationKind::PRIVATE, $telegram_user_id, null, 'Operator DM ' . $telegram_user_id );
+	}
+
+	/**
 	 * The ADR-0023 amendment's primary interactive-latency mechanism: one
 	 * bounded, claim-protected, non-throwing send attempt, made
 	 * synchronously in the caller's own request. Never lets a genuine
 	 * configuration-error throw (SendMessageHandler::try_once()'s own
 	 * documented exception for an undecryptable token/body) escape to the
-	 * caller — an immediate attempt is strictly an optimization, and its
-	 * complete absence changes nothing about the message's already-durable
-	 * enqueue above.
+	 * caller — an immediate attempt is strictly an optimization for send(),
+	 * and its complete absence changes nothing about the message's
+	 * already-durable enqueue; send_private() additionally reports the
+	 * outcome, since its own caller needs it to decide on a fallback.
 	 *
 	 * @param OutboundMessage $message        The just-enqueued message.
 	 * @param int             $bot_id         The owning bot's primary key.
 	 * @param int             $destination_id The target destination's primary key.
+	 *
+	 * @return AttemptOutcome|null Null when the immediate-delivery collaborators were never wired, or the bot/destination could not be resolved.
 	 */
-	private function maybe_attempt_immediate_delivery( OutboundMessage $message, int $bot_id, int $destination_id ): void {
+	private function maybe_attempt_immediate_delivery( OutboundMessage $message, int $bot_id, int $destination_id ): ?AttemptOutcome {
 		if ( null === $this->immediate || null === $this->bots || null === $this->destinations ) {
-			return;
+			return null;
 		}
 
 		$bot         = $this->bots->find( $bot_id );
 		$destination = $this->destinations->find( $destination_id );
 
 		if ( null === $bot || null === $destination ) {
-			return;
+			return null;
 		}
 
 		try {
-			$this->immediate->try_once( $message, $bot, $destination, 1 );
+			return $this->immediate->try_once( $message, $bot, $destination, 1 );
 		} catch ( \Throwable $exception ) {
 			// Genuinely exceptional (undecryptable token/body) or any other
 			// unexpected failure: the message is already durably enqueued
 			// above, so the normal queue worker remains fully sufficient.
 			unset( $exception );
+
+			return null;
 		}
 	}
 }

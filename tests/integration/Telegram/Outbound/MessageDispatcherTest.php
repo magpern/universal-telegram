@@ -9,6 +9,7 @@ use UniversalTelegram\Audit\AuditLogger;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Persistence\SchemaHealth;
 use UniversalTelegram\Privacy\Redactor;
+use UniversalTelegram\Queue\AttemptOutcome;
 use UniversalTelegram\Queue\DispatchState;
 use UniversalTelegram\Queue\RetryPolicy;
 use UniversalTelegram\Telegram\Client\TelegramApiClient;
@@ -214,5 +215,111 @@ final class MessageDispatcherTest extends WP_UnitTestCase {
 		$status = $wpdb->get_var( "SELECT status FROM {$table} WHERE bot_id = {$bot->id()}" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$this->assertSame( OutboundMessageStatus::PENDING->value, $status );
+	}
+
+	public function test_send_private_delivers_to_the_users_own_chat_id(): void {
+		$this->fake_response(
+			200,
+			array(
+				'ok'     => true,
+				'result' => array( 'message_id' => 789 ),
+			)
+		);
+
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+
+		$bots         = new BotProfileRepository( $schema_health, $vault );
+		$destinations = new DestinationRepository( $schema_health );
+		$messages     = new OutboundMessageRepository( $schema_health, $vault );
+
+		$bot = $bots->create( 'Bot', 'token' );
+
+		$dispatcher = new MessageDispatcher(
+			$messages,
+			new Dispatcher( $schema_health ),
+			$this->send_message_handler( $schema_health, $messages, $bots, $destinations ),
+			$bots,
+			$destinations
+		);
+
+		$outcome = $dispatcher->send_private( $bot->id(), '999888777', 'You are mapped as: Someone' );
+
+		$this->assertSame( AttemptOutcome::DELIVERED, $outcome );
+
+		$destination = null;
+		foreach ( $destinations->for_bot( $bot->id() ) as $candidate ) {
+			if ( DestinationKind::PRIVATE === $candidate->kind() && '999888777' === $candidate->chat_id() ) {
+				$destination = $candidate;
+			}
+		}
+		$this->assertNotNull( $destination, 'a private destination was created for the recipient' );
+
+		global $wpdb;
+		$table = $wpdb->prefix . 'universal_telegram_outbound_messages';
+		$row   = $wpdb->get_row( "SELECT status, telegram_message_id, destination_id FROM {$table} WHERE bot_id = {$bot->id()}", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		$this->assertSame( OutboundMessageStatus::SENT->value, $row['status'] );
+		$this->assertSame( '789', (string) $row['telegram_message_id'] );
+		$this->assertSame( (string) $destination->id(), (string) $row['destination_id'] );
+	}
+
+	public function test_send_private_reuses_the_same_destination_on_a_second_call(): void {
+		$this->fake_response(
+			200,
+			array(
+				'ok'     => true,
+				'result' => array( 'message_id' => 1 ),
+			)
+		);
+
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+
+		$bots         = new BotProfileRepository( $schema_health, $vault );
+		$destinations = new DestinationRepository( $schema_health );
+		$messages     = new OutboundMessageRepository( $schema_health, $vault );
+
+		$bot = $bots->create( 'Bot', 'token' );
+
+		$dispatcher = new MessageDispatcher(
+			$messages,
+			new Dispatcher( $schema_health ),
+			$this->send_message_handler( $schema_health, $messages, $bots, $destinations ),
+			$bots,
+			$destinations
+		);
+
+		$dispatcher->send_private( $bot->id(), '111222333', 'first' );
+		$dispatcher->send_private( $bot->id(), '111222333', 'second' );
+
+		$private_destinations = array_values(
+			array_filter(
+				$destinations->for_bot( $bot->id() ),
+				static fn ( $d ) => DestinationKind::PRIVATE === $d->kind() && '111222333' === $d->chat_id()
+			)
+		);
+
+		$this->assertCount( 1, $private_destinations, 'no duplicate private destination was created' );
+	}
+
+	public function test_send_private_without_a_wired_handler_returns_null_and_creates_no_destination(): void {
+		$schema_health = new SchemaHealth();
+		$vault         = new CredentialVault();
+
+		$bots         = new BotProfileRepository( $schema_health, $vault );
+		$destinations = new DestinationRepository( $schema_health );
+		$messages     = new OutboundMessageRepository( $schema_health, $vault );
+
+		$bot = $bots->create( 'Bot', 'token' );
+
+		// No SendMessageHandler/bots/destinations wired -- matches every
+		// pre-M09 caller/test double.
+		$dispatcher = new MessageDispatcher( $messages, new Dispatcher( $schema_health ) );
+
+		$outcome = $dispatcher->send_private( $bot->id(), '444555666', 'hi' );
+
+		$this->assertNull( $outcome );
+		$this->assertSame( array(), $destinations->for_bot( $bot->id() ) );
 	}
 }
