@@ -98,7 +98,7 @@ final class BotCommandDispatcher {
 		}
 
 		if ( ! $parsed->is_argument_valid() ) {
-			$this->reply( $bot->id(), $destination_id, CommandAcknowledgements::MALFORMED );
+			$this->reply( $bot->id(), $destination_id, self::malformed_acknowledgement_for( $parsed->command() ) );
 
 			return;
 		}
@@ -348,6 +348,30 @@ final class BotCommandDispatcher {
 		);
 
 		$this->reply( $bot->id(), $destination_id, $text );
+	}
+
+	/**
+	 * The malformed-argument acknowledgement for a command — a per-command
+	 * usage hint for the three commands that require a specific argument
+	 * shape (CommandCatalogue), falling back to the generic message for
+	 * every other (argument-less) command. Still one of
+	 * CommandAcknowledgements' fixed strings, never interpolated.
+	 *
+	 * @param string $command Lowercase command word, no leading slash.
+	 *
+	 * @return string
+	 */
+	private static function malformed_acknowledgement_for( string $command ): string {
+		switch ( $command ) {
+			case 'order':
+				return CommandAcknowledgements::MALFORMED_ORDER;
+			case 'stock':
+				return CommandAcknowledgements::MALFORMED_STOCK;
+			case 'sales':
+				return CommandAcknowledgements::MALFORMED_SALES;
+			default:
+				return CommandAcknowledgements::MALFORMED;
+		}
 	}
 
 	/**

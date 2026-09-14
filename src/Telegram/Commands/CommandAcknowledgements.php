@@ -21,6 +21,12 @@ final class CommandAcknowledgements {
 
 	public const MALFORMED = 'Unrecognized command syntax. Send /help for the command list.';
 
+	public const MALFORMED_ORDER = 'Usage: /order <id> — a numeric order id.';
+
+	public const MALFORMED_STOCK = 'Usage: /stock <sku> — the product SKU.';
+
+	public const MALFORMED_SALES = 'Usage: /sales today|week|month.';
+
 	public const WOOCOMMERCE_INACTIVE = 'WooCommerce is not active on this site.';
 
 	public const NOT_FOUND = 'Not found or unavailable.';

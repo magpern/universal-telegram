@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.19.1
+Stable tag: 0.19.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,9 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.19.2 =
+* `/order`, `/stock`, and `/sales` now reply with a specific usage hint (e.g. "Usage: /stock <sku> — the product SKU.") when sent with a missing or malformed argument, instead of the generic "Unrecognized command syntax" message. Commands that take no argument are unaffected.
 
 = 0.19.1 =
 * Automatic updates from a private update server (bundled Plugin Update Checker v5); base URL read from the PRIVATE_UPDATE_SERVER constant, inert when it is not defined.
