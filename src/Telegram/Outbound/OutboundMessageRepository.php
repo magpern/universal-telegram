@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace UniversalTelegram\Telegram\Outbound;
 
 use UniversalTelegram\Core\Security\CredentialResult;
+use UniversalTelegram\Core\Security\CredentialState;
 use UniversalTelegram\Core\Security\CredentialVault;
 use UniversalTelegram\Queue\DeliveryClass;
 use UniversalTelegram\Persistence\Migrator;
@@ -39,15 +40,16 @@ final class OutboundMessageRepository {
 	/**
 	 * Creates a new outbound message, encrypted at rest.
 	 *
-	 * @param int         $bot_id          The owning bot's primary key.
-	 * @param int         $destination_id  The target destination's primary key.
-	 * @param string      $body_plaintext  The message text.
-	 * @param string|null $parse_mode      Telegram's own parse_mode parameter.
-	 * @param string      $delivery_class  Fixed transport priority class (docs/adr/0045); defaults to `standard`.
+	 * @param int                       $bot_id          The owning bot's primary key.
+	 * @param int                       $destination_id  The target destination's primary key.
+	 * @param string                    $body_plaintext  The message text.
+	 * @param string|null               $parse_mode      Telegram's own parse_mode parameter.
+	 * @param string                    $delivery_class  Fixed transport priority class (docs/adr/0045); defaults to `standard`.
+	 * @param array<string, mixed>|null $reply_markup Telegram's own `reply_markup` payload (currently only `inline_keyboard`), or null for no keyboard.
 	 *
 	 * @return OutboundMessage|null Null if the schema is unavailable or the insert failed.
 	 */
-	public function create( int $bot_id, int $destination_id, string $body_plaintext, ?string $parse_mode, string $delivery_class = DeliveryClass::STANDARD ): ?OutboundMessage {
+	public function create( int $bot_id, int $destination_id, string $body_plaintext, ?string $parse_mode, string $delivery_class = DeliveryClass::STANDARD, ?array $reply_markup = null ): ?OutboundMessage {
 		if ( ! $this->schema_health->is_available() ) {
 			return null;
 		}
@@ -57,21 +59,26 @@ final class OutboundMessageRepository {
 		$message_uuid = wp_generate_uuid4();
 		$now          = current_time( 'mysql', true );
 
+		$reply_markup_ciphertext = null !== $reply_markup
+			? $this->credential_vault->encrypt( wp_json_encode( $reply_markup ), self::CONTEXT_PREFIX . $message_uuid )
+			: null;
+
 		$table    = $wpdb->prefix . Migrator::OUTBOUND_MESSAGES_TABLE;
 		$inserted = $wpdb->insert(
 			$table,
 			array(
-				'message_uuid'    => $message_uuid,
-				'bot_id'          => $bot_id,
-				'destination_id'  => $destination_id,
-				'body_ciphertext' => $this->credential_vault->encrypt( $body_plaintext, self::CONTEXT_PREFIX . $message_uuid ),
-				'parse_mode'      => $parse_mode,
-				'status'          => OutboundMessageStatus::PENDING->value,
-				'delivery_class'  => DeliveryClass::from_storage( $delivery_class ),
-				'created_at'      => $now,
-				'updated_at'      => $now,
+				'message_uuid'            => $message_uuid,
+				'bot_id'                  => $bot_id,
+				'destination_id'          => $destination_id,
+				'body_ciphertext'         => $this->credential_vault->encrypt( $body_plaintext, self::CONTEXT_PREFIX . $message_uuid ),
+				'reply_markup_ciphertext' => $reply_markup_ciphertext,
+				'parse_mode'              => $parse_mode,
+				'status'                  => OutboundMessageStatus::PENDING->value,
+				'delivery_class'          => DeliveryClass::from_storage( $delivery_class ),
+				'created_at'              => $now,
+				'updated_at'              => $now,
 			),
-			array( '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s' )
+			array( '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
 		);
 
 		if ( false === $inserted ) {
@@ -135,6 +142,31 @@ final class OutboundMessageRepository {
 		}
 
 		return $this->credential_vault->decrypt( $message->body_ciphertext(), self::CONTEXT_PREFIX . $message->message_uuid() );
+	}
+
+	/**
+	 * Decrypts a message's own `reply_markup` payload, if it carries one.
+	 * The stored plaintext is JSON; a malformed decode is treated the same
+	 * as "no keyboard" rather than failing the send.
+	 *
+	 * @param OutboundMessage $message The message.
+	 *
+	 * @return array<string, mixed>|null Null when this message has no keyboard, or decryption/decoding failed.
+	 */
+	public function decrypt_reply_markup( OutboundMessage $message ): ?array {
+		if ( null === $message->reply_markup_ciphertext() ) {
+			return null;
+		}
+
+		$result = $this->credential_vault->decrypt( $message->reply_markup_ciphertext(), self::CONTEXT_PREFIX . $message->message_uuid() );
+
+		if ( CredentialState::AVAILABLE !== $result->state() || null === $result->plaintext() ) {
+			return null;
+		}
+
+		$decoded = json_decode( $result->plaintext(), true );
+
+		return is_array( $decoded ) ? $decoded : null;
 	}
 
 	/**
@@ -569,7 +601,8 @@ final class OutboundMessageRepository {
 			(string) $row['updated_at'],
 			null === $row['sent_at'] ? null : (string) $row['sent_at'],
 			null === $row['claim_expires_at'] ? null : (string) $row['claim_expires_at'],
-			DeliveryClass::from_storage( $row['delivery_class'] ?? null )
+			DeliveryClass::from_storage( $row['delivery_class'] ?? null ),
+			array_key_exists( 'reply_markup_ciphertext', $row ) && null !== $row['reply_markup_ciphertext'] ? (string) $row['reply_markup_ciphertext'] : null
 		);
 	}
 }

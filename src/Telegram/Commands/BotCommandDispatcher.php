@@ -299,6 +299,12 @@ final class BotCommandDispatcher {
 			return;
 		}
 
+		if ( '' === $parsed->raw_argument() ) {
+			$this->reply_products_menu( $bot->id(), $destination_id, 1 );
+
+			return;
+		}
+
 		$summary = $this->woocommerce_queries->stock_summary( $parsed->raw_argument() );
 
 		if ( null === $summary ) {
@@ -316,6 +322,31 @@ final class BotCommandDispatcher {
 		);
 
 		$this->reply( $bot->id(), $destination_id, $text );
+	}
+
+	/**
+	 * Renders and sends one page of the `/stock` top-level products menu —
+	 * the bare `/stock` command's own entry point. CallbackQueryDispatcher
+	 * renders every subsequent Prev/Next/"Back to products" tap itself,
+	 * via the same StockMenu builder + WooCommerceCommandQueryService
+	 * query this method also uses.
+	 *
+	 * @param int      $bot_id         The bot's primary key.
+	 * @param int|null $destination_id Where to send the menu.
+	 * @param int      $page           1-based page number.
+	 */
+	private function reply_products_menu( int $bot_id, ?int $destination_id, int $page ): void {
+		$result = $this->woocommerce_queries->list_stock_menu_items( $page );
+
+		if ( array() === $result['items'] ) {
+			$this->reply( $bot_id, $destination_id, CommandAcknowledgements::NOT_FOUND );
+
+			return;
+		}
+
+		$text = sprintf( 'Products (page %d/%d) — tap one to see its stock:', $page, $result['total_pages'] );
+
+		$this->reply( $bot_id, $destination_id, $text, StockMenu::products_keyboard( $result['items'], $page, $result['total_pages'] ) );
 	}
 
 	/**
@@ -405,16 +436,17 @@ final class BotCommandDispatcher {
 	/**
 	 * Sends one acknowledgement through the existing outbound pipeline.
 	 *
-	 * @param int      $bot_id         The bot's primary key.
-	 * @param int|null $destination_id The destination row to send through.
-	 * @param string   $text           One of CommandAcknowledgements' fixed strings.
+	 * @param int                       $bot_id         The bot's primary key.
+	 * @param int|null                  $destination_id The destination row to send through.
+	 * @param string                    $text           One of CommandAcknowledgements' fixed strings, or a StockMenu-rendered body.
+	 * @param array<string, mixed>|null $reply_markup    Telegram's own `reply_markup` payload (currently only `inline_keyboard`), or null for none.
 	 */
-	private function reply( int $bot_id, ?int $destination_id, string $text ): void {
+	private function reply( int $bot_id, ?int $destination_id, string $text, ?array $reply_markup = null ): void {
 		if ( null === $destination_id ) {
 			return;
 		}
 
-		$this->message_dispatcher->send( $bot_id, $destination_id, $text );
+		$this->message_dispatcher->send( $bot_id, $destination_id, $text, null, $reply_markup );
 	}
 
 	/**

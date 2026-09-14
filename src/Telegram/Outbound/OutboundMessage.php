@@ -37,6 +37,7 @@ final class OutboundMessage {
 	 * @param string|null           $sent_at                        When this message was confirmed sent.
 	 * @param string|null           $claim_expires_at                When the currently held sending claim/lease expires, or null if unclaimed (M06.2 corrective plan v2, ADR-0023 amendment).
 	 * @param string                $delivery_class                  Fixed transport priority class (docs/adr/0045); `standard` or `interactive_chat`, never content.
+	 * @param string|null           $reply_markup_ciphertext         CredentialVault-encrypted JSON-encoded `reply_markup` payload, null when this message carries no keyboard.
 	 */
 	public function __construct(
 		private readonly int $id,
@@ -55,7 +56,8 @@ final class OutboundMessage {
 		private readonly string $updated_at,
 		private readonly ?string $sent_at,
 		private readonly ?string $claim_expires_at = null,
-		private readonly string $delivery_class = 'standard'
+		private readonly string $delivery_class = 'standard',
+		private readonly ?string $reply_markup_ciphertext = null
 	) {}
 
 	/**
@@ -214,5 +216,15 @@ final class OutboundMessage {
 	 */
 	public function claim_expires_at(): ?string {
 		return $this->claim_expires_at;
+	}
+
+	/**
+	 * CredentialVault-encrypted JSON-encoded `reply_markup` payload, null
+	 * when this message carries no keyboard.
+	 *
+	 * @return string|null
+	 */
+	public function reply_markup_ciphertext(): ?string {
+		return $this->reply_markup_ciphertext;
 	}
 }

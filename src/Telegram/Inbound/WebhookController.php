@@ -14,6 +14,7 @@ use UniversalTelegram\SupportChatAdapter\ChannelBindingRepository;
 use UniversalTelegram\SupportChatAdapter\Inbound\InboundAdapterBridge;
 use UniversalTelegram\SupportChatAdapter\Inbound\SupportChatContractClient;
 use UniversalTelegram\Telegram\Commands\BotCommandDispatcher;
+use UniversalTelegram\Telegram\Commands\CallbackQueryDispatcher;
 use UniversalTelegram\Telegram\Commands\CommandParser;
 use UniversalTelegram\Telegram\Configuration\BotProfile;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
@@ -58,6 +59,7 @@ final class WebhookController {
 	 * @param InboundAdapterBridge|null      $adapter_bridge Support Chat adapter inbound bridge (UT Adapter M1).
 	 * @param ChannelBindingRepository|null  $bindings       Resolves an active binding for the topic-unavailable reporter below.
 	 * @param SupportChatContractClient|null $sc_client      Dispatches `report_channel_unavailable`.
+	 * @param CallbackQueryDispatcher|null   $callback_queries Handles a `/stock` menu button tap (M09). Null in any context that never wires it (e.g. an older test double).
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
@@ -68,7 +70,8 @@ final class WebhookController {
 		private readonly int $max_body_bytes = 1048576,
 		private readonly ?InboundAdapterBridge $adapter_bridge = null,
 		private readonly ?ChannelBindingRepository $bindings = null,
-		private readonly ?SupportChatContractClient $sc_client = null
+		private readonly ?SupportChatContractClient $sc_client = null,
+		private readonly ?CallbackQueryDispatcher $callback_queries = null
 	) {}
 
 	/**
@@ -150,7 +153,19 @@ final class WebhookController {
 
 		$is_new_update = $this->updates->record( $bot->id(), $decoded['update_id'], $update_type, $chat_id, $message_thread_id );
 
-		if ( ! $is_new_update || UpdateType::MESSAGE !== $update_type ) {
+		if ( ! $is_new_update ) {
+			return;
+		}
+
+		if ( UpdateType::CALLBACK_QUERY === $update_type ) {
+			if ( null !== $this->callback_queries ) {
+				$this->callback_queries->handle( $bot, $chat_id, $decoded );
+			}
+
+			return;
+		}
+
+		if ( UpdateType::MESSAGE !== $update_type ) {
 			return;
 		}
 
@@ -227,6 +242,21 @@ final class WebhookController {
 	 * @return array{0: UpdateType, 1: string|null, 2: int|null}
 	 */
 	private function extract_metadata( array $decoded ): array {
+		// callback_query nests chat/thread under its own `message` object
+		// (the original message the tapped button is attached to) rather
+		// than directly, unlike every key in SUPPORTED_UPDATE_KEYS — a
+		// genuinely different shape, handled before the generic loop below.
+		if ( isset( $decoded['callback_query'] ) && is_array( $decoded['callback_query'] ) ) {
+			$message           = $decoded['callback_query']['message'] ?? null;
+			$message           = is_array( $message ) ? $message : array();
+			$chat_id           = isset( $message['chat']['id'] ) ? (string) $message['chat']['id'] : null;
+			$message_thread_id = isset( $message['message_thread_id'] ) && is_int( $message['message_thread_id'] )
+				? $message['message_thread_id']
+				: null;
+
+			return array( UpdateType::CALLBACK_QUERY, $chat_id, $message_thread_id );
+		}
+
 		foreach ( self::SUPPORTED_UPDATE_KEYS as $key => $type ) {
 			if ( ! isset( $decoded[ $key ] ) || ! is_array( $decoded[ $key ] ) ) {
 				continue;

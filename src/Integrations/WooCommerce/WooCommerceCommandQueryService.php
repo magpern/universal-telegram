@@ -28,6 +28,9 @@ final class WooCommerceCommandQueryService {
 	private const PAGE_SIZE           = 100;
 	private const SAFE_PROCESSING_CAP = 500;
 
+	/** Buttons per page in the `/stock` inline-keyboard menu (products or variations). */
+	public const MENU_PAGE_SIZE = 8;
+
 	/**
 	 * Whether a count-only probe's result is within the safe processing
 	 * cap. Pure and static — independently unit-testable with no
@@ -125,6 +128,162 @@ final class WooCommerceCommandQueryService {
 			'manages_stock'  => (bool) $manages_stock,
 			'stock_quantity' => $manages_stock ? $product->get_stock_quantity() : null,
 			'stock_status'   => $product->get_stock_status(),
+		);
+	}
+
+	/**
+	 * A single product's or variation's fixed, narrow stock field set,
+	 * looked up by its own post id rather than a SKU — the id is used only
+	 * as a lookup key, never included in the return value. Backs the
+	 * `/stock` button-menu drill-down (a tapped inline-keyboard button
+	 * carries an id, not a SKU).
+	 *
+	 * @param int $item_id The requested product or variation id.
+	 *
+	 * @return array{name: string, manages_stock: bool, stock_quantity: int|null, stock_status: string}|null
+	 *               Null when no matching product/variation exists or it is not retrievable.
+	 */
+	public function stock_summary_by_id( int $item_id ): ?array {
+		if ( ! function_exists( 'wc_get_product' ) ) {
+			return null;
+		}
+
+		$product = wc_get_product( $item_id );
+
+		if ( ! $product instanceof \WC_Product ) {
+			return null;
+		}
+
+		$manages_stock = $product->managing_stock();
+
+		return array(
+			'name'           => $product->get_name(),
+			'manages_stock'  => (bool) $manages_stock,
+			'stock_quantity' => $manages_stock ? $product->get_stock_quantity() : null,
+			'stock_status'   => $product->get_stock_status(),
+		);
+	}
+
+	/**
+	 * A bounded, paginated page of top-level purchasable items for the
+	 * `/stock` button menu: published simple products (leaf — tapping
+	 * shows stock directly) and published variable products (a branch —
+	 * tapping lists their variations). Grouped and external products are
+	 * excluded, matching `PO_Product_Validator`-style purchasable-item
+	 * scoping used elsewhere in this catalog's tooling. Ordered by title
+	 * for a stable, predictable page sequence.
+	 *
+	 * @param int $page 1-based page number.
+	 *
+	 * @return array{items: array<int, array{id:int,name:string,has_variations:bool}>, total_pages: int}
+	 */
+	public function list_stock_menu_items( int $page ): array {
+		if ( ! function_exists( 'wc_get_products' ) ) {
+			return array(
+				'items'       => array(),
+				'total_pages' => 1,
+			);
+		}
+
+		$page = max( 1, $page );
+
+		$query = wc_get_products(
+			array(
+				'status'   => 'publish',
+				'type'     => array( 'simple', 'variable' ),
+				'orderby'  => 'title',
+				'order'    => 'ASC',
+				'limit'    => self::MENU_PAGE_SIZE,
+				'page'     => $page,
+				'paginate' => true,
+				'return'   => 'objects',
+			)
+		);
+
+		$products = $query->products ?? array();
+		$total    = isset( $query->total ) ? (int) $query->total : 0;
+
+		$items = array();
+
+		foreach ( $products as $product ) {
+			if ( ! $product instanceof \WC_Product ) {
+				continue;
+			}
+
+			$items[] = array(
+				'id'             => $product->get_id(),
+				'name'           => $product->get_name(),
+				'has_variations' => $product->is_type( 'variable' ),
+			);
+		}
+
+		return array(
+			'items'       => $items,
+			'total_pages' => max( 1, (int) ceil( $total / self::MENU_PAGE_SIZE ) ),
+		);
+	}
+
+	/**
+	 * A bounded, paginated page of a variable product's own variations,
+	 * for the `/stock` button menu's drill-down level. Null when the
+	 * parent id does not resolve to a published variable product — the
+	 * caller renders the identical "not found" acknowledgement regardless
+	 * of cause.
+	 *
+	 * @param int $parent_id The variable product's own id.
+	 * @param int $page      1-based page number.
+	 *
+	 * @return array{parent_name: string, items: array<int, array{id:int,label:string}>, total_pages: int}|null
+	 */
+	public function list_stock_menu_variations( int $parent_id, int $page ): ?array {
+		if ( ! function_exists( 'wc_get_product' ) ) {
+			return null;
+		}
+
+		$parent = wc_get_product( $parent_id );
+
+		if ( ! $parent instanceof \WC_Product || ! $parent->is_type( 'variable' ) ) {
+			return null;
+		}
+
+		$page = max( 1, $page );
+
+		/**
+		 * WC_Product_Variable::get_children() returns every child
+		 * variation id, already bounded by the catalog's own realistic
+		 * variation counts (never a store-wide unbounded query) — sliced
+		 * in-memory rather than re-queried per page, since a single
+		 * product's own variation count is never large enough to matter.
+		 *
+		 * @var array<int, int> $all_ids
+		 */
+		$all_ids  = $parent instanceof \WC_Product_Variable ? $parent->get_children() : array();
+		$total    = count( $all_ids );
+		$offset   = ( $page - 1 ) * self::MENU_PAGE_SIZE;
+		$page_ids = array_slice( $all_ids, $offset, self::MENU_PAGE_SIZE );
+
+		$items = array();
+
+		foreach ( $page_ids as $variation_id ) {
+			$variation = wc_get_product( $variation_id );
+
+			if ( ! $variation instanceof \WC_Product_Variation ) {
+				continue;
+			}
+
+			$label = wc_get_formatted_variation( $variation, true, false );
+			$label = '' !== $label ? $label : ( '#' . $variation_id );
+
+			$items[] = array(
+				'id'    => $variation_id,
+				'label' => $label,
+			);
+		}
+
+		return array(
+			'parent_name' => $parent->get_name(),
+			'items'       => $items,
+			'total_pages' => max( 1, (int) ceil( $total / self::MENU_PAGE_SIZE ) ),
 		);
 	}
 

@@ -227,7 +227,8 @@ class SendMessageHandler {
 			$destination->chat_id(),
 			$body_result->plaintext(),
 			$destination->message_thread_id(),
-			$message->parse_mode()
+			$message->parse_mode(),
+			$this->messages->decrypt_reply_markup( $message )
 		);
 
 		if ( $result->ok() ) {

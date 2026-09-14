@@ -55,17 +55,18 @@ class TelegramApiClient {
 	 * Message diagnostic action (docs/adr/0023 §4) — never by any other
 	 * synchronous or visitor-facing caller.
 	 *
-	 * @param string      $token             The bot token.
-	 * @param string      $chat_id            The target chat ID.
-	 * @param string      $text               The message text.
-	 * @param int|null    $message_thread_id  The forum topic ID, supergroup destinations only.
-	 * @param string|null $parse_mode         Telegram's own parse_mode parameter.
+	 * @param string                    $token             The bot token.
+	 * @param string                    $chat_id            The target chat ID.
+	 * @param string                    $text               The message text.
+	 * @param int|null                  $message_thread_id  The forum topic ID, supergroup destinations only.
+	 * @param string|null               $parse_mode         Telegram's own parse_mode parameter.
+	 * @param array<string, mixed>|null $reply_markup Telegram's own `reply_markup` payload (currently only `inline_keyboard`), or null for none.
 	 *
 	 * @return TelegramApiResult
 	 *
 	 * @throws TelegramApiException If the response cannot be parsed at all.
 	 */
-	public function send_message( string $token, string $chat_id, string $text, ?int $message_thread_id, ?string $parse_mode ): TelegramApiResult {
+	public function send_message( string $token, string $chat_id, string $text, ?int $message_thread_id, ?string $parse_mode, ?array $reply_markup = null ): TelegramApiResult {
 		$args = array(
 			'chat_id' => $chat_id,
 			'text'    => $text,
@@ -79,7 +80,37 @@ class TelegramApiClient {
 			$args['parse_mode'] = $parse_mode;
 		}
 
+		if ( null !== $reply_markup ) {
+			$args['reply_markup'] = wp_json_encode( $reply_markup );
+		}
+
 		return $this->call( $token, 'sendMessage', $args );
+	}
+
+	/**
+	 * Calls answerCallbackQuery — dismisses the loading spinner Telegram
+	 * shows on an inline-keyboard button until this is called. Fire-and-
+	 * forget from the caller's perspective: a failure here never blocks or
+	 * retries the underlying command the callback triggered.
+	 *
+	 * @param string      $token             The bot token.
+	 * @param string      $callback_query_id The inbound callback query's own id.
+	 * @param string|null $text              An optional short toast shown to the tapping user; never sent as a chat message.
+	 *
+	 * @return TelegramApiResult
+	 *
+	 * @throws TelegramApiException If the response cannot be parsed at all.
+	 */
+	public function answer_callback_query( string $token, string $callback_query_id, ?string $text = null ): TelegramApiResult {
+		$args = array(
+			'callback_query_id' => $callback_query_id,
+		);
+
+		if ( null !== $text ) {
+			$args['text'] = $text;
+		}
+
+		return $this->call( $token, 'answerCallbackQuery', $args );
 	}
 
 	/**

@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace UniversalTelegram\Telegram\Outbound;
 
 use UniversalTelegram\Privacy\Classification;
+use UniversalTelegram\Queue\DeliveryClass;
 use UniversalTelegram\Queue\Dispatcher;
 use UniversalTelegram\Queue\DispatchResult;
 use UniversalTelegram\Queue\JobEnvelope;
@@ -38,15 +39,16 @@ final class MessageDispatcher {
 	/**
 	 * Stores a message and enqueues its send.
 	 *
-	 * @param int         $bot_id          The owning bot's primary key.
-	 * @param int         $destination_id  The target destination's primary key.
-	 * @param string      $text            The message text.
-	 * @param string|null $parse_mode      Telegram's own parse_mode parameter.
+	 * @param int                       $bot_id          The owning bot's primary key.
+	 * @param int                       $destination_id  The target destination's primary key.
+	 * @param string                    $text            The message text.
+	 * @param string|null               $parse_mode      Telegram's own parse_mode parameter.
+	 * @param array<string, mixed>|null $reply_markup Telegram's own `reply_markup` payload (currently only `inline_keyboard`), or null for no keyboard.
 	 *
 	 * @return DispatchResult|null Null if the message itself could not be stored (schema unavailable).
 	 */
-	public function send( int $bot_id, int $destination_id, string $text, ?string $parse_mode = null ): ?DispatchResult {
-		$message = $this->messages->create( $bot_id, $destination_id, $text, $parse_mode );
+	public function send( int $bot_id, int $destination_id, string $text, ?string $parse_mode = null, ?array $reply_markup = null ): ?DispatchResult {
+		$message = $this->messages->create( $bot_id, $destination_id, $text, $parse_mode, DeliveryClass::STANDARD, $reply_markup );
 
 		if ( null === $message ) {
 			return null;

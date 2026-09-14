@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.19.2
+Stable tag: 0.20.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,10 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.20.0 =
+* `/stock` inline-keyboard menu (M09): sending bare `/stock` (no SKU) now shows a tap-to-browse menu of top-level products instead of a usage hint — published simple products show stock directly, published variable products drill into their own variations first. `/stock <sku>` still works unchanged as a direct shortcut. Every button tap is authorized exactly like a typed command (the same Telegram-operator identity mapping + capability check, since a tap is no more trustworthy than typed text just because it happened in the right chat).
+* Database change: db_version 38 -> 39 (additive, nullable `outbound_messages.reply_markup_ciphertext` column, encrypted at rest like the message body; every existing row is unaffected).
 
 = 0.19.2 =
 * `/order`, `/stock`, and `/sales` now reply with a specific usage hint (e.g. "Usage: /stock <sku> — the product SKU.") when sent with a missing or malformed argument, instead of the generic "Unrecognized command syntax" message. Commands that take no argument are unaffected.

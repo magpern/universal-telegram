@@ -136,7 +136,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 38;
+		return 39;
 	}
 
 	/**
@@ -251,6 +251,7 @@ class Migrator {
 			36 => $retired,
 			37 => array( array( $this, 'step_37_retire_legacy_chat' ), array( $this, 'verify_step_37' ) ),
 			38 => array( array( $this, 'step_38_add_outbound_message_delivery_class' ), array( $this, 'verify_step_38' ) ),
+			39 => array( array( $this, 'step_39_add_outbound_message_reply_markup' ), array( $this, 'verify_step_39' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -487,6 +488,46 @@ class Migrator {
 		return $this->table_has_columns(
 			$wpdb->prefix . self::OUTBOUND_MESSAGES_TABLE,
 			array( 'delivery_class' )
+		);
+	}
+
+	/**
+	 * Adds `outbound_messages.reply_markup_ciphertext` — an optional
+	 * encrypted-at-rest Telegram `reply_markup` payload (currently only
+	 * `inline_keyboard`), stored the same way as `body_ciphertext` (same
+	 * CredentialVault, same per-message context prefix). Additive and
+	 * nullable: every existing row has no keyboard, exactly like today.
+	 * Same `SHOW COLUMNS ... LIKE` / `ALTER TABLE ... ADD COLUMN` idiom as
+	 * `step_38_add_outbound_message_delivery_class`.
+	 */
+	private function step_39_add_outbound_message_reply_markup(): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::OUTBOUND_MESSAGES_TABLE;
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$column = $wpdb->get_row( "SHOW COLUMNS FROM {$table} LIKE 'reply_markup_ciphertext'", ARRAY_A );
+
+		if ( null === $column ) {
+			$wpdb->query(
+				"ALTER TABLE {$table}
+					ADD COLUMN reply_markup_ciphertext LONGTEXT NULL AFTER body_ciphertext"
+			);
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Postcondition for step 39: the additive column exists.
+	 *
+	 * @return bool
+	 */
+	private function verify_step_39(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::OUTBOUND_MESSAGES_TABLE,
+			array( 'reply_markup_ciphertext' )
 		);
 	}
 

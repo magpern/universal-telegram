@@ -19,5 +19,6 @@ enum UpdateType: string {
 	case EDITED_MESSAGE      = 'edited_message';
 	case CHANNEL_POST        = 'channel_post';
 	case EDITED_CHANNEL_POST = 'edited_channel_post';
+	case CALLBACK_QUERY      = 'callback_query';
 	case UNSUPPORTED         = 'unsupported';
 }

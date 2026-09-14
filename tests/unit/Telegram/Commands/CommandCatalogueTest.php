@@ -55,7 +55,7 @@ final class CommandCatalogueTest extends TestCase {
 		$this->assertTrue( CommandCatalogue::is_argument_valid( 'stock', 'SKU-123' ) );
 		$this->assertTrue( CommandCatalogue::is_argument_valid( 'stock', str_repeat( 'a', 100 ) ) );
 		$this->assertFalse( CommandCatalogue::is_argument_valid( 'stock', str_repeat( 'a', 101 ) ) );
-		$this->assertFalse( CommandCatalogue::is_argument_valid( 'stock', '' ) );
+		$this->assertTrue( CommandCatalogue::is_argument_valid( 'stock', '' ), 'an empty /stock argument opens the button menu' );
 		$this->assertFalse( CommandCatalogue::is_argument_valid( 'stock', 'SKU%' ) );
 		$this->assertFalse( CommandCatalogue::is_argument_valid( 'stock', 'SKU*' ) );
 	}

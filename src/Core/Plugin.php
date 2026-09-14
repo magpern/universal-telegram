@@ -84,6 +84,7 @@ use UniversalTelegram\Queue\WorkerRunner;
 use UniversalTelegram\Telegram\Client\TelegramApiClient;
 use UniversalTelegram\Telegram\Client\TelegramFailureClassifier;
 use UniversalTelegram\Telegram\Commands\BotCommandDispatcher;
+use UniversalTelegram\Telegram\Commands\CallbackQueryDispatcher;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationEligibility;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
@@ -560,12 +561,23 @@ final class Plugin {
 		$this->event_registry           = new Registry();
 		$this->event_history_repository = new EventHistoryRepository( $this->schema_health, $this->event_registry, new Redactor() );
 
+		$woocommerce_command_queries = new WooCommerceCommandQueryService();
+
 		$this->bot_command_dispatcher = new BotCommandDispatcher(
 			$operator_identity_map,
 			$this->queue_health,
 			$this->event_history_repository,
 			$this->woocommerce_support,
-			new WooCommerceCommandQueryService(),
+			$woocommerce_command_queries,
+			$this->message_dispatcher,
+			$this->destination_repository,
+			$this->audit_logger
+		);
+
+		$callback_query_dispatcher = new CallbackQueryDispatcher(
+			$operator_identity_map,
+			$this->woocommerce_support,
+			$woocommerce_command_queries,
 			$this->message_dispatcher,
 			$this->destination_repository,
 			$this->audit_logger
@@ -611,7 +623,8 @@ final class Plugin {
 			(int) $settings_values['telegram_webhook_max_body_bytes'],
 			$adapter_inbound,
 			$adapter_bindings,
-			$adapter_sc_client
+			$adapter_sc_client,
+			$callback_query_dispatcher
 		);
 		add_action( 'rest_api_init', array( $this->webhook_controller, 'register_routes' ) );
 

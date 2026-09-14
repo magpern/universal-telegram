@@ -36,6 +36,9 @@ final class CommandCatalogue {
 	/** A bounded token, 1-100 chars, no `%` or `*` wildcard characters. */
 	public const ARGUMENT_TOKEN = 'token';
 
+	/** Either empty (opens the button menu) or a bounded token per ARGUMENT_TOKEN's own rule. */
+	public const ARGUMENT_TOKEN_OR_EMPTY = 'token_or_empty';
+
 	/** One of a fixed literal set. */
 	public const ARGUMENT_LITERAL = 'literal';
 
@@ -55,7 +58,7 @@ final class CommandCatalogue {
 			'visitors' => array( self::CONTEXT_GENERAL, self::ARGUMENT_NONE, array() ),
 			'orders'   => array( self::CONTEXT_GENERAL, self::ARGUMENT_NONE, array() ),
 			'order'    => array( self::CONTEXT_GENERAL, self::ARGUMENT_NUMERIC_ID, array() ),
-			'stock'    => array( self::CONTEXT_GENERAL, self::ARGUMENT_TOKEN, array() ),
+			'stock'    => array( self::CONTEXT_GENERAL, self::ARGUMENT_TOKEN_OR_EMPTY, array() ),
 			'sales'    => array( self::CONTEXT_GENERAL, self::ARGUMENT_LITERAL, array( 'today', 'week', 'month' ) ),
 		);
 	}
@@ -112,6 +115,9 @@ final class CommandCatalogue {
 				return '' !== $raw_argument
 					&& self::MAX_TOKEN_CHARS >= strlen( $raw_argument )
 					&& false === strpbrk( $raw_argument, '%*' );
+			case self::ARGUMENT_TOKEN_OR_EMPTY:
+				return '' === $raw_argument
+					|| ( self::MAX_TOKEN_CHARS >= strlen( $raw_argument ) && false === strpbrk( $raw_argument, '%*' ) );
 			case self::ARGUMENT_LITERAL:
 				return in_array( $raw_argument, $literals, true );
 			default:
