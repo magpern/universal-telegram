@@ -531,7 +531,6 @@ final class Plugin {
 		$this->outbound_message_repository = new OutboundMessageRepository( $this->schema_health, $this->credential_vault );
 		$unresolved_outbound_abandoner     = new UnresolvedOutboundAbandoner( $this->outbound_message_repository );
 		$dead_letter_dismisser             = new DeadLetterDismisser( $this->outbound_message_repository, $this->audit_logger );
-		$this->message_dispatcher          = new MessageDispatcher( $this->outbound_message_repository, $this->dispatcher );
 		$this->rate_limiter                = new RateLimiter( $this->schema_health );
 		$this->circuit_breaker             = new CircuitBreaker( $this->schema_health, new RetryPolicy() );
 		$this->queue_health_alert          = new QueueHealthAlert( $this->outbound_message_repository, $this->circuit_breaker, $this->bot_profile_repository );
@@ -551,6 +550,14 @@ final class Plugin {
 			(int) $settings_values['telegram_max_pending_seconds']
 		);
 		$this->handler_registry->register( MessageDispatcher::JOB_TYPE, array( $send_message_handler, 'handle_job' ) );
+
+		$this->message_dispatcher = new MessageDispatcher(
+			$this->outbound_message_repository,
+			$this->dispatcher,
+			$send_message_handler,
+			$this->bot_profile_repository,
+			$this->destination_repository
+		);
 
 		$this->update_repository       = new UpdateRepository( $this->schema_health );
 		$this->webhook_secret_verifier = new WebhookSecretVerifier( $this->bot_profile_repository, $this->audit_logger );

@@ -435,6 +435,10 @@ final class BotCommandDispatcher {
 
 	/**
 	 * Sends one acknowledgement through the existing outbound pipeline.
+	 * Opts into MessageDispatcher's immediate-delivery attempt (M09): a
+	 * command reply is genuinely interactive traffic (ADR-0023 amendment's
+	 * own scope), so this is where that mechanism belongs — never a
+	 * notification/event send triggered from an unrelated request.
 	 *
 	 * @param int                       $bot_id         The bot's primary key.
 	 * @param int|null                  $destination_id The destination row to send through.
@@ -446,7 +450,7 @@ final class BotCommandDispatcher {
 			return;
 		}
 
-		$this->message_dispatcher->send( $bot_id, $destination_id, $text, null, $reply_markup );
+		$this->message_dispatcher->send( $bot_id, $destination_id, $text, null, $reply_markup, true );
 	}
 
 	/**

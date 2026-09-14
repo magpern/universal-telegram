@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.20.0
+Stable tag: 0.20.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,9 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.20.1 =
+* Administrative bot-command/button replies (/stock, /orders, etc.) now attempt delivery immediately, synchronously, in the same request that produced the reply, instead of depending entirely on Action Scheduler's own async dispatch or WP-Cron cadence. This finally wires up ADR-0023's own "claim-protected immediate delivery" mechanism to a real caller — it was designed but never implemented for any send path. Reuses the existing, already-tested SendMessageHandler::try_once() and the existing claim/lease column; no schema change, no double-send risk (the lease already prevents that), and the durable queue remains the unconditional fallback if the immediate attempt is unavailable or fails. Scoped only to genuinely interactive traffic (command/button replies); notification and event sends are unaffected.
 
 = 0.20.0 =
 * `/stock` inline-keyboard menu (M09): sending bare `/stock` (no SKU) now shows a tap-to-browse menu of top-level products instead of a usage hint — published simple products show stock directly, published variable products drill into their own variations first. `/stock <sku>` still works unchanged as a direct shortcut. Every button tap is authorized exactly like a typed command (the same Telegram-operator identity mapping + capability check, since a tap is no more trustworthy than typed text just because it happened in the right chat).

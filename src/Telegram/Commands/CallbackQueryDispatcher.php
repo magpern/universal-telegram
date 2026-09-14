@@ -242,6 +242,9 @@ final class CallbackQueryDispatcher {
 
 	/**
 	 * Sends one message through the existing outbound pipeline.
+	 * Opts into MessageDispatcher's immediate-delivery attempt (M09): a
+	 * button-tap reply is genuinely interactive traffic (ADR-0023
+	 * amendment's own scope), same as BotCommandDispatcher's own replies.
 	 *
 	 * @param int                       $bot_id         The bot's primary key.
 	 * @param int|null                  $destination_id The destination row to send through.
@@ -253,7 +256,7 @@ final class CallbackQueryDispatcher {
 			return;
 		}
 
-		$this->message_dispatcher->send( $bot_id, $destination_id, $text, null, $reply_markup );
+		$this->message_dispatcher->send( $bot_id, $destination_id, $text, null, $reply_markup, true );
 	}
 
 	/**
