@@ -70,8 +70,8 @@ final class StockMenuTest extends TestCase {
 			),
 		);
 
-		$keyboard  = StockMenu::variations_keyboard( 7, $items, 1, 1 );
-		$last_row  = $keyboard['inline_keyboard'][ count( $keyboard['inline_keyboard'] ) - 1 ];
+		$keyboard = StockMenu::variations_keyboard( 7, $items, 1, 1 );
+		$last_row = $keyboard['inline_keyboard'][ count( $keyboard['inline_keyboard'] ) - 1 ];
 
 		$this->assertSame( '« Back to products', $last_row[0]['text'] );
 		$this->assertSame( 'sk:p:1', $last_row[0]['callback_data'] );
