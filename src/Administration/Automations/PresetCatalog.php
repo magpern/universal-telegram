@@ -34,7 +34,7 @@ final class PresetCatalog {
 			'event_type'           => 'woocommerce.order_created',
 			'conditions'           => array(),
 			'match_mode'           => 'all',
-			'message'              => 'New order #{{subject.order_id}} — {{payload.order_total}} {{payload.currency}}.',
+			'message'              => 'New order #{{subject.order_id}} — {{payload.order_total}} {{payload.currency}} (status: {{context.order_status}}).',
 			'requires_woocommerce' => true,
 		),
 		array(
@@ -44,7 +44,7 @@ final class PresetCatalog {
 			'event_type'           => 'woocommerce.payment_completed',
 			'conditions'           => array(),
 			'match_mode'           => 'all',
-			'message'              => 'Payment received for order #{{subject.order_id}}.',
+			'message'              => 'Payment received for order #{{subject.order_id}} — {{payload.order_total}} {{payload.currency}}.',
 			'requires_woocommerce' => true,
 		),
 		array(
