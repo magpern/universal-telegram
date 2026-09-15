@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.20.3
+Stable tag: 0.20.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,9 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.20.4 =
+* Fixed two built-in notification presets: "New order" now shows the order's status ({{context.order_status}}), since an order that just entered checkout (e.g. mid-redirect to a payment gateway) is not yet paid and previously read identically to a completed one; "Payment completed" now states the amount instead of relying on order_id alone and no longer relies on the raw boolean {{context.has_transaction_id}}, which rendered as the literal word "true" or "false" in the delivered message. No schema change.
 
 = 0.20.3 =
 * Both the "Replied privately." breadcrumb and the "open a DM with me" fallback prompt now carry an "Open chat" button that links straight to the bot's own private chat, so finding the actual reply never means manually searching for the bot. No schema change.
