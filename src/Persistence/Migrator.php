@@ -523,6 +523,15 @@ class Migrator {
 	 *
 	 * @return bool
 	 */
+	private function verify_step_39(): bool {
+		global $wpdb;
+
+		return $this->table_has_columns(
+			$wpdb->prefix . self::OUTBOUND_MESSAGES_TABLE,
+			array( 'reply_markup_ciphertext' )
+		);
+	}
+
 	/**
 	 * Adds the opaque reply-correlation token and the lookup index native
 	 * Telegram replies use (docs/adr/0046): a reply carries only the replied-to
@@ -555,6 +564,11 @@ class Migrator {
 		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	}
 
+	/**
+	 * Postcondition for step 40: the column and the lookup index exist.
+	 *
+	 * @return bool
+	 */
 	private function verify_step_40(): bool {
 		global $wpdb;
 
@@ -568,15 +582,6 @@ class Migrator {
 		$index = $wpdb->get_row( "SHOW INDEX FROM {$table} WHERE Key_name = 'idx_destination_telegram_message'", ARRAY_A );
 
 		return null !== $index;
-	}
-
-	private function verify_step_39(): bool {
-		global $wpdb;
-
-		return $this->table_has_columns(
-			$wpdb->prefix . self::OUTBOUND_MESSAGES_TABLE,
-			array( 'reply_markup_ciphertext' )
-		);
 	}
 
 	/**

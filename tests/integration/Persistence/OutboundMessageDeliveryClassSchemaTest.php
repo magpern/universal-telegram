@@ -24,7 +24,7 @@ final class OutboundMessageDeliveryClassSchemaTest extends WP_UnitTestCase {
 		delete_option( 'universal_telegram_db_version' );
 		( new Migrator( new MigrationLock() ) )->maybe_migrate();
 
-		$this->assertSame( 39, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 40, (int) get_option( 'universal_telegram_db_version' ) );
 
 		$table  = $wpdb->prefix . Migrator::OUTBOUND_MESSAGES_TABLE;
 		$column = $wpdb->get_row( "SHOW COLUMNS FROM {$table} LIKE 'delivery_class'", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
@@ -52,7 +52,7 @@ final class OutboundMessageDeliveryClassSchemaTest extends WP_UnitTestCase {
 
 		( new Migrator( new MigrationLock() ) )->maybe_migrate();
 
-		$this->assertSame( 39, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 40, (int) get_option( 'universal_telegram_db_version' ) );
 		$this->assertNotNull( $wpdb->get_row( "SHOW COLUMNS FROM {$table} LIKE 'delivery_class'", ARRAY_A ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		$row = $wpdb->get_row( "SELECT status, delivery_class FROM {$table} WHERE message_uuid = '22222222-2222-2222-2222-222222222222'", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
@@ -61,6 +61,6 @@ final class OutboundMessageDeliveryClassSchemaTest extends WP_UnitTestCase {
 
 		// Idempotent re-run.
 		( new Migrator( new MigrationLock() ) )->maybe_migrate();
-		$this->assertSame( 39, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 40, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 }

@@ -26,3 +26,16 @@ freeze addendum 1); `TicketReplyHandler` calls that. Return contract is identica
   `OperatorIdentityMapRepository` + `MANAGE_CONVERSATIONS`, `RateLimiter` and `MessageDispatcher`.
 - Digest settings are stored in one option (`universal_telegram_support_digest`) and edited on a
   hub tab that exists only while the support desk is active.
+
+## Further implementation findings (no contract change)
+
+- Presence detection uses the desk's `BIOPENTRA_INBOX_VERSION` constant (>= 2.1.0), not
+  `class_exists()` — the desk loads its classes lazily and only for admin/cron/CLI requests, after
+  this plugin's own init, so a class check at init time is wrong. ADR-0046 §1 names a class probe;
+  the constant is the equivalent, more reliable signal.
+- The desk exposes `biopentra_inbox_load_reply_runtime()` (FISD 2.1.0); `FluentContactInboxGateway`
+  calls it before touching ticket/reply classes because a Telegram webhook or Action Scheduler
+  request does not load the desk's full runtime.
+- A reply-typed bot command is never routed as a ticket reply (falls through to command dispatch).
+- Digest: weekly means Mondays; a digest is always sent when configured (even with zero tickets);
+  static-analysis stubs for the desk live in `docker/phpstan/` (not packaged).

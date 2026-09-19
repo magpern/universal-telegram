@@ -9,6 +9,8 @@ use UniversalTelegram\Administration\Automations\EventCatalogLabels;
 use UniversalTelegram\Administration\Automations\FieldTypeCatalog;
 use UniversalTelegram\Automations\ConditionOperator;
 use UniversalTelegram\Core\Plugin;
+use UniversalTelegram\Events\Registry;
+use UniversalTelegram\Integrations\FluentContactInbox\Events\ContactInboxEventEmitter;
 use WP_UnitTestCase;
 
 /**
@@ -37,6 +39,17 @@ final class FieldTypeCatalogTest extends WP_UnitTestCase {
 		$allowed_fields = array();
 
 		foreach ( Plugin::instance()->event_registry()->all() as $entry ) {
+			foreach ( $entry['allowed_variable_fields'] as $field ) {
+				$allowed_fields[ $field ] = true;
+			}
+		}
+
+		// The support-desk event types register only while that plugin is active, so
+		// count them from a standalone registry: their fields must still be covered.
+		$support_registry = new Registry();
+		( new ContactInboxEventEmitter() )->register_event_types( $support_registry );
+
+		foreach ( $support_registry->all() as $entry ) {
 			foreach ( $entry['allowed_variable_fields'] as $field ) {
 				$allowed_fields[ $field ] = true;
 			}

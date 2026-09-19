@@ -13,7 +13,7 @@ use WP_UnitTestCase;
 
 /**
  * `outbound_messages.reply_markup_ciphertext` is additive and nullable, on
- * both fresh and upgraded installs; `db_version` reaches 39 with no data
+ * both fresh and upgraded installs; `db_version` reaches 40 with no data
  * change to any pre-existing row.
  */
 final class OutboundMessageReplyMarkupSchemaTest extends WP_UnitTestCase {
@@ -24,7 +24,7 @@ final class OutboundMessageReplyMarkupSchemaTest extends WP_UnitTestCase {
 		delete_option( 'universal_telegram_db_version' );
 		( new Migrator( new MigrationLock() ) )->maybe_migrate();
 
-		$this->assertSame( 39, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 40, (int) get_option( 'universal_telegram_db_version' ) );
 
 		$table  = $wpdb->prefix . Migrator::OUTBOUND_MESSAGES_TABLE;
 		$column = $wpdb->get_row( "SHOW COLUMNS FROM {$table} LIKE 'reply_markup_ciphertext'", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
@@ -51,7 +51,7 @@ final class OutboundMessageReplyMarkupSchemaTest extends WP_UnitTestCase {
 
 		( new Migrator( new MigrationLock() ) )->maybe_migrate();
 
-		$this->assertSame( 39, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 40, (int) get_option( 'universal_telegram_db_version' ) );
 		$this->assertNotNull( $wpdb->get_row( "SHOW COLUMNS FROM {$table} LIKE 'reply_markup_ciphertext'", ARRAY_A ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		$row = $wpdb->get_row( "SELECT status, reply_markup_ciphertext FROM {$table} WHERE message_uuid = '55555555-5555-5555-5555-555555555555'", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
@@ -60,6 +60,6 @@ final class OutboundMessageReplyMarkupSchemaTest extends WP_UnitTestCase {
 
 		// Idempotent re-run.
 		( new Migrator( new MigrationLock() ) )->maybe_migrate();
-		$this->assertSame( 39, (int) get_option( 'universal_telegram_db_version' ) );
+		$this->assertSame( 40, (int) get_option( 'universal_telegram_db_version' ) );
 	}
 }
