@@ -57,10 +57,12 @@ final class MessageDispatcher {
 	 * @param array<string, mixed>|null $reply_markup        Telegram's own `reply_markup` payload (currently only `inline_keyboard`), or null for no keyboard.
 	 * @param bool                      $attempt_immediate  When true, and an immediate-delivery collaborator was wired at construction, also make one bounded, claim-protected, non-throwing delivery attempt synchronously, right here, before returning — for genuinely interactive contexts only (an administrative bot-command/button reply), never for a notification/event send triggered from an unrelated request (docs/adr/0023 amendment scopes this to interactive traffic; a batch/event caller must leave this false, its own default). The durable enqueue below is unconditional either way: a declined, unavailable, or failed immediate attempt changes nothing about eventual delivery via the normal queue.
 	 *
+	 * @param string|null               $correlation_token  Opaque reply-correlation token (docs/adr/0046), or null. Lets a native Telegram reply to this message be routed back to its subject; never content.
+	 *
 	 * @return DispatchResult|null Null if the message itself could not be stored (schema unavailable).
 	 */
-	public function send( int $bot_id, int $destination_id, string $text, ?string $parse_mode = null, ?array $reply_markup = null, bool $attempt_immediate = false ): ?DispatchResult {
-		$message = $this->messages->create( $bot_id, $destination_id, $text, $parse_mode, DeliveryClass::STANDARD, $reply_markup );
+	public function send( int $bot_id, int $destination_id, string $text, ?string $parse_mode = null, ?array $reply_markup = null, bool $attempt_immediate = false, ?string $correlation_token = null ): ?DispatchResult {
+		$message = $this->messages->create( $bot_id, $destination_id, $text, $parse_mode, DeliveryClass::STANDARD, $reply_markup, $correlation_token );
 
 		if ( null === $message ) {
 			return null;

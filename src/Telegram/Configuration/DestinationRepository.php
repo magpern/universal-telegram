@@ -122,6 +122,36 @@ final class DestinationRepository {
 	}
 
 	/**
+	 * Finds the destination for the exact (bot, chat, forum-topic) triple the
+	 * schema constrains as unique (docs/adr/0046). A `null` thread matches
+	 * only a destination with no topic; a chat id alone is never sufficient
+	 * because one supergroup may own several topic destinations.
+	 *
+	 * @param int      $bot_id            The owning bot's primary key.
+	 * @param string   $chat_id           Telegram's own chat identifier.
+	 * @param int|null $message_thread_id Forum topic id, or null.
+	 *
+	 * @return Destination|null
+	 */
+	public function find_by_bot_chat_thread( int $bot_id, string $chat_id, ?int $message_thread_id ): ?Destination {
+		if ( ! $this->schema_health->is_available() ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::DESTINATIONS_TABLE;
+
+		if ( null === $message_thread_id ) {
+			$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE bot_id = %d AND chat_id = %s AND message_thread_id IS NULL ORDER BY id ASC LIMIT 1", $bot_id, $chat_id ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		} else {
+			$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE bot_id = %d AND chat_id = %s AND message_thread_id = %d ORDER BY id ASC LIMIT 1", $bot_id, $chat_id, $message_thread_id ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		}
+
+		return null === $row ? null : $this->hydrate( $row );
+	}
+
+	/**
 	 * Enables or disables a destination.
 	 *
 	 * @param int  $id      The destination's primary key.

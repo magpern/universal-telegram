@@ -46,10 +46,11 @@ final class OutboundMessageRepository {
 	 * @param string|null               $parse_mode      Telegram's own parse_mode parameter.
 	 * @param string                    $delivery_class  Fixed transport priority class (docs/adr/0045); defaults to `standard`.
 	 * @param array<string, mixed>|null $reply_markup Telegram's own `reply_markup` payload (currently only `inline_keyboard`), or null for no keyboard.
+	 * @param string|null               $correlation_token Opaque reply-correlation token (docs/adr/0046), or null.
 	 *
 	 * @return OutboundMessage|null Null if the schema is unavailable or the insert failed.
 	 */
-	public function create( int $bot_id, int $destination_id, string $body_plaintext, ?string $parse_mode, string $delivery_class = DeliveryClass::STANDARD, ?array $reply_markup = null ): ?OutboundMessage {
+	public function create( int $bot_id, int $destination_id, string $body_plaintext, ?string $parse_mode, string $delivery_class = DeliveryClass::STANDARD, ?array $reply_markup = null, ?string $correlation_token = null ): ?OutboundMessage {
 		if ( ! $this->schema_health->is_available() ) {
 			return null;
 		}
@@ -75,10 +76,11 @@ final class OutboundMessageRepository {
 				'parse_mode'              => $parse_mode,
 				'status'                  => OutboundMessageStatus::PENDING->value,
 				'delivery_class'          => DeliveryClass::from_storage( $delivery_class ),
+				'correlation_token'       => $correlation_token,
 				'created_at'              => $now,
 				'updated_at'              => $now,
 			),
-			array( '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
+			array( '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
 		);
 
 		if ( false === $inserted ) {
@@ -125,6 +127,30 @@ final class OutboundMessageRepository {
 
 		$table = $wpdb->prefix . Migrator::OUTBOUND_MESSAGES_TABLE;
 		$row   = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE message_uuid = %s", $message_uuid ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		return null === $row ? null : $this->hydrate( $row );
+	}
+
+	/**
+	 * Finds the notification a Telegram message was delivered as: the
+	 * message whose returned Telegram id is `$telegram_message_id` within one
+	 * destination (docs/adr/0046). Backed by
+	 * idx_destination_telegram_message.
+	 *
+	 * @param int $destination_id      The destination's primary key.
+	 * @param int $telegram_message_id Telegram's own message id (the replied-to message).
+	 *
+	 * @return OutboundMessage|null
+	 */
+	public function find_by_destination_and_telegram_message_id( int $destination_id, int $telegram_message_id ): ?OutboundMessage {
+		if ( ! $this->schema_health->is_available() ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . Migrator::OUTBOUND_MESSAGES_TABLE;
+		$row   = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE destination_id = %d AND telegram_message_id = %d ORDER BY id DESC LIMIT 1", $destination_id, $telegram_message_id ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return null === $row ? null : $this->hydrate( $row );
 	}
@@ -602,7 +628,8 @@ final class OutboundMessageRepository {
 			null === $row['sent_at'] ? null : (string) $row['sent_at'],
 			null === $row['claim_expires_at'] ? null : (string) $row['claim_expires_at'],
 			DeliveryClass::from_storage( $row['delivery_class'] ?? null ),
-			array_key_exists( 'reply_markup_ciphertext', $row ) && null !== $row['reply_markup_ciphertext'] ? (string) $row['reply_markup_ciphertext'] : null
+			array_key_exists( 'reply_markup_ciphertext', $row ) && null !== $row['reply_markup_ciphertext'] ? (string) $row['reply_markup_ciphertext'] : null,
+			array_key_exists( 'correlation_token', $row ) && null !== $row['correlation_token'] ? (string) $row['correlation_token'] : null
 		);
 	}
 }

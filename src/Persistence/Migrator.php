@@ -136,7 +136,7 @@ class Migrator {
 	 * @return int
 	 */
 	protected function target_version(): int {
-		return 39;
+		return 40;
 	}
 
 	/**
@@ -252,6 +252,7 @@ class Migrator {
 			37 => array( array( $this, 'step_37_retire_legacy_chat' ), array( $this, 'verify_step_37' ) ),
 			38 => array( array( $this, 'step_38_add_outbound_message_delivery_class' ), array( $this, 'verify_step_38' ) ),
 			39 => array( array( $this, 'step_39_add_outbound_message_reply_markup' ), array( $this, 'verify_step_39' ) ),
+			40 => array( array( $this, 'step_40_add_outbound_message_correlation' ), array( $this, 'verify_step_40' ) ),
 		);
 
 		if ( ! isset( $steps[ $number ] ) ) {
@@ -522,6 +523,53 @@ class Migrator {
 	 *
 	 * @return bool
 	 */
+	/**
+	 * Adds the opaque reply-correlation token and the lookup index native
+	 * Telegram replies use (docs/adr/0046): a reply carries only the replied-to
+	 * Telegram message id, resolved within one destination. Additive and
+	 * repeat-safe: the column and the index are each guarded.
+	 */
+	private function step_40_add_outbound_message_correlation(): void {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::OUTBOUND_MESSAGES_TABLE;
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$column = $wpdb->get_row( "SHOW COLUMNS FROM {$table} LIKE 'correlation_token'", ARRAY_A );
+
+		if ( null === $column ) {
+			$wpdb->query(
+				"ALTER TABLE {$table}
+					ADD COLUMN correlation_token VARCHAR(191) NULL AFTER telegram_message_id"
+			);
+		}
+
+		$index = $wpdb->get_row( "SHOW INDEX FROM {$table} WHERE Key_name = 'idx_destination_telegram_message'", ARRAY_A );
+
+		if ( null === $index ) {
+			$wpdb->query(
+				"ALTER TABLE {$table}
+					ADD INDEX idx_destination_telegram_message (destination_id, telegram_message_id)"
+			);
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	private function verify_step_40(): bool {
+		global $wpdb;
+
+		$table = $wpdb->prefix . self::OUTBOUND_MESSAGES_TABLE;
+
+		if ( ! $this->table_has_columns( $table, array( 'correlation_token' ) ) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$index = $wpdb->get_row( "SHOW INDEX FROM {$table} WHERE Key_name = 'idx_destination_telegram_message'", ARRAY_A );
+
+		return null !== $index;
+	}
+
 	private function verify_step_39(): bool {
 		global $wpdb;
 
