@@ -16,6 +16,7 @@ use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
 use UniversalTelegram\Events\Registry;
+use UniversalTelegram\Integrations\FluentContactInbox\FluentContactInboxSupport;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
@@ -47,13 +48,14 @@ final class RuleBuilderPage {
 	/**
 	 * Constructor.
 	 *
-	 * @param NotificationRuleRepository  $rules                Notification rules.
-	 * @param Registry                    $registry             The current request's event registry.
-	 * @param BotProfileRepository        $bots                 Bot profiles.
-	 * @param DestinationRepository       $destinations         Destinations.
-	 * @param DestinationEligibility|null $digest_eligibility  Shared destination-eligibility filter for the alert-target dropdowns.
-	 * @param Settings|null               $settings             Reads/writes the operational_summary_* and alert_* fields (§5). Null only for pre-M11B callers.
-	 * @param WooCommerceSupport|null     $woocommerce_support    Gates WooCommerce-only event families and presets (M08.1). Null only for pre-M08.1 callers, treated as WooCommerce-inactive.
+	 * @param NotificationRuleRepository     $rules                Notification rules.
+	 * @param Registry                       $registry             The current request's event registry.
+	 * @param BotProfileRepository           $bots                 Bot profiles.
+	 * @param DestinationRepository          $destinations         Destinations.
+	 * @param DestinationEligibility|null    $digest_eligibility  Shared destination-eligibility filter for the alert-target dropdowns.
+	 * @param Settings|null                  $settings             Reads/writes the operational_summary_* and alert_* fields (§5). Null only for pre-M11B callers.
+	 * @param WooCommerceSupport|null        $woocommerce_support    Gates WooCommerce-only event families and presets (M08.1). Null only for pre-M08.1 callers, treated as WooCommerce-inactive.
+	 * @param FluentContactInboxSupport|null $fluent_contact_inbox_support Gates the support-ticket event family (docs/adr/0046). Null is treated as inactive.
 	 */
 	public function __construct(
 		private readonly NotificationRuleRepository $rules,
@@ -62,7 +64,8 @@ final class RuleBuilderPage {
 		private readonly DestinationRepository $destinations,
 		private readonly ?DestinationEligibility $digest_eligibility = null,
 		private readonly ?Settings $settings = null,
-		private readonly ?WooCommerceSupport $woocommerce_support = null
+		private readonly ?WooCommerceSupport $woocommerce_support = null,
+		private readonly ?FluentContactInboxSupport $fluent_contact_inbox_support = null
 	) {}
 
 	/**
@@ -73,7 +76,7 @@ final class RuleBuilderPage {
 	 * than duplicating it; this delegation is a pure relocation with no
 	 * behavior change.
 	 *
-	 * @return array<string, array{label: string, requires_woocommerce: bool, event_types: array<int, string>}>
+	 * @return array<string, array{label: string, requires_integration: string|null, event_types: array<int, string>}>
 	 */
 	private static function event_families(): array {
 		return EventFamilyCatalog::families(); // phpcs:ignore PHPCompatibility.Extensions.RemovedExtensions.famRemoved -- false positive: the sniff misidentifies the `families(` call as the removed ext/fam extension.
@@ -341,7 +344,7 @@ final class RuleBuilderPage {
 		echo '<h3>' . esc_html__( 'More notification templates', 'universal-telegram' ) . '</h3>';
 
 		foreach ( self::event_families() as $family ) {
-			if ( $family['requires_woocommerce'] && ! $this->woocommerce_active() ) {
+			if ( ! EventFamilyCatalog::is_family_available( $family, $this->active_integrations() ) ) {
 				continue;
 			}
 
@@ -662,6 +665,18 @@ final class RuleBuilderPage {
 	}
 
 	/**
+	 * Which optional integrations are currently active, for family gating.
+	 *
+	 * @return array<string, bool>
+	 */
+	private function active_integrations(): array {
+		return array(
+			EventFamilyCatalog::INTEGRATION_WOOCOMMERCE => $this->woocommerce_active(),
+			EventFamilyCatalog::INTEGRATION_FLUENT_CONTACT_INBOX => null !== $this->fluent_contact_inbox_support && $this->fluent_contact_inbox_support->is_active(),
+		);
+	}
+
+	/**
 	 * Renders the create- or edit-rule form: the friendly, grouped event
 	 * picker and the visual "Only when…" condition builder (M08.1). When
 	 * $editing is unrepresentable (M08.1 plan "Existing-rule compatibility
@@ -864,13 +879,13 @@ final class RuleBuilderPage {
 	 * @param bool   $locked              Whether the event type is locked (an existing rule the visual builder cannot fully represent).
 	 */
 	private function render_event_picker( string $selected_event_type = '', bool $locked = false ): void {
-		$woocommerce_active = $this->woocommerce_active();
+		$active_integrations = $this->active_integrations();
 
 		echo '<p><label for="ut-rule-event-type" class="screen-reader-text">' . esc_html__( 'When this happens', 'universal-telegram' ) . '</label>';
 		echo '<select id="ut-rule-event-type" name="' . ( $locked ? '' : 'event_type' ) . '"' . ( $locked ? ' disabled="disabled"' : '' ) . '>';
 
 		foreach ( self::event_families() as $family ) {
-			$family_disabled = $family['requires_woocommerce'] && ! $woocommerce_active;
+			$family_disabled = ! EventFamilyCatalog::is_family_available( $family, $active_integrations );
 
 			printf(
 				'<optgroup label="%s"%s>',
@@ -902,11 +917,11 @@ final class RuleBuilderPage {
 		echo '</p>';
 
 		foreach ( self::event_families() as $family ) {
-			if ( $family['requires_woocommerce'] && ! $woocommerce_active ) {
+			if ( ! EventFamilyCatalog::is_family_available( $family, $active_integrations ) ) {
 				printf(
 					'<p class="description">%s: %s</p>',
 					esc_html( $family['label'] ),
-					esc_html__( 'Requires WooCommerce, which is not currently active on this site.', 'universal-telegram' )
+					esc_html( EventFamilyCatalog::unavailable_notice( (string) $family['requires_integration'] ) )
 				);
 			}
 		}

@@ -311,6 +311,45 @@ final class FieldTypeCatalog {
 			'operators'     => self::TEXT_OPERATORS,
 			'preview_value' => 'invalid_email',
 		),
+		'subject.ticket_id'          => array(
+			'type'          => self::TYPE_NUMBER,
+			'operators'     => self::NUMERIC_OPERATORS,
+			'preview_value' => '17',
+		),
+		'payload.ticket_number'      => array(
+			'type'          => self::TYPE_NUMBER,
+			'operators'     => self::NUMERIC_OPERATORS,
+			'preview_value' => '1042',
+		),
+		'payload.subject'            => array(
+			'type'          => self::TYPE_TEXT,
+			'operators'     => self::TEXT_OPERATORS,
+			'preview_value' => 'Question about my order',
+		),
+		'payload.message_text'       => array(
+			'type'          => self::TYPE_TEXT,
+			'operators'     => self::TEXT_OPERATORS,
+			'preview_value' => 'Hello, when will my order ship?',
+		),
+		'payload.customer_name'      => array(
+			'type'          => self::TYPE_TEXT,
+			'operators'     => self::TEXT_OPERATORS,
+			'preview_value' => 'Jane Smith',
+		),
+		'payload.customer_email'     => array(
+			'type'          => self::TYPE_TEXT,
+			'operators'     => self::TEXT_OPERATORS,
+			'preview_value' => 'jane@example.com',
+		),
+		'payload.source'             => array(
+			'type'           => self::TYPE_CHOICE,
+			'operators'      => self::CHOICE_OPERATORS,
+			'preview_value'  => 'fluent',
+			'choice_options' => array(
+				'fluent' => 'Contact form',
+				'email'  => 'Email',
+			),
+		),
 		'context.checkout_type'      => array(
 			'type'           => self::TYPE_CHOICE,
 			'operators'      => self::CHOICE_OPERATORS,

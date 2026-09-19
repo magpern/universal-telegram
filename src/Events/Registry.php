@@ -49,6 +49,14 @@ final class Registry {
 	private array $history_projection_fields = array();
 
 	/**
+	 * Maps an event type to the dot-path of the field whose value correlates
+	 * a native Telegram reply back to the event's subject (docs/adr/0046).
+	 *
+	 * @var array<string, string>
+	 */
+	private array $reply_correlation_fields = array();
+
+	/**
 	 * Registers one event type. Fail-closed on three independent checks
 	 * (M02 plan §5.2, docs/adr/0017).
 	 *
@@ -57,6 +65,7 @@ final class Registry {
 	 * @param array<string, Classification> $field_classification_map  Dot-notation path to classification; every allowed field.
 	 * @param array<int, string>            $allowed_variable_fields    Subset of the map's paths; usable in conditions/templates only.
 	 * @param array<int, string>            $history_projection_fields  Subset of the map's paths; MUST be classified PUBLIC.
+	 * @param string|null                   $reply_correlation_field    Optional dot-path (a member of the map) whose value identifies the event's subject for native Telegram replies; null for none.
 	 *
 	 * @throws EventTypeAlreadyRegisteredException If (event_type, schema_version) was already registered.
 	 * @throws UnclassifiedFieldException          If an allowed/history field is not a member of the classification map.
@@ -67,7 +76,8 @@ final class Registry {
 		int $schema_version,
 		array $field_classification_map,
 		array $allowed_variable_fields,
-		array $history_projection_fields
+		array $history_projection_fields,
+		?string $reply_correlation_field = null
 	): void {
 		if ( isset( $this->schema_versions[ $event_type ] ) ) {
 			throw new EventTypeAlreadyRegisteredException( sprintf( 'Event type "%s" is already registered.', $event_type ) );
@@ -89,6 +99,14 @@ final class Registry {
 					sprintf( 'History projection field "%s" must be classified PUBLIC, not %s.', $field, $field_classification_map[ $field ]->value )
 				);
 			}
+		}
+
+		if ( null !== $reply_correlation_field && ! isset( $field_classification_map[ $reply_correlation_field ] ) ) {
+			throw new UnclassifiedFieldException( sprintf( 'Reply correlation field "%s" is not present in the classification map.', $reply_correlation_field ) );
+		}
+
+		if ( null !== $reply_correlation_field ) {
+			$this->reply_correlation_fields[ $event_type ] = $reply_correlation_field;
 		}
 
 		$this->schema_versions[ $event_type ]           = $schema_version;
@@ -152,6 +170,18 @@ final class Registry {
 	 */
 	public function history_projection_fields_for( string $event_type ): array {
 		return $this->history_projection_fields[ $event_type ] ?? array();
+	}
+
+	/**
+	 * The dot-path whose value correlates a native Telegram reply to this
+	 * event's subject, or null when the event type has none (docs/adr/0046).
+	 *
+	 * @param string $event_type The event type.
+	 *
+	 * @return string|null
+	 */
+	public function reply_correlation_field_for( string $event_type ): ?string {
+		return $this->reply_correlation_fields[ $event_type ] ?? null;
 	}
 
 	/**

@@ -13,6 +13,9 @@ parameters:
         # WC_Product/wc_get_order() etc. only inside the
         # WooCommerceSupport::is_active() gated code path.
         - vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
+        # The optional fluent-imap-support-desk plugin (docs/adr/0046): declaration-only
+        # stubs for the few classes its gateway adapter calls.
+        - docker/phpstan/biopentra-contact-inbox-stubs.php
     scanDirectories:
         - vendor/woocommerce/action-scheduler/classes
 

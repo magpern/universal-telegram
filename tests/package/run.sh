@@ -150,13 +150,24 @@ if [ -z "$(m06_column_exists "outbound_messages" "reply_markup_ciphertext")" ]; 
 fi
 echo "OK: universal_telegram_outbound_messages.reply_markup_ciphertext column exists."
 
-echo "== Verifying db_version reached 39 (M09 reply_markup step 39) =="
-DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
-if [ "39" != "$DB_VERSION" ]; then
-	echo "FAIL: expected universal_telegram_db_version=39, got ${DB_VERSION}" >&2
+echo "== Verifying ADR-0046's reply-correlation column and lookup index exist on the queue =="
+if [ -z "$(m06_column_exists "outbound_messages" "correlation_token")" ]; then
+	echo "FAIL: universal_telegram_outbound_messages.correlation_token column was not created on activation" >&2
 	exit 1
 fi
-echo "OK: universal_telegram_db_version is 39."
+if [ -z "$(wp db query "SHOW INDEX FROM ${TABLE_PREFIX}universal_telegram_outbound_messages WHERE Key_name = 'idx_destination_telegram_message'" --path="$WP_DIR" --allow-root --skip-column-names)" ]; then
+	echo "FAIL: idx_destination_telegram_message index was not created on activation" >&2
+	exit 1
+fi
+echo "OK: correlation_token column and idx_destination_telegram_message index exist."
+
+echo "== Verifying db_version reached 40 (ADR-0046 correlation step 40) =="
+DB_VERSION="$(wp option get universal_telegram_db_version --path="$WP_DIR" --allow-root)"
+if [ "40" != "$DB_VERSION" ]; then
+	echo "FAIL: expected universal_telegram_db_version=40, got ${DB_VERSION}" >&2
+	exit 1
+fi
+echo "OK: universal_telegram_db_version is 40."
 
 echo "== Verifying ADR-0044: the retained adapter operator-identity map table exists =="
 if [ -z "$(m02_table_exists "operator_identity_map")" ]; then

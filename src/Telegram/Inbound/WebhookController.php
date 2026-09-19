@@ -33,7 +33,8 @@ use WP_REST_Response;
  * message-bearing update to, in order: the Support Chat adapter's
  * "active binding topic went unavailable" reporter, the adapter's inbound
  * bridge, and finally administrative bot-command dispatch. There is no
- * legacy conversation capture.
+ * legacy conversation capture. A native reply to a correlated notification
+ * (docs/adr/0046) is routed first, after the dedup guard.
  */
 final class WebhookController {
 
@@ -60,6 +61,7 @@ final class WebhookController {
 	 * @param ChannelBindingRepository|null  $bindings       Resolves an active binding for the topic-unavailable reporter below.
 	 * @param SupportChatContractClient|null $sc_client      Dispatches `report_channel_unavailable`.
 	 * @param CallbackQueryDispatcher|null   $callback_queries Handles a `/stock` menu button tap (M09). Null in any context that never wires it (e.g. an older test double).
+	 * @param NotificationReplyRouter|null   $reply_router     Routes a native reply to a correlated notification (docs/adr/0046). Null in any context that never wires it.
 	 */
 	public function __construct(
 		private readonly SchemaHealth $schema_health,
@@ -71,7 +73,8 @@ final class WebhookController {
 		private readonly ?InboundAdapterBridge $adapter_bridge = null,
 		private readonly ?ChannelBindingRepository $bindings = null,
 		private readonly ?SupportChatContractClient $sc_client = null,
-		private readonly ?CallbackQueryDispatcher $callback_queries = null
+		private readonly ?CallbackQueryDispatcher $callback_queries = null,
+		private readonly ?NotificationReplyRouter $reply_router = null
 	) {}
 
 	/**
@@ -170,6 +173,14 @@ final class WebhookController {
 		}
 
 		if ( $this->maybe_report_active_binding_unavailable( $bot->id(), $message_thread_id, $decoded ) ) {
+			return;
+		}
+
+		// After the dedup guard above (a redelivered update never reaches here) and
+		// before the adapter bridge, so a ticket reply is never swallowed by
+		// topic-based conversation capture.
+		if ( null !== $this->reply_router
+			&& $this->reply_router->try_handle( $bot, $chat_id, $message_thread_id, $decoded ) ) {
 			return;
 		}
 

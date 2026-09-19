@@ -14,6 +14,7 @@ use UniversalTelegram\Automations\NotificationRule;
 use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Events\Registry;
+use UniversalTelegram\Integrations\FluentContactInbox\FluentContactInboxSupport;
 use UniversalTelegram\Integrations\WooCommerce\WooCommerceSupport;
 use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
@@ -42,12 +43,13 @@ final class NotificationTesterPage {
 	/**
 	 * Constructor.
 	 *
-	 * @param NotificationTester         $tester              The no-dispatch test engine.
-	 * @param NotificationRuleRepository $rules               Notification rules.
-	 * @param Registry                   $registry             The current request's event registry.
-	 * @param BotProfileRepository       $bots                 Bot profiles, for the "About this notification" destination label.
-	 * @param DestinationRepository      $destinations         Destinations, for the same label.
-	 * @param WooCommerceSupport|null    $woocommerce_support   Gates WooCommerce-only event families, matching RuleBuilderPage. Null only for pre-M08.1-style callers, treated as inactive.
+	 * @param NotificationTester             $tester              The no-dispatch test engine.
+	 * @param NotificationRuleRepository     $rules               Notification rules.
+	 * @param Registry                       $registry             The current request's event registry.
+	 * @param BotProfileRepository           $bots                 Bot profiles, for the "About this notification" destination label.
+	 * @param DestinationRepository          $destinations         Destinations, for the same label.
+	 * @param WooCommerceSupport|null        $woocommerce_support   Gates WooCommerce-only event families, matching RuleBuilderPage. Null only for pre-M08.1-style callers, treated as inactive.
+	 * @param FluentContactInboxSupport|null $fluent_contact_inbox_support Gates the support-ticket event family (docs/adr/0046). Null is treated as inactive.
 	 */
 	public function __construct(
 		private readonly NotificationTester $tester,
@@ -55,7 +57,8 @@ final class NotificationTesterPage {
 		private readonly Registry $registry,
 		private readonly BotProfileRepository $bots,
 		private readonly DestinationRepository $destinations,
-		private readonly ?WooCommerceSupport $woocommerce_support = null
+		private readonly ?WooCommerceSupport $woocommerce_support = null,
+		private readonly ?FluentContactInboxSupport $fluent_contact_inbox_support = null
 	) {}
 
 	/**
@@ -348,7 +351,11 @@ final class NotificationTesterPage {
 	 * @param string $selected_event_type The currently selected event type.
 	 */
 	private function render_event_picker( string $selected_event_type ): void {
-		$woocommerce_active = null !== $this->woocommerce_support && $this->woocommerce_support->is_active();
+		$woocommerce_active  = null !== $this->woocommerce_support && $this->woocommerce_support->is_active();
+		$active_integrations = array(
+			EventFamilyCatalog::INTEGRATION_WOOCOMMERCE => $woocommerce_active,
+			EventFamilyCatalog::INTEGRATION_FLUENT_CONTACT_INBOX => null !== $this->fluent_contact_inbox_support && $this->fluent_contact_inbox_support->is_active(),
+		);
 
 		echo '<form method="get">';
 		echo '<input type="hidden" name="page" value="' . esc_attr( HubPage::SLUG ) . '" />';
@@ -360,7 +367,7 @@ final class NotificationTesterPage {
 		echo '<option value="">' . esc_html__( 'Choose an event…', 'universal-telegram' ) . '</option>';
 
 		foreach ( EventFamilyCatalog::families() as $family ) { // phpcs:ignore PHPCompatibility.Extensions.RemovedExtensions.famRemoved -- false positive: the sniff misidentifies the `families(` call as the removed ext/fam extension.
-			$family_disabled = $family['requires_woocommerce'] && ! $woocommerce_active;
+			$family_disabled = ! EventFamilyCatalog::is_family_available( $family, $active_integrations );
 
 			printf( '<optgroup label="%s"%s>', esc_attr( $family['label'] ), $family_disabled ? ' disabled="disabled"' : '' );
 			foreach ( $family['event_types'] as $event_type ) {
@@ -381,6 +388,10 @@ final class NotificationTesterPage {
 
 		if ( ! $woocommerce_active ) {
 			echo '<p class="description">' . esc_html__( 'WooCommerce event families are shown disabled because WooCommerce is not currently active on this site.', 'universal-telegram' ) . '</p>';
+		}
+
+		if ( ! $active_integrations[ EventFamilyCatalog::INTEGRATION_FLUENT_CONTACT_INBOX ] ) {
+			echo '<p class="description">' . esc_html__( 'The support ticket event family is shown disabled because the Fluent IMAP Support Desk plugin (2.1.0 or newer) is not currently active on this site.', 'universal-telegram' ) . '</p>';
 		}
 
 		echo '</form>';

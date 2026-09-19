@@ -14,6 +14,7 @@ use UniversalTelegram\Administration\Automations\NotificationTesterPage;
 use UniversalTelegram\Administration\Automations\PreviewRenderer;
 use UniversalTelegram\Administration\Automations\RuleBuilderPage;
 use UniversalTelegram\Administration\Automations\RuleBuilderRequestHandler;
+use UniversalTelegram\Administration\Automations\SupportDigestSettingsPage;
 use UniversalTelegram\Administration\Cli\LegacyChatPurgeCommand;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsPage;
 use UniversalTelegram\Administration\Diagnostics\DiagnosticsReport;
@@ -60,6 +61,15 @@ use UniversalTelegram\Events\Emitters\RestRequestFailureEmitter;
 use UniversalTelegram\Events\Emitters\ScheduledTaskFailureEmitter;
 use UniversalTelegram\Events\Emitters\UpdateEmitter;
 use UniversalTelegram\Events\Emitters\UserLifecycleEmitter;
+use UniversalTelegram\Integrations\FluentContactInbox\Digest\ActionSchedulerDigestScheduler;
+use UniversalTelegram\Integrations\FluentContactInbox\Digest\MessageDispatcherDigestSender;
+use UniversalTelegram\Integrations\FluentContactInbox\Digest\TicketDigestJob;
+use UniversalTelegram\Integrations\FluentContactInbox\Digest\TicketDigestSettings;
+use UniversalTelegram\Integrations\FluentContactInbox\Events\ContactInboxEventEmitter;
+use UniversalTelegram\Integrations\FluentContactInbox\FluentContactInboxGateway;
+use UniversalTelegram\Integrations\FluentContactInbox\FluentContactInboxSupport;
+use UniversalTelegram\Integrations\FluentContactInbox\Inbound\TelegramTicketReplyEnvironment;
+use UniversalTelegram\Integrations\FluentContactInbox\Inbound\TicketReplyHandler;
 use UniversalTelegram\Integrations\WooCommerce\Events\CartEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Events\CheckoutEventEmitter;
 use UniversalTelegram\Integrations\WooCommerce\Events\CouponEventEmitter;
@@ -89,6 +99,7 @@ use UniversalTelegram\Telegram\Configuration\BotProfileRepository;
 use UniversalTelegram\Telegram\Configuration\DestinationEligibility;
 use UniversalTelegram\Telegram\Configuration\DestinationRepository;
 use UniversalTelegram\Telegram\Configuration\WebhookRegistrationCoordinator;
+use UniversalTelegram\Telegram\Inbound\NotificationReplyRouter;
 use UniversalTelegram\Telegram\Inbound\UpdateRepository;
 use UniversalTelegram\Telegram\Inbound\WebhookController;
 use UniversalTelegram\Telegram\Inbound\WebhookSecretVerifier;
@@ -177,6 +188,13 @@ final class Plugin {
 	 * @var WooCommerceSupport|null
 	 */
 	private ?WooCommerceSupport $woocommerce_support = null;
+
+	/**
+	 * The support-desk presence detector, set by init().
+	 *
+	 * @var FluentContactInboxSupport|null
+	 */
+	private ?FluentContactInboxSupport $fluent_contact_inbox_support = null;
 
 	/**
 	 * The credential_vault instance, set by init().
@@ -497,11 +515,12 @@ final class Plugin {
 			$this->schema_health->mark_unavailable( $exception->failure_code() );
 		}
 
-		$this->audit_logger         = new AuditLogger( $this->schema_health, new Redactor() );
-		$this->audit_log_repository = new AuditLogRepository( $this->schema_health );
-		$this->woocommerce_support  = new WooCommerceSupport();
-		$this->credential_vault     = new CredentialVault();
-		$this->capability_registrar = new CapabilityRegistrar();
+		$this->audit_logger                 = new AuditLogger( $this->schema_health, new Redactor() );
+		$this->audit_log_repository         = new AuditLogRepository( $this->schema_health );
+		$this->woocommerce_support          = new WooCommerceSupport();
+		$this->fluent_contact_inbox_support = new FluentContactInboxSupport();
+		$this->credential_vault             = new CredentialVault();
+		$this->capability_registrar         = new CapabilityRegistrar();
 
 		$this->handler_registry = new HandlerRegistry();
 		$this->dispatcher       = new Dispatcher( $this->schema_health );
@@ -621,6 +640,20 @@ final class Plugin {
 			$adapter_enabled
 		);
 
+		// Native replies to correlated notifications (docs/adr/0046). The router is
+		// inert until a handler is registered, which only happens with the support desk active.
+		$reply_router = new NotificationReplyRouter( $this->destination_repository, $this->outbound_message_repository );
+
+		if ( $this->fluent_contact_inbox_support->is_active() ) {
+			$reply_router->register_handler(
+				TicketReplyHandler::TOKEN_PREFIX,
+				new TicketReplyHandler(
+					new FluentContactInboxGateway(),
+					new TelegramTicketReplyEnvironment( $operator_identity_map, $this->rate_limiter, $this->message_dispatcher, $this->audit_logger )
+				)
+			);
+		}
+
 		$this->webhook_controller = new WebhookController(
 			$this->schema_health,
 			$this->bot_profile_repository,
@@ -631,7 +664,8 @@ final class Plugin {
 			$adapter_inbound,
 			$adapter_bindings,
 			$adapter_sc_client,
-			$callback_query_dispatcher
+			$callback_query_dispatcher,
+			$reply_router
 		);
 		add_action( 'rest_api_init', array( $this->webhook_controller, 'register_routes' ) );
 
@@ -839,6 +873,29 @@ final class Plugin {
 			$checkout_event_emitter->register_hooks();
 		}
 
+		$support_digest_page = null;
+
+		if ( $this->fluent_contact_inbox_support->is_active() ) {
+			$contact_inbox_emitter = new ContactInboxEventEmitter();
+
+			add_action( 'universal_telegram_register_event_types', array( $contact_inbox_emitter, 'register_event_types' ), 10 );
+			$contact_inbox_emitter->register_hooks();
+
+			$digest_settings = new TicketDigestSettings();
+			$digest_job      = new TicketDigestJob(
+				new FluentContactInboxGateway(),
+				$digest_settings,
+				new MessageDispatcherDigestSender( $destination_eligibility, $this->message_dispatcher ),
+				new ActionSchedulerDigestScheduler()
+			);
+
+			add_action( TicketDigestJob::HOOK, array( $digest_job, 'run' ) );
+			add_action( 'init', array( $digest_job, 'ensure_scheduled' ) );
+
+			$support_digest_page = new SupportDigestSettingsPage( $digest_settings, $digest_job, $this->bot_profile_repository, $destination_eligibility );
+			add_action( 'admin_post_' . SupportDigestSettingsPage::ADMIN_POST_ACTION, array( $support_digest_page, 'handle_request' ) );
+		}
+
 		add_action(
 			'init',
 			function () {
@@ -899,7 +956,8 @@ final class Plugin {
 			$this->destination_repository,
 			$destination_eligibility,
 			$settings,
-			$this->woocommerce_support
+			$this->woocommerce_support,
+			$this->fluent_contact_inbox_support
 		);
 		$this->rule_builder_request_handler = new RuleBuilderRequestHandler( $this->notification_rule_repository );
 		add_action( 'admin_post_' . RuleBuilderRequestHandler::ADMIN_POST_ACTION, array( $this->rule_builder_request_handler, 'handle_request' ) );
@@ -924,20 +982,27 @@ final class Plugin {
 			$this->event_registry,
 			$this->bot_profile_repository,
 			$this->destination_repository,
-			$this->woocommerce_support
+			$this->woocommerce_support,
+			$this->fluent_contact_inbox_support
 		);
 
 		$this->event_history_page = new EventHistoryPage( $this->schema_health );
 
+		$notifications_activity_sections = array(
+			new Tab( RuleBuilderPage::TAB_ID, __( 'Notifications', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_builder_page, 'render_tab_content' ) ),
+			new Tab( NotificationTesterPage::TAB_ID, __( 'Test notifications', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->notification_tester_page, 'render_tab_content' ) ),
+			new Tab( 'events', __( 'Events', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_catalog_page, 'render_tab_content' ) ),
+			new Tab( EventHistoryPage::TAB_ID, __( 'Event History', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_history_page, 'render_tab_content' ) ),
+		);
+
+		if ( null !== $support_digest_page ) {
+			$notifications_activity_sections[] = new Tab( SupportDigestSettingsPage::SECTION_ID, __( 'Support digest', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $support_digest_page, 'render_tab_content' ) );
+		}
+
 		$notifications_activity_area = new AreaPage(
 			'notifications-activity',
 			__( 'Notifications & activity', 'universal-telegram' ),
-			array(
-				new Tab( RuleBuilderPage::TAB_ID, __( 'Notifications', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->rule_builder_page, 'render_tab_content' ) ),
-				new Tab( NotificationTesterPage::TAB_ID, __( 'Test notifications', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->notification_tester_page, 'render_tab_content' ) ),
-				new Tab( 'events', __( 'Events', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_catalog_page, 'render_tab_content' ) ),
-				new Tab( EventHistoryPage::TAB_ID, __( 'Event History', 'universal-telegram' ), CapabilityRegistrar::MANAGE_AUTOMATIONS, array( $this->event_history_page, 'render_tab_content' ) ),
-			)
+			$notifications_activity_sections
 		);
 		$this->hub_tab_registry->register(
 			new Tab(
@@ -1040,6 +1105,15 @@ final class Plugin {
 	 */
 	public function audit_log_repository(): ?AuditLogRepository {
 		return $this->audit_log_repository;
+	}
+
+	/**
+	 * The support-desk presence detector.
+	 *
+	 * @return FluentContactInboxSupport|null
+	 */
+	public function fluent_contact_inbox_support(): ?FluentContactInboxSupport {
+		return $this->fluent_contact_inbox_support;
 	}
 
 	/**

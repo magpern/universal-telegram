@@ -18,15 +18,18 @@ namespace UniversalTelegram\Administration\Automations;
  */
 final class EventFamilyCatalog {
 
+	public const INTEGRATION_WOOCOMMERCE          = 'woocommerce';
+	public const INTEGRATION_FLUENT_CONTACT_INBOX = 'fluent_contact_inbox';
+
 	/**
 	 * The event families themselves, keyed by family id.
 	 *
-	 * @var array<string, array{label: string, requires_woocommerce: bool, event_types: array<int, string>}>
+	 * @var array<string, array{label: string, requires_integration: string|null, event_types: array<int, string>}>
 	 */
 	private const FAMILIES = array(
 		'website_and_users'  => array(
 			'label'                => 'Website and users',
-			'requires_woocommerce' => false,
+			'requires_integration' => null,
 			'event_types'          => array(
 				'wordpress.login_succeeded',
 				'wordpress.admin_login',
@@ -44,7 +47,7 @@ final class EventFamilyCatalog {
 		),
 		'store_orders'       => array(
 			'label'                => 'Store orders and payments',
-			'requires_woocommerce' => true,
+			'requires_integration' => self::INTEGRATION_WOOCOMMERCE,
 			'event_types'          => array(
 				'woocommerce.order_created',
 				'woocommerce.order_status_changed',
@@ -56,7 +59,7 @@ final class EventFamilyCatalog {
 		),
 		'stock_and_checkout' => array(
 			'label'                => 'Stock and checkout',
-			'requires_woocommerce' => true,
+			'requires_integration' => self::INTEGRATION_WOOCOMMERCE,
 			'event_types'          => array(
 				'woocommerce.stock_threshold_crossed',
 				'woocommerce.cart_item_added',
@@ -67,7 +70,7 @@ final class EventFamilyCatalog {
 		),
 		'website_health'     => array(
 			'label'                => 'Website health',
-			'requires_woocommerce' => false,
+			'requires_integration' => null,
 			'event_types'          => array(
 				'wordpress.scheduled_task_failed',
 				'wordpress.rest_request_failed',
@@ -75,14 +78,52 @@ final class EventFamilyCatalog {
 				'wordpress.fatal_error',
 			),
 		),
+		'support_tickets'    => array(
+			'label'                => 'Support tickets and contact requests',
+			'requires_integration' => self::INTEGRATION_FLUENT_CONTACT_INBOX,
+			'event_types'          => array(
+				'fluent_contact_inbox.contact_request_submitted',
+				'fluent_contact_inbox.ticket_created',
+				'fluent_contact_inbox.ticket_reply_received',
+			),
+		),
 	);
 
 	/**
 	 * Every event family, keyed by family id, in display order.
 	 *
-	 * @return array<string, array{label: string, requires_woocommerce: bool, event_types: array<int, string>}>
+	 * @return array<string, array{label: string, requires_integration: string|null, event_types: array<int, string>}>
 	 */
 	public static function families(): array {
 		return self::FAMILIES;
+	}
+
+	/**
+	 * Whether a family's required integration (if any) is active.
+	 *
+	 * @param array{label: string, requires_integration: string|null, event_types: array<int, string>} $family              The family.
+	 * @param array<string, bool>                                                                      $active_integrations Integration key => active.
+	 *
+	 * @return bool
+	 */
+	public static function is_family_available( array $family, array $active_integrations ): bool {
+		$required = $family['requires_integration'];
+
+		return null === $required || ( $active_integrations[ $required ] ?? false );
+	}
+
+	/**
+	 * Plain-language explanation shown next to a family whose integration is inactive.
+	 *
+	 * @param string $integration The integration key.
+	 *
+	 * @return string
+	 */
+	public static function unavailable_notice( string $integration ): string {
+		if ( self::INTEGRATION_FLUENT_CONTACT_INBOX === $integration ) {
+			return __( 'Requires the Fluent IMAP Support Desk plugin (2.1.0 or newer), which is not currently active on this site.', 'universal-telegram' );
+		}
+
+		return __( 'Requires WooCommerce, which is not currently active on this site.', 'universal-telegram' );
 	}
 }

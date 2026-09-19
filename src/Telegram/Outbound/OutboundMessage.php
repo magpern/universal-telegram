@@ -38,6 +38,7 @@ final class OutboundMessage {
 	 * @param string|null           $claim_expires_at                When the currently held sending claim/lease expires, or null if unclaimed (M06.2 corrective plan v2, ADR-0023 amendment).
 	 * @param string                $delivery_class                  Fixed transport priority class (docs/adr/0045); `standard` or `interactive_chat`, never content.
 	 * @param string|null           $reply_markup_ciphertext         CredentialVault-encrypted JSON-encoded `reply_markup` payload, null when this message carries no keyboard.
+	 * @param string|null           $correlation_token               Opaque reply-correlation token (docs/adr/0046), e.g. `ticket:12`; never message content.
 	 */
 	public function __construct(
 		private readonly int $id,
@@ -57,8 +58,19 @@ final class OutboundMessage {
 		private readonly ?string $sent_at,
 		private readonly ?string $claim_expires_at = null,
 		private readonly string $delivery_class = 'standard',
-		private readonly ?string $reply_markup_ciphertext = null
+		private readonly ?string $reply_markup_ciphertext = null,
+		private readonly ?string $correlation_token = null
 	) {}
+
+	/**
+	 * The opaque reply-correlation token, or null when this message is not
+	 * a correlatable notification (docs/adr/0046).
+	 *
+	 * @return string|null
+	 */
+	public function correlation_token(): ?string {
+		return $this->correlation_token;
+	}
 
 	/**
 	 * The fixed transport priority class (docs/adr/0045). `standard` for

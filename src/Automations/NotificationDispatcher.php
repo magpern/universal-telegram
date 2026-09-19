@@ -86,7 +86,7 @@ class NotificationDispatcher {
 		$allowed_fields = $this->registry->allowed_variable_fields_for( $event->event_type() );
 		$text           = $this->template_renderer->render( $rule->template(), $event, $allowed_fields );
 
-		$result = $this->message_dispatcher->send( $rule->bot_id(), $rule->destination_id(), $text, 'MarkdownV2' );
+		$result = $this->message_dispatcher->send( $rule->bot_id(), $rule->destination_id(), $text, 'MarkdownV2', null, false, $this->correlation_token_for( $event ) );
 
 		if ( null !== $result && DispatchState::SCHEDULED === $result->state() ) {
 			// M01's MessageDispatcher::send() does not return the created
@@ -100,6 +100,30 @@ class NotificationDispatcher {
 
 		$reason_code = null === $result ? 'schema_unavailable' : $result->state()->name;
 		$this->dispatch_log->update( $rule->id(), $event->event_id(), DispatchLogResult::FAILED_BEFORE_HANDOFF, null, $reason_code );
+	}
+
+	/**
+	 * The opaque reply-correlation token for an event whose type registered
+	 * a correlation field (docs/adr/0046), e.g. `ticket:12`; null otherwise.
+	 *
+	 * @param EventEnvelope $event The event occurrence.
+	 *
+	 * @return string|null
+	 */
+	private function correlation_token_for( EventEnvelope $event ): ?string {
+		$field = $this->registry->reply_correlation_field_for( $event->event_type() );
+
+		if ( null === $field ) {
+			return null;
+		}
+
+		$value = $event->value_at( $field );
+
+		if ( null === $value || is_array( $value ) || '' === (string) $value ) {
+			return null;
+		}
+
+		return 'ticket:' . (string) $value;
 	}
 
 	/**
