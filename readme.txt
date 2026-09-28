@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.21.0
+Stable tag: 0.21.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,10 @@ than once. The delivery log flags any message this happened to with a "possible 
 indicator, so administrators have an accurate signal rather than an unearned exactly-once guarantee.
 
 == Changelog ==
+
+= 0.21.1 =
+* New Settings option "Do not send Telegram notifications for actions made by logged-in managers or support staff" (off by default): events caused by a shop manager, or by a support operator who is not an administrator, are still recorded but send no Telegram notification. Requests with no logged-in user are never suppressed.
+* No database schema change.
 
 = 0.21.0 =
 * Support desk integration (requires Fluent IMAP Support Desk 2.1.0 or newer; inert without it, ADR-0046). Three new notification triggers under "Support tickets and contact requests": a contact form request was submitted, a new support ticket was created from an email, and a customer replied to an existing ticket. Each can insert the ticket number, subject, message text, customer name and email and where the request came from. Customer details are never stored in event history.

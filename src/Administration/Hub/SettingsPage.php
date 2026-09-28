@@ -95,9 +95,10 @@ class SettingsPage {
 		// absence must be treated as an explicit false here — otherwise the
 		// array_merge below would fall back to the old stored value and an
 		// unchecked box could never actually be saved as off.
-		$input['remove_data_on_uninstall']    = isset( $input['remove_data_on_uninstall'] );
-		$input['chat_widget_enabled']         = isset( $input['chat_widget_enabled'] );
-		$input['chat_widget_allow_anonymous'] = isset( $input['chat_widget_allow_anonymous'] );
+		$input['remove_data_on_uninstall']           = isset( $input['remove_data_on_uninstall'] );
+		$input['chat_widget_enabled']                = isset( $input['chat_widget_enabled'] );
+		$input['chat_widget_allow_anonymous']        = isset( $input['chat_widget_allow_anonymous'] );
+		$input['suppress_staff_actor_notifications'] = isset( $input['suppress_staff_actor_notifications'] );
 
 		$sanitized = $this->settings->sanitize( array_merge( $this->settings->get(), $input ) );
 		update_option( Settings::OPTION_NAME, $sanitized );
@@ -123,6 +124,10 @@ class SettingsPage {
 		echo '<p><label><input type="checkbox" name="universal_telegram_settings[remove_data_on_uninstall]" value="1" ' .
 			checked( ! empty( $values['remove_data_on_uninstall'] ), true, false ) . ' /> ' .
 			esc_html__( 'Remove all plugin data on uninstall', 'universal-telegram' ) . '</label></p>';
+
+		echo '<p><label><input type="checkbox" name="universal_telegram_settings[suppress_staff_actor_notifications]" value="1" ' .
+			checked( ! empty( $values['suppress_staff_actor_notifications'] ), true, false ) . ' /> ' .
+			esc_html__( 'Do not send Telegram notifications for actions made by logged-in managers or support staff', 'universal-telegram' ) . '</label></p>';
 
 		echo '<p><label><input type="checkbox" name="universal_telegram_settings[chat_widget_enabled]" value="1" ' .
 			checked( ! empty( $values['chat_widget_enabled'] ), true, false ) . ' /> ' .

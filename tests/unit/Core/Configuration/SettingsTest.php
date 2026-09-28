@@ -248,6 +248,14 @@ final class SettingsTest extends TestCase {
 		);
 	}
 
+	public function test_suppress_staff_actor_notifications_defaults_off_and_sanitizes_to_bool(): void {
+		$settings = new Settings();
+
+		$this->assertFalse( $settings->defaults()['suppress_staff_actor_notifications'] );
+		$this->assertTrue( $settings->sanitize( array( 'suppress_staff_actor_notifications' => '1' ) )['suppress_staff_actor_notifications'] );
+		$this->assertFalse( $settings->sanitize( array( 'suppress_staff_actor_notifications' => '' ) )['suppress_staff_actor_notifications'] );
+	}
+
 	public function test_sanitize_rejects_an_unrecognized_consent_mode(): void {
 		$settings = new Settings();
 

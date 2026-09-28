@@ -47,12 +47,14 @@ class RuleEvaluator {
 	 * @param Registry                   $registry           Supplies each event type's allowed variable fields.
 	 * @param DispatchLogRepository      $dispatch_log       Records a rejected outcome for a non-matching rule.
 	 * @param NotificationDispatcher     $dispatcher         Executes the full dispatch sequence for a matched rule.
+	 * @param StaffActorSuppression|null $staff_suppression  Skips dispatch while a logged-in manager/support user is the actor.
 	 */
 	public function __construct(
 		private readonly NotificationRuleRepository $rules,
 		private readonly Registry $registry,
 		private readonly DispatchLogRepository $dispatch_log,
-		private readonly NotificationDispatcher $dispatcher
+		private readonly NotificationDispatcher $dispatcher,
+		private readonly ?StaffActorSuppression $staff_suppression = null
 	) {}
 
 	/**
@@ -69,6 +71,13 @@ class RuleEvaluator {
 	 */
 	public function evaluate( EventEnvelope $event ): void {
 		$rules = $this->rules->for_event_type( $event->event_type(), true );
+
+		if ( null !== $this->staff_suppression && $this->staff_suppression->is_active() ) {
+			foreach ( $rules as $rule ) {
+				$this->on_rejected( $rule, $event, StaffActorSuppression::REASON_CODE );
+			}
+			return;
+		}
 
 		if ( $this->is_suppressed_by_digest( $event->event_type() ) ) {
 			foreach ( $rules as $rule ) {
