@@ -4,7 +4,7 @@ Tags: telegram, woocommerce, notifications
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.21.0
+Stable tag: 0.21.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,12 +46,15 @@ indicator, so administrators have an accurate signal rather than an unearned exa
 
 == Changelog ==
 
+= 0.21.1 =
+* New Settings option "Do not send Telegram notifications for actions made by logged-in managers or support staff" (off by default): events caused by a shop manager, or by a support operator who is not an administrator, are still recorded but send no Telegram notification. Requests with no logged-in user are never suppressed.
+* No database schema change.
+
 = 0.21.0 =
 * Support desk integration (requires Fluent IMAP Support Desk 2.1.0 or newer; inert without it, ADR-0046). Three new notification triggers under "Support tickets and contact requests": a contact form request was submitted, a new support ticket was created from an email, and a customer replied to an existing ticket. Each can insert the ticket number, subject, message text, customer name and email and where the request came from. Customer details are never stored in event history.
 * Reply to a support notification directly in Telegram: use Telegram's own reply on the notification message and your text is sent to the customer as an official ticket reply (the support desk adds its greeting and signature). Only Telegram users mapped to a WordPress operator with the manage-conversations capability can reply; replies are rate-limited, archived tickets are refused, closed tickets are reopened, and the confirmation only appears after the email was actually sent. A redelivered Telegram update can never send a second email.
 * New "Support digest" settings (Notifications & activity): a daily or weekly Telegram summary of unanswered (open) tickets, tickets awaiting the customer (pending), and the oldest unanswered tickets, scheduled in the site timezone and correct across daylight saving changes.
 * Database schema 39 → 40: adds a nullable outbound message correlation token and an index used to route replies. Additive and repeat-safe.
-* New Settings option "Do not send Telegram notifications for actions made by logged-in managers or support staff" (off by default): events caused by a shop manager, or by a support operator who is not an administrator, are still recorded but send no Telegram notification. Requests with no logged-in user are never suppressed.
 
 = 0.20.4 =
 * Fixed two built-in notification presets: "New order" now shows the order's status ({{context.order_status}}), since an order that just entered checkout (e.g. mid-redirect to a payment gateway) is not yet paid and previously read identically to a completed one; "Payment completed" now states the amount instead of relying on order_id alone and no longer relies on the raw boolean {{context.has_transaction_id}}, which rendered as the literal word "true" or "false" in the delivered message. No schema change.
