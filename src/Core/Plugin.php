@@ -44,6 +44,7 @@ use UniversalTelegram\Automations\Intelligence\IntelligenceStateRepository;
 use UniversalTelegram\Automations\NotificationDispatcher;
 use UniversalTelegram\Automations\NotificationRuleRepository;
 use UniversalTelegram\Automations\RuleEvaluator;
+use UniversalTelegram\Automations\StaffActorSuppression;
 use UniversalTelegram\Automations\TemplateRenderer;
 use UniversalTelegram\Core\Capabilities\CapabilityRegistrar;
 use UniversalTelegram\Core\Configuration\Settings;
@@ -829,7 +830,7 @@ final class Plugin {
 			new TemplateRenderer(),
 			$this->message_dispatcher
 		);
-		$rule_evaluator          = new RuleEvaluator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher );
+		$rule_evaluator          = new RuleEvaluator( $this->notification_rule_repository, $this->event_registry, $this->dispatch_log_repository, $notification_dispatcher, new StaffActorSuppression( $settings ) );
 		$this->event_dispatcher  = new EventDispatcher( $this->event_history_repository, $rule_evaluator );
 		$this->event_emitter     = new EventEmitter( $this->event_registry, $this->event_dispatcher, $this->audit_logger );
 

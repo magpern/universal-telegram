@@ -94,6 +94,7 @@ final class Settings {
 			'support_chat_adapter_enabled'                => false,
 			'support_chat_adapter_bot_id'                 => null,
 			'support_chat_adapter_destination_id'         => null,
+			'suppress_staff_actor_notifications'          => false,
 		);
 	}
 
@@ -137,6 +138,7 @@ final class Settings {
 			'alert_order_failure_spike_enabled',
 			'alert_js_error_spike_enabled',
 			'support_chat_adapter_enabled',
+			'suppress_staff_actor_notifications',
 		);
 
 		foreach ( $boolean_fields as $field ) {
